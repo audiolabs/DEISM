@@ -1,0 +1,18 @@
+name: DEISM
+
+channels:
+  - defaults
+  - conda-forge
+  - pypi
+
+dependencies:
+  - python=3.9.*
+  - pip
+  - numpy
+  - scipy
+  - sympy
+  - psutil
+  - matplotlib
+  - pip:
+    - ray
+    - sound-field-analysis
