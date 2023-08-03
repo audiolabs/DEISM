@@ -33,8 +33,7 @@ def pre_calc_Wigner(params):
     # Initialize matrices
 
     # W1 has indices (n,v,l) with size (N+1)*(V+1)*(N+V+1)
-    W_1_all = np.zeros([N_src_dir + 1, V_rec_dir +
-                       1, N_src_dir + V_rec_dir + 1])
+    W_1_all = np.zeros([N_src_dir + 1, V_rec_dir + 1, N_src_dir + V_rec_dir + 1])
 
     # W2 has indices (n,v,l,-m_mod,u) with size (N+1)*(V+1)*(N+V+1)*(2*N+1)*(2*V+1)
     W_2_all = np.zeros(
@@ -56,8 +55,7 @@ def pre_calc_Wigner(params):
                             W_1 = wigner_3j(n, v, l, 0, 0, 0)
                             W_1_all[n, v, l] = np.array([W_1], dtype=float)
                             W_2 = wigner_3j(n, v, l, -m, u, m - u)
-                            W_2_all[n, v, l, m, u] = np.array(
-                                [W_2], dtype=float)
+                            W_2_all[n, v, l, m, u] = np.array([W_2], dtype=float)
 
     Wigner = {
         "W_1_all": W_1_all,
@@ -148,12 +146,9 @@ def pre_calc_images_src_rec(params):
                                     2 * q_y - p_y,
                                     2 * q_z - p_z,
                                 ]
-                                cross_i = int(
-                                    np.cos(int((i % 2) == 0) * np.pi) * i)
-                                cross_j = int(
-                                    np.cos(int((j % 2) == 0) * np.pi) * j)
-                                cross_k = int(
-                                    np.cos(int((k % 2) == 0) * np.pi) * k)
+                                cross_i = int(np.cos(int((i % 2) == 0) * np.pi) * i)
+                                cross_j = int(np.cos(int((j % 2) == 0) * np.pi) * j)
+                                cross_k = int(np.cos(int((k % 2) == 0) * np.pi) * k)
                                 # v_ijk = (
                                 #     T_x(i, LL[0])
                                 #     @ T_y(j, LL[1])
@@ -175,8 +170,7 @@ def pre_calc_images_src_rec(params):
                                     R_sI_r[0], R_sI_r[1], R_sI_r[2]
                                 )
                                 theta_R_sI_r = np.pi / 2 - theta_R_sI_r
-                                R_sI_r_all.append(
-                                    [phi_R_sI_r, theta_R_sI_r, r_R_sI_r])
+                                R_sI_r_all.append([phi_R_sI_r, theta_R_sI_r, r_R_sI_r])
 
                                 # Vector pointing from source to receiver images (FSRRAM,p_ijk)
                                 R_s_rI = I_r - x_s
@@ -184,8 +178,7 @@ def pre_calc_images_src_rec(params):
                                     R_s_rI[0], R_s_rI[1], R_s_rI[2]
                                 )
                                 theta_R_s_rI = np.pi / 2 - theta_R_s_rI
-                                R_s_rI_all.append(
-                                    [phi_R_s_rI, theta_R_s_rI, r_R_s_rI])
+                                R_s_rI_all.append([phi_R_s_rI, theta_R_s_rI, r_R_s_rI])
 
                                 # Vector pointing from receiver to source images (FSRRAM,q_ijk)
                                 R_r_sI = I_s - x_r
@@ -193,21 +186,17 @@ def pre_calc_images_src_rec(params):
                                     R_r_sI[0], R_r_sI[1], R_r_sI[2]
                                 )
                                 theta_R_r_sI = np.pi / 2 - theta_R_r_sI
-                                R_r_sI_all.append(
-                                    [phi_R_r_sI, theta_R_r_sI, r_R_r_sI])
+                                R_r_sI_all.append([phi_R_r_sI, theta_R_r_sI, r_R_r_sI])
 
                                 if RefCoef_angdep_flag == 1:
                                     inc_angle_x = np.arccos(
-                                        np.abs(R_sI_r[0]) /
-                                        np.linalg.norm(R_sI_r)
+                                        np.abs(R_sI_r[0]) / np.linalg.norm(R_sI_r)
                                     )
                                     inc_angle_y = np.arccos(
-                                        np.abs(R_sI_r[1]) /
-                                        np.linalg.norm(R_sI_r)
+                                        np.abs(R_sI_r[1]) / np.linalg.norm(R_sI_r)
                                     )
                                     inc_angle_z = np.arccos(
-                                        np.abs(R_sI_r[2]) /
-                                        np.linalg.norm(R_sI_r)
+                                        np.abs(R_sI_r[2]) / np.linalg.norm(R_sI_r)
                                     )
                                     beta_x1 = (Z_S - 1 / np.cos(inc_angle_x)) / (
                                         Z_S + 1 / np.cos(inc_angle_x)
@@ -237,7 +226,7 @@ def pre_calc_images_src_rec(params):
         "R_s_rI_all": R_s_rI_all,
         "R_r_sI_all": R_r_sI_all,
         "atten_all": atten_all,
-        "A": A
+        "A": A,
     }
 
     return images
@@ -290,34 +279,21 @@ def T_z(k, Lz):
 
 
 def rotation_matrix_ZXZ(alpha, beta, gamma):
-    """Rotation matrices using the "x-convention"
-    https://mathworld.wolfram.com/EulerAngles.html"""
-
-    R_z1 = np.array(
-        [
-            [np.cos(alpha), np.sin(alpha), 0],
-            [-np.sin(alpha), np.cos(alpha), 0],
-            [0, 0, 1],
-        ]
-    )
-    R_x = np.array(
-        [
-            [1, 0, 0],
-            [0, np.cos(beta), np.sin(beta)],
-            [0, -np.sin(beta), np.cos(beta)],
-        ]
-    )
-    R_z2 = np.array(
-        [
-            [np.cos(gamma), np.sin(gamma), 0],
-            [-np.sin(gamma), np.cos(gamma), 0],
-            [0, 0, 1],
-        ]
-    )
-
-    R = R_z2 @ R_x @ R_z1
-
-    return R, R_z2, R_x, R_z1
+    """
+    The rotation matrix calculation used in COMSOL, see:
+    https://doc.comsol.com/5.5/doc/com.comsol.help.comsol/comsol_ref_definitions.12.092.html
+    """
+    a11 = np.cos(alpha) * np.cos(gamma) - np.sin(alpha) * np.cos(beta) * np.sin(gamma)
+    a12 = -np.cos(alpha) * np.sin(gamma) - np.sin(alpha) * np.cos(beta) * np.cos(gamma)
+    a13 = np.sin(beta) * np.sin(alpha)
+    a21 = np.sin(alpha) * np.cos(gamma) + np.cos(alpha) * np.cos(beta) * np.sin(gamma)
+    a22 = -np.sin(alpha) * np.sin(gamma) + np.cos(alpha) * np.cos(beta) * np.cos(gamma)
+    a23 = -np.sin(beta) * np.cos(alpha)
+    a31 = np.sin(beta) * np.sin(gamma)
+    a32 = np.sin(beta) * np.cos(gamma)
+    a33 = np.cos(beta)
+    R = np.array([[a11, a12, a13], [a21, a22, a23], [a31, a32, a33]])
+    return R
 
 
 def SHCs_from_pressure_LS(Psh, Dir_all, sph_order_FEM, freqs_all):
@@ -335,8 +311,7 @@ def SHCs_from_pressure_LS(Psh, Dir_all, sph_order_FEM, freqs_all):
     Y = np.zeros([len(Dir_all), (sph_order_FEM + 1) ** 2], dtype=complex)
     for n in range(sph_order_FEM + 1):
         for m in range(-n, n + 1):
-            Y[:, n**2 + n +
-                m] = scy.sph_harm(m, n, Dir_all[:, 0], Dir_all[:, 1])
+            Y[:, n**2 + n + m] = scy.sph_harm(m, n, Dir_all[:, 0], Dir_all[:, 1])
     Y_pinv = np.linalg.pinv(Y)
     fnm = Y_pinv @ Psh.T
 
@@ -376,23 +351,21 @@ def get_C_nm_s(params, src_facing):
     src_alpha, src_beta, src_gamma = src_facing
 
     # Apply rotation to the sampled pressure field if needed
-    src_R = rotation_matrix_ZXZ(src_alpha, src_beta, src_gamma)[0]
-    x, y, z = sph2cart(Dir_all_source[:, 0],
-                       np.pi / 2 - Dir_all_source[:, 1], 1)
+    src_R = rotation_matrix_ZXZ(src_alpha, src_beta, src_gamma)
+    x, y, z = sph2cart(Dir_all_source[:, 0], np.pi / 2 - Dir_all_source[:, 1], 1)
     rotated = src_R @ np.vstack((x, y, z))
     az, el, r = cart2sph(rotated[0, :], rotated[1, :], rotated[2, :])
     Dir_all_source_rotated = np.hstack((az[:, None], np.pi / 2 - el[:, None]))
 
     # Obtain spherical harmonic coefficients from the rotated sound field
     Pmnr0_source = SHCs_from_pressure_LS(
-        Psh_source, Dir_all_source, params["N_src_dir"], freqs
+        Psh_source, Dir_all_source_rotated, params["N_src_dir"], freqs
     )
 
     # Calculate source directivity coefficients C_nm^s
     k = params["k"]
     N_src_dir = params["N_src_dir"]
-    C_nm_s = np.zeros([freqs.size, N_src_dir + 1, 2 *
-                      N_src_dir + 1], dtype="complex")
+    C_nm_s = np.zeros([freqs.size, N_src_dir + 1, 2 * N_src_dir + 1], dtype="complex")
     for n in range(N_src_dir + 1):
         hn_r0_all = sphankel2(n, k * r0_src)
         for m in range(-n, n + 1):
@@ -428,14 +401,11 @@ def get_C_vu_r(params, rec_facing):
 
     # Rotate the directions if needed
     rec_alpha, rec_beta, rec_gamma = rec_facing
-    rec_R, R_z2, R_x, R_z1 = rotation_matrix_ZXZ(
-        rec_alpha, rec_beta, rec_gamma)
-    x, y, z = sph2cart(
-        Dir_all_receiver[:, 0], np.pi / 2 - Dir_all_receiver[:, 1], 1)
+    rec_R = rotation_matrix_ZXZ(rec_alpha, rec_beta, rec_gamma)
+    x, y, z = sph2cart(Dir_all_receiver[:, 0], np.pi / 2 - Dir_all_receiver[:, 1], 1)
     rotated = rec_R @ np.vstack((x, y, z))
     az, el, r = cart2sph(rotated[0, :], rotated[1, :], rotated[2, :])
-    Dir_all_receiver_rotated = np.hstack(
-        (az[:, None], np.pi / 2 - el[:, None]))
+    Dir_all_receiver_rotated = np.hstack((az[:, None], np.pi / 2 - el[:, None]))
 
     # Obtain spherical harmonic coefficients from the rotated sound field
     Pmnr0_receiver = SHCs_from_pressure_LS(
@@ -445,8 +415,7 @@ def get_C_vu_r(params, rec_facing):
     # Calculate receiver directivity coefficients C_vu^r
     k = params["k"]
     V_rec_dir = params["V_rec_dir"]
-    C_vu_r = np.zeros([freqs.size, V_rec_dir + 1, 2 *
-                      V_rec_dir + 1], dtype="complex")
+    C_vu_r = np.zeros([freqs.size, V_rec_dir + 1, 2 * V_rec_dir + 1], dtype="complex")
     hn_r0_all = np.zeros([freqs.size, V_rec_dir + 1], dtype="complex")
     for v in range(V_rec_dir + 1):
         hn_r0_all[:, v] = sphankel2(v, k * r0_rec)
@@ -459,15 +428,16 @@ def get_C_vu_r(params, rec_facing):
 
 
 @ray.remote
-def calc_DEISM_FEM_single_reflection(N_src_dir, V_rec_dir, C_nm_s, C_vu_r, A_i, atten, x0, W_1_all, W_2_all, k):
+def calc_DEISM_FEM_single_reflection(
+    N_src_dir, V_rec_dir, C_nm_s, C_vu_r, A_i, atten, x0, W_1_all, W_2_all, k
+):
     """DEISM: Run each image using parallel computation"""
 
     P_single_reflection = np.zeros([k.size], dtype="complex")
     [q_x, q_y, q_z, p_x, p_y, p_z] = A_i
     [phi_x0, theta_x0, r_x0] = x0
     l_list = np.arange(N_src_dir + V_rec_dir + 1)
-    l_list_2D = np.broadcast_to(
-        l_list[..., None], l_list.shape + (k.shape[0],))
+    l_list_2D = np.broadcast_to(l_list[..., None], l_list.shape + (k.shape[0],))
     k_2D = np.broadcast_to(k, (len(l_list),) + k.shape)
     sphan2_all = sphankel2(l_list_2D, k_2D * r_x0)
 
@@ -501,9 +471,7 @@ def calc_DEISM_FEM_single_reflection(N_src_dir, V_rec_dir, C_nm_s, C_vu_r, A_i, 
                                     * W_2_all[n, v, l, m_mod, u]
                                     * Xi
                                 )  # Version 2, precalculation of sphhankel2
-                    S_nv_mu = (
-                        4 * np.pi * (1j) ** (v - n) * (-1) ** m_mod * local_sum
-                    )
+                    S_nv_mu = 4 * np.pi * (1j) ** (v - n) * (-1) ** m_mod * local_sum
                     P_single_reflection = (
                         P_single_reflection
                         + mirror_effect
@@ -590,13 +558,14 @@ def ray_run_DEISM(params, images, Wigner):
 
 
 @ray.remote
-def calc_DEISM_FEM_simp_single_reflection(N_src_dir, V_rec_dir, C_nm_s, C_vu_r, R_s_rI, R_r_sI, atten, k):
+def calc_DEISM_FEM_simp_single_reflection(
+    N_src_dir, V_rec_dir, C_nm_s, C_vu_r, R_s_rI, R_r_sI, atten, k
+):
     """DEISM LC: Run each image using parallel computation"""
     [phi_R_s_rI, theta_R_s_rI, r_R_s_rI] = R_s_rI
     [phi_R_r_sI, theta_R_r_sI, r_R_r_sI] = R_r_sI
     P_single_reflection = np.zeros([k.size], dtype="complex")
-    factor = -1 * atten * 4 * np.pi / k * \
-        np.exp(-(1j) * k * r_R_s_rI) / k / r_R_s_rI
+    factor = -1 * atten * 4 * np.pi / k * np.exp(-(1j) * k * r_R_s_rI) / k / r_R_s_rI
 
     for n in range(N_src_dir + 1):
         for m in range(-n, n + 1):
