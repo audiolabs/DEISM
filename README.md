@@ -80,7 +80,7 @@ Rotation matrices given Euler angles using "x-convention". [^Euler]
 
 ### Function SHCs_from_pressure_LS
 
-Obtain spherical harmonic coefficients from the simulated (or measured) sound field on a sphere with a fixed radius. The coeffcients are calculated using the Least-Square solution of the sampling weights. 
+Obtain spherical harmonic coefficients from the simulated (or measured) sound field on a sphere with a fixed radius. The coefficients are calculated using the Least-Square solution of the sampling weights. 
 
 ### Function get_C_nm_s
 
