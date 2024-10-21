@@ -25,7 +25,7 @@ In DEISM-ARG, we can model the room transfer function between transducers mounte
 
 ## Using pip to install remotely
 
-- To be added later
+- Run `pip install deism` to install deism. 
 
 # Running codes
 
