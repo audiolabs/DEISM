@@ -53,20 +53,53 @@ jobs:
           ls -l deism/tests
           pytest
 
-      # Check the built package
-      - name: Build package and check
-        run: |
-          python setup.py sdist bdist_wheel 
-          twine check dist/*  # Check the integrity of the package
+      # # Check the built package
+      # - name: Build package and check
+      #   run: |
+      #     python setup.py sdist bdist_wheel 
+      #     twine check dist/*  # Check the integrity of the package
 
-      # Publish to PyPI (using OIDC and trusted publisher setup)
-      - name: Publish to PyPI
+      # # Publish to PyPI (using OIDC and trusted publisher setup)
+      # - name: Publish to PyPI
+      #   uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     repository_url: https://upload.pypi.org/legacy/  # The repository URL for PyPI
+      #   env:
+      #     TWINE_USERNAME: __token__  # OIDC-based authentication
+      #     TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}  # Fallback in case OIDC is not available
+      # Test the universal wheels (sdist) on Ubuntu only
+      - name: Test the universal wheels
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python -m build --sdist
+          twine check dist/*
+
+      # Test the binary wheels (bdist) on non-Ubuntu systems (macOS and Windows)
+      - name: Test the binary wheels
+        if: matrix.os != 'ubuntu-latest'
+        run: |
+          python -m build --wheel
+          twine check dist/*
+
+      # Publish the source distribution (sdist) to PyPI from Ubuntu
+      - name: Publish sdist to PyPI
+        if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v') && matrix.os == 'ubuntu-latest'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          repository_url: https://upload.pypi.org/legacy/  # The repository URL for PyPI
+          repository_url: https://upload.pypi.org/legacy/
         env:
-          TWINE_USERNAME: __token__  # OIDC-based authentication
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}  # Fallback in case OIDC is not available
+          TWINE_USERNAME: __token__  # OIDC uses __token__ for authentication
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}  # OIDC token automatically provided
+
+      # Publish the binary distribution (bdist) to PyPI from non-Ubuntu systems
+      - name: Publish bdist to PyPI
+        if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v') && matrix.os != 'ubuntu-latest'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository_url: https://upload.pypi.org/legacy/
+        env:
+          TWINE_USERNAME: __token__  # OIDC uses __token__ for authentication
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}  
 
       - name: Clean up build artifacts
         run: |
