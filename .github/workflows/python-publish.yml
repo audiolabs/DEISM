@@ -83,7 +83,7 @@ jobs:
 
       # Publish the source distribution (sdist) to PyPI from Ubuntu
       - name: Publish sdist to PyPI
-        if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v') && matrix.os == 'ubuntu-latest'
+        if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'ubuntu-latest'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository_url: https://upload.pypi.org/legacy/
@@ -93,7 +93,7 @@ jobs:
 
       # Publish the binary distribution (bdist) to PyPI from non-Ubuntu systems
       - name: Publish bdist to PyPI
-        if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v') && matrix.os != 'ubuntu-latest'
+        if: github.event_name == 'release' && github.event.action == 'published' && matrix.os != 'ubuntu-latest'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository_url: https://upload.pypi.org/legacy/
