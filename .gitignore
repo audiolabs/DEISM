@@ -1,0 +1,9 @@
+outputs/RTFs/*
+.DS_Store
+.vscode/
+deism/__pycache__/
+build/
+outputs/
+var/
+deism.egg-info/
+dist/
