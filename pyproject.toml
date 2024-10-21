@@ -2,7 +2,25 @@
 # Minimum requirements for the build system to execute.
 requires = ["setuptools", "wheel", "numpy>=1.13.0", "Cython", "pybind11>=2.2"]  # PEP 508 specifications.
 
-[tool.pytest.ini_options]
-filterwarnings = [
-  'ignore:Matplotlib is currently using agg, which is a non-GUI backend, so cannot show the figure.:UserWarning'
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deism"
+dynamic = ["version"]
+description = "An image source-based method used to simulate room transfer functions for arbitrary room shapes."
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    { name = "Zeyu Xu", email = "zeyu.xu@audiolabs-erlangen.de" },
 ]
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "setuptools_scm.get_version" }
+
+[project.urls]
+Homepage = "https://github.com/audiolabs/DEISM"
