@@ -101,6 +101,6 @@ jobs:
           TWINE_USERNAME: __token__  # OIDC uses __token__ for authentication
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}  
 
-      - name: Clean up build artifacts
-        run: |
-          rm -rf dist build *.egg-info
+      # - name: Clean up build artifacts
+      #   run: |
+      #     rm -rf dist build *.egg-info
