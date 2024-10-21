@@ -90,7 +90,7 @@ jobs:
           skip_existing: true 
         env:
           TWINE_USERNAME: __token__  # OIDC uses __token__ for authentication
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}  # OIDC token automatically provided
+          TWINE_PASSWORD: ${{ secrets.API_TOKEN }}  # OIDC token automatically provided
 
       # Publish to PyPI on macOS and Windows using Twine directly
       - name: Publish to PyPI on macOS/Windows
@@ -100,7 +100,7 @@ jobs:
           twine upload --skip-existing dist/*
         env:
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+          TWINE_PASSWORD: ${{ secrets.API_TOKEN }}
 
       # - name: Clean up build artifacts
       #   run: |
