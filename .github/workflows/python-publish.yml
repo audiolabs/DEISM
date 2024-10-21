@@ -28,14 +28,15 @@ jobs:
       - name: Checkout the code
         uses: actions/checkout@v3
 
-      # Set up Conda
+      # Set up Miniconda with specified version
       - name: Set up Miniconda
         uses: conda-incubator/setup-miniconda@v2
         with:
+          miniconda-version: "latest"  # Ensure Miniconda is installed
           python-version: ${{ matrix.python-version }}
           auto-activate-base: false  # Avoid using the base environment
-          activate-environment: DEISM  # Name of the environment
-          environment-file: deism_env.yml  # Use your Conda environment.yml
+          activate-environment: DEISM  # Your Conda environment name
+          environment-file: deism_env.yml  # Your environment.yml file to create the env
 
       - name: Install dependencies
         run: |
