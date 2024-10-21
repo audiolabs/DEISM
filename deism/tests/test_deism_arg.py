@@ -134,6 +134,10 @@ def main():
         print("DEISM Function has not been run because --run flag was not set.\n")
 
 
+def test_main():
+    main()
+
+
 # -------------------------------------------------------
 if __name__ == "__main__":
-    main()
+    test_main()
