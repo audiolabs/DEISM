@@ -1,0 +1,64 @@
+# This workflow will upload a Python Package using Twine when a release is created
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: deism
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-publish:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.9', '3.10', '3.11']
+
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v3
+
+      # Set up Conda
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+          auto-activate-base: false  # Avoid using the base environment
+          activate-environment: your_env  # Name of the environment
+          environment-file: environment.yml  # Use your Conda environment.yml
+
+      - name: Install dependencies
+        run: |
+          conda activate your_env
+          conda env update --file environment.yml  # Install dependencies from the environment file
+
+      - name: Build the package
+        run: |
+          conda activate your_env
+          python -m build
+
+      - name: Test with pytest
+        run: |
+          conda activate your_env
+          pytest
+
+      - name: Publish to PyPI
+        if: github.event_name == 'release' && startsWith(github.event.ref, 'refs/tags/v')
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          conda activate your_env
+          twine upload dist/* --skip-existing
+
+      - name: Clean up build artifacts
+        run: |
+          conda activate your_env
+          rm -rf dist build *.egg-info
