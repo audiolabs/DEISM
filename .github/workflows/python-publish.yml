@@ -50,7 +50,8 @@ jobs:
       - name: Test with pytest
         run: |
           pip install -U pytest setuptools build wheel twine
-          pytest
+          ls -l deism/tests
+          pytest -v deism/tests
 
       # Check the built package
       - name: Check the package files

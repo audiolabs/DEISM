@@ -4,6 +4,11 @@ requires = ["setuptools", "wheel", "numpy>=1.13.0", "Cython", "pybind11>=2.2"]  
 
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+testpaths = [
+  "deism/tests"  # Path to your test directory
+]
+
 [project]
 name = "deism"
 dynamic = ["version"]
