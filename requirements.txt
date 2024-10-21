@@ -1,4 +1,3 @@
-python==3.9  # Or use >= if you want flexible versioning
 numpy
 scipy
 sympy
