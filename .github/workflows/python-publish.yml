@@ -51,7 +51,7 @@ jobs:
         run: |
           pip install -U pytest setuptools build wheel twine
           ls -l deism/tests
-          pytest -v deism/tests
+          pytest
 
       # Check the built package
       - name: Check the package files
