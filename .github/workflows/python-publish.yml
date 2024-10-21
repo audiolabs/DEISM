@@ -23,9 +23,9 @@ jobs:
         exclude:
           - os: macos-latest
             python-version: 3.9
-    permissions:
-      id-token: write  # OIDC token required for authentication
-      contents: read
+    # permissions:
+    #   id-token: write  # OIDC token required for authentication
+    #   contents: read
 
     steps:
       - name: Checkout the code
