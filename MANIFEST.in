@@ -2,6 +2,7 @@ graft thirdPartyLegalNotices
 include README.md
 include deism_env_exact.yml
 include deism_env.yml
+include LICENSE
 
 graft deism
 
@@ -9,3 +10,4 @@ global-exclude *.py[co]
 global-exclude __pycache__
 global-exclude *.so
 global-exclude *.pyd
+global-exclude .DS_Store
