@@ -39,10 +39,15 @@ jobs:
           environment-file: deism_env.yml  # Your environment.yml file to create the env
 
       # Explicitly create the Conda environment from the deism_env.yml file
-      - name: Create and activate the Conda environment
+      - name: Create or update the Conda environment
         run: |
-          conda env create --name DEISM --file deism_env.yml  # Create the environment
+          conda env update --name DEISM --file deism_env.yml --prune  # Update or create environment
           conda activate DEISM  # Activate the environment
+      # Install build module and any other required build dependencies
+      - name: Install build dependencies
+        run: |
+          conda activate DEISM
+          python -m pip install build twine  # Install the build and twine modules
 
       - name: Build the package
         run: |
