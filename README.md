@@ -67,14 +67,11 @@ The example code only provides essential functionalities based on DEISM. For mor
 
 # Directivities 
 
-- Show a plot of directivities
-
 Modeling the directivities of the source and receiver in the room acoustics simulation is receiving increasing attention. The directivities of the source or receiver can include both the transducer directional properties and the local diffraction and scatterring effects caused by the enclosure where the transducers are mounted. Modern smart speakers are typical embodiments of such scenarios. Human heads are also a very common case. 
 
 ## Simple directivities
 
 - Monopole
-- Dipole
 
 ## Arbitrary directivities
 
