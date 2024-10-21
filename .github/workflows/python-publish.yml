@@ -54,8 +54,9 @@ jobs:
           pytest
 
       # Check the built package
-      - name: Check the package files
+      - name: Build package and check
         run: |
+          python setup.py sdist bdist_wheel 
           twine check dist/*  # Check the integrity of the package
 
       # Publish to PyPI (using OIDC and trusted publisher setup)
