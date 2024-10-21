@@ -19,8 +19,5 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
-[tool.setuptools.dynamic]
-version = { attr = "setuptools_scm.get_version" }
-
 [project.urls]
 Homepage = "https://github.com/audiolabs/DEISM"
