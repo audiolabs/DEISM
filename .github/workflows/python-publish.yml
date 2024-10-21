@@ -18,8 +18,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-13, macos-latest, windows-2019]
         python-version: ['3.9', '3.10', '3.11']
+        exclude:
+          - os: macos-latest
+            python-version: 3.9
     permissions:
       id-token: write  # OIDC token required for authentication
       contents: read
@@ -28,42 +31,30 @@ jobs:
       - name: Checkout the code
         uses: actions/checkout@v3
 
-      # Set up Miniconda with specified version
-      - name: Set up Miniconda
-        uses: conda-incubator/setup-miniconda@v2
+      # Step 2: Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          miniconda-version: "latest"  # Ensure Miniconda is installed
           python-version: ${{ matrix.python-version }}
-          auto-activate-base: false  # Avoid using the base environment
-          activate-environment: DEISM  # Your Conda environment name
-          environment-file: deism_env.yml  # Your environment.yml file to create the env
 
-      # Explicitly create the Conda environment from the deism_env.yml file
-      - name: Create or update the Conda environment
+      # Step 3: Install dependencies using pip
+      - name: Install dependencies
         run: |
-          conda env update --name DEISM --file deism_env.yml --prune  # Update or create environment
-          conda init bash  # Initialize Conda for the shell
-          source ~/.bashrc  # Source the shell configuration
-          conda activate DEISM  # Activate the environment
-      # Install build module and any other required build dependencies
-      - name: Install build dependencies
-        run: |
-          conda activate DEISM
-          python -m pip install build twine  # Install the build and twine modules
+          python -m pip install --upgrade pip  # Ensure pip is up-to-date
+          pip install -r requirements.txt  # Install dependencies from requirements.txt
 
-      - name: Build the package
+      - name: Build package
         run: |
-          conda activate DEISM
-          python -m build
+          python -m pip install -e .
 
       - name: Test with pytest
         run: |
-          conda activate DEISM
+          pip install -U pytest setuptools build wheel twine
           pytest
+
       # Check the built package
       - name: Check the package files
         run: |
-          conda activate DEISM
           twine check dist/*  # Check the integrity of the package
 
       # Publish to PyPI (using OIDC and trusted publisher setup)
@@ -77,5 +68,4 @@ jobs:
 
       - name: Clean up build artifacts
         run: |
-          conda activate DEISM
           rm -rf dist build *.egg-info
