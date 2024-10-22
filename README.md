@@ -31,7 +31,7 @@ In DEISM-ARG, we can model the room transfer function between transducers mounte
 
 ## Single set of parameters
 
-The default parameters are defined in file **configSingleParam_ARG.yml**. There are two ways of running the codes: 
+The default parameters are defined in file **configSingleParam.yml** or **configSingleParam_ARG.yml**, depending on whether you want to run for shoebox rooms or more complicated room shapes. Take DEISM-ARG (**configSingleParam_ARG.yml**) as an example, there are two ways of running the codes: 
 
 1. You can directly run **deism_arg_singleparam_example.py** in an IDE, which utilizes the parameters defined in **configSingleParam_arg.yml**.
 2. You can run **deism_arg_singleparam_example.py** from the command line after activating the conda environment. In addition, you can access help information quickly by `python deism_arg_singleparam_example.py --help`. You can then change the parameters based on the instructions from the help message, e.g., `python deism_arg_singleparam_example.py -c 350 -zs 20` will change the parameter sound speed and the wall impedance. The new input value of the parameters then overrides the ones in file **configSingleParam_arg.yml**. After choosing the needed values, you can run the codes using, e.g., `python deism_arg_singleparam_example.py -c 350 -zs 20 --run`. 
@@ -45,15 +45,31 @@ The default parameters are defined in file **configSingleParam_ARG.yml**. There 
 
 # Examples 
 
-- An example of running DEISM-ARG is **test/deism_arg_single_example.py**
+## DEISM-ARG
+
+- An example of running DEISM-ARG is **examples/deism_arg_single_example.py**
   - You can run this from IDEs or via the command line, as introduced in the previous section
-- An example of comparing different versions of DEISM-ARG is given in **test/deism_args_compare.py**. The room transfer functions are compared among:
+- An example of comparing different versions of DEISM-ARG is given in **examples/deism_args_compare.py**. The room transfer functions are compared among:
   - Original version (most computation-costly)
   - LC version (fastest)
   - Mix version (Trade-offs between Original and LC versions): Early reflections up to some changeable order (default is 2) are calculated using the original version and the higher orders are calculated using the LC version. 
-- An example of comparing DEISM-ARG and pyroomacoustics is **test/deism_arg_pra_compare.py**, Comparisons are done regarding if the following results are identical or mismatched only by a small deviation:
+- An example of comparing DEISM-ARG and pyroomacoustics is **examples/deism_arg_pra_compare.py**, Comparisons are done regarding if the following results are identical or mismatched only by a small deviation:
   - number of images
   - the positions of the images
+
+## DEISM for shoebox
+
+We provide two examples for running the original DEISM for shoebox rooms 
+
+- An example of running DEISM-shoebox is **examples/deism_singleparam_example.py**
+  - You can either run this from IDEs or via the cmd
+- An example of comparing different DEISM versions are shown in **examples/deisms_lc_mix_test.py**. In this script, the following methods are compared
+  - DEISM - original
+  - DEISM - MIX (original + LC vectorized)
+  - DEISM - LC vectorized 
+  - FEM as groundtruth (only for this specific parameter settings)
+
+
 
 
 ## Tips
@@ -81,6 +97,10 @@ Some key information should be provided if you want to include your own directiv
 1. The spherical sampling directions around the transducer: azimuth from $0$ ( $+x$ direction) to $2 \pi$, inclination angle from $0$ ($+z$ direction)  to $\pi$. A 2D array with size (number of directions, 2).
 1. The sampled pressure field at the specified directions and frequencies. A 2D array with size (number of frequencies, number of directions).
 1. The radius of the sampling sphere. A 1D array or float number. 
+
+For more information about directivity definition used in DEISM and DEISM-ARG, please refer to the following publication: 
+
+> Zeyu Xu, Adrian Herzog, Alexander Lodermeyer, Emanuël A. P. Habets, Albert G. Prinn; Acoustic reciprocity in the spherical harmonic domain: A formulation for directional sources and receivers. JASA Express Lett. 1 December 2022; 2 (12): 124801. https://doi.org/10.1121/10.0016542
 
 
 
@@ -111,111 +131,16 @@ If you use this package in your research, please cite [our paper](https://doi.or
 
 ## configSingleParam_ARG.yml
 
-In this file you define the default parameters for DEISM to run. Note that this file is different from the  configSingleParam.yml on these parameters:
+In this file you define the default parameters for DEISM-ARG to run. Note that this file is different from the  configSingleParam.yml on these parameters:
 
 - The dimensions are defined separately in the example script. 
 - You also need to specify if you want to rotate the room, and the rotation angles as well. 
 
-### Parameters
 
-```yaml
-# here is the configuration file for single set of parameters
-# Note: 
-# Use space instead of tab for indentation at the beginning of each line
-# Environment parameters
-Environment:
-  soundSpeed: 343 # speed of sound
-  airDensity: 1.2 # constant of air
 
-# Boundary conditions and max. reflection order
-Reflections:
-  # format of reflection coefficient: [Z_x0,Z_x1,Z_y0,Z_y1,Z_z0,Z_z1]
-  acoustImpendence: 18
-  # input:
-  # 1. AcoustImpendence: 18+0j # A single value for 6 walls, no frequency-dependency
-  maxReflectionOrder: 5 # maximal reflection order
-  reverberationTime: 1 # in seconds
+## configSingleParam.yml
 
-# Simulation parameters # 
-# positions of sound source and receiver in 3-dimensional Cartesian coordinate
-# unit(meter)
-# Note:
-# The source and receiver should be at least 1m away from the walls;
-# The distance between the source and receiver should be not less than the sum of the radii of transparent spheres
-Positions:
-  source:
-    x: 1.1
-    y: 1.1
-    z: 1.3
-
-  receiver:
-    x: 2.9
-    y: 1.9
-    z: 1.3
-
-# frequency terms
-Frequencies:
-  # unit of frequency(Hz)
-  startFrequency: 20
-  endFrequency: 1000
-  frequencyStep: 2
-  samplingRate: 2000
-
-# Directivity parameters #
-# maximal spherical harmonic directivity order
-MaxSphDirectivityOrder:
-  nSourceOrder: 5
-  vReceiverOrder: 5
-
-# Facing/Rotation of the directivities
-# Three angles are need to describe the Z-X-Z convention of rotation;
-# The rotation matrix calculation used in COMSOL, see:
-# https://doc.comsol.com/5.5/doc/com.comsol.help.comsol/comsol_ref_definitions.12.092.html
-Orientations:
-  source:
-    alpha: 0
-    beta: 0 
-    gamma: 0 
-  receiver:
-    alpha: 180
-    beta: 0 
-    gamma: 0 
-
-# parameters of the transparent sphere around the source and receiver
-# The values should be consistent with the loaded directivity files
-# For different max. sph. orders at different frequency ranges, this should allow adjustments
-Radius:
-  source: 0.4
-  receiver: 0.5
-
-# Directivity data
-# !!! Add more directivity data here !!!
-Directivities:
-	# Choices for source: 
-  # Analytic: "monopole"
-  # Simulated or measured: "speaker_cuboid_cyldriver_1"
-  source: "speaker_cuboid_cyldriver_1" 
-  # Choices for source: 
-  # Analytic: "monopole"
-  # Simulated or measured: "speaker_cuboid_cyldriver_1"
-  receiver: "speaker_cuboid_cyldriver_1" 
-
-# Other functional parameters
-# DEISM modes: You can run DEISM using different versions
-# 1. ORG: Original DEISM, which is supposed to be the most accurate, but takes the longest time
-# 2. LC: Low-complexity DEISM with vectorized calculation, which is supposed to be faster than ORG, but less accurate
-# 3. MIX: Early reflections up to order 2 are calculated using ORG, and the rest are calculated using LC
-DEISM_specs: 
-  ifRemoveDirect: 0 # If remove the direct sound from the image sources
-  Mode: "ORG" # DEISM-ARG now only supports "ORG" !!! 
-  # mixEarlyOrder: 2 # The order of reflections using DEISM-ORG if choose "MIX"
-  numParaImages: 50000 # Number of images parallel for the calculation, information for users about RAM consumption
-  # If normalize the receiver directivity if the receiver directivity is obtained by placing a point source
-  # with flow strength QFlowStrength at the receiver position and measuring the sound pressure at a sphere around the receiver
-  # You need to specify QFlowStrength after the following flag
-  ifRecerverNormalize: 1 
-  QFlowStrength: 0.001
-```
+In this file you define the default parameters for DEISM-shoebox to run.
 
 
 
