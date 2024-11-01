@@ -23,6 +23,13 @@ def sph2cart(az, el, r):
     return x, y, z
 
 
+def get_SPL(P):
+    P_rms = np.abs(np.sqrt(0.5 * P * P.conjugate()))
+    P0 = 20 * 10 ** (-6)
+    SPL = 20 * np.log10(P_rms / P0)
+    return SPL
+
+
 # %% plot_results
 def plot_RTFs(
     figure_name,

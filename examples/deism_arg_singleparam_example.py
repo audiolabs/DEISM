@@ -21,7 +21,6 @@ from deism.core_deism import (
 
 from deism.core_deism_arg import (
     Room_deism_cpp,
-    Room_deism_python,
     get_ref_paths_ARG,
     rotate_room_src_rec,
     find_wall_centers,
@@ -99,7 +98,7 @@ def main():
         # initialize Room_deism
         room_pra_deism = Room_deism_cpp(params)
         # Plot the room and the images
-        # room_pra_deism.plot_room()
+        room_pra_deism.plot_room()
         # get the reflection paths
         params = get_ref_paths_ARG(params, room_pra_deism)
         # Calculating the reflected source directivity coefficients

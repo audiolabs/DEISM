@@ -16,7 +16,7 @@ Reflections:
   acoustImpendence: 18
   # input:
   # 1. AcoustImpendence: 18+0j # A single value for 6 walls, no frequency-dependency
-  maxReflectionOrder: 10 # maximal reflection order
+  maxReflectionOrder: 3 # maximal reflection order
   reverberationTime: 1 # in seconds
 
 # Simulation parameters # 
@@ -74,14 +74,14 @@ Radius:
 # 8. Directivity data
 # !!! Add more directivity data here !!!
 Directivities:
-  # Choices for source: 
+  # Choices for source: Please see local files in examples/data/sampled_directivity/
   # Analytic: "monopole"
-  # Simulated or measured: "speaker_cuboid_cyldriver_1"
-  source: "speaker_cuboid_cyldriver_1" 
+  # Simulated or measured: "Speaker_small_sph_cyldriver_source"
+  source: "Speaker_small_sph_cyldriver_source" 
   # Choices for receiver:
   # Analytic: "monopole"
-  # Simulated or measured: "speaker_cuboid_cyldriver_1"
-  receiver: "speaker_cuboid_cyldriver_1" 
+  # Simulated or measured: "Speaker_small_sph_cyldriver_receiver"
+  receiver: "Speaker_small_sph_cyldriver_receiver" 
 
 # Other functional parameters
 # DEISM modes: You can run DEISM using different versions

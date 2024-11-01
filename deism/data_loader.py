@@ -505,6 +505,10 @@ def printDict(dict):
             "n3",
             "nSamples",
             "silentMode",
+            "posSources",
+            "posReceivers",
+            "orientSources",
+            "orientReceivers",
         ]
         for key in excludeKeys:
             if key in dict1.keys():
@@ -642,6 +646,35 @@ def load_directive_pressure(silentMode, src_or_rec, name):
     return freqs_all, pressure, Dir_all, r0
 
 
+def load_directpath_pressure(silentMode, name):
+    """
+    Function that loads the direct path pressure field simulated from COMSOL
+    """
+    path = "data/sampled_directivity"
+    # Use try to find the file in the tests/ directory
+    # if it is found, add tests/ to the file path
+    try:
+        # If the file is found, assign the file path to filePath
+        if os.path.exists("examples/data"):
+            path = "./examples/" + path
+        elif os.path.exists("data"):
+            # do nothing
+            pass
+        # If the path is not found, an exception is raised
+    except FileNotFoundError(f"{path} doesn't exist!"):
+        # stop the program and print the error message
+        pass
+    data_location = "{}/source/{}.mat".format(path, name)
+    FEM_data = sio.loadmat(data_location)
+    freqs_all = FEM_data["freqs_mesh"].flatten()
+    pressure = FEM_data["Psh"]
+    mic_pos = FEM_data["mic_position"]
+    if not silentMode:
+        print(f"[Data] Load direct path data from {path}. ", end="")
+        print(f"Microphone positions: {mic_pos}. ", end="\n")
+    return freqs_all, pressure, mic_pos
+
+
 def load_RTF_data(silentMode, name):
     """
     This functions loads the room transfer functions (RTFs) simulated from COMSOL
@@ -663,9 +696,15 @@ def load_RTF_data(silentMode, name):
     data_location = "{}/{}.mat".format(path, name)
     P_COMSOL = sio.loadmat(data_location)
     # Flatten the 2D array to 1D array
-    freqs_all = P_COMSOL["freqs_mesh"].flatten()
     pressure = P_COMSOL["Psh"]
+    try:
+        freqs_all = P_COMSOL["freqs_mesh"].flatten()
+        mic_pos = P_COMSOL["mic_pos"]
+    # If not freqs_mesh and mic_pos entries in the dictionary, return two zeros
+    except KeyError:
+        freqs_all = np.zeros(1)
+        mic_pos = np.zeros(1)
     if not silentMode:
         print(f"[Data] Load RTF data from {path}, Done! ", end="\n")
 
-    return freqs_all, pressure
+    return freqs_all, pressure, mic_pos
