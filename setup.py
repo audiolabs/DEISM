@@ -15,6 +15,7 @@ import sys
 # To use a consistent encoding
 from os import path
 import shutil
+import platform
 
 try:
     from setuptools import Extension, distutils, setup, find_packages, Command
@@ -64,6 +65,13 @@ libroom_files = [
         "threadpool.hpp",
     ]
 ]
+# Set extra compile arguments conditionally
+extra_compile_args = ["-DEIGEN_MPL2_ONLY", "-Wall", "-O3", "-DEIGEN_NO_DEBUG"]
+extra_link_args = []
+# Only add "-arch arm64" if running on ARM-based macOS
+if sys.platform == "darwin" and platform.machine() == "arm64":
+    extra_compile_args += ["-arch", "arm64"]
+    extra_link_args = ["-arch", "arm64"]
 # When you run python setup.py build_ext --inplace or pip install .,
 # the Extension specified in the ext_modules list will trigger the build process.
 ext_modules = [  # This specifies the C++ extension that will be built.
@@ -85,12 +93,8 @@ ext_modules = [  # This specifies the C++ extension that will be built.
             os.path.join(libroom_src_dir, "ext/eigen"),
         ],
         language="c++",
-        extra_compile_args=[
-            "-DEIGEN_MPL2_ONLY",
-            "-Wall",
-            "-O3",
-            "-DEIGEN_NO_DEBUG",
-        ],  # Additional compilation flags
+        extra_compile_args=extra_compile_args,  # Additional compilation flags
+        extra_link_args=extra_link_args,
     ),
     # Extension(
     #     "pyroomacoustics.build_rir",
@@ -240,6 +244,3 @@ setup_kwargs = dict(
 )
 
 setup(**setup_kwargs)
-
-# os.remove("var")
-# os.move

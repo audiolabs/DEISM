@@ -45,6 +45,10 @@ jobs:
 
       - name: Build package
         run: |
+          # Add ARCHFLAGS for macOS to build universal binary
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            export ARCHFLAGS="-arch x86_64 -arch arm64"
+          fi
           python -m pip install -e .
 
       - name: Test with pytest
