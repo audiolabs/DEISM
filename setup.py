@@ -17,6 +17,9 @@ from os import path
 import shutil
 import platform
 
+# Read version
+with open("deism/version.py") as f:
+    exec(f.read())
 try:
     from setuptools import Extension, distutils, setup, find_packages, Command
     from setuptools.command.build_ext import build_ext
@@ -27,7 +30,6 @@ except ImportError:
     from distutils.command.build_ext import build_ext
     from distutils.core import setup
     from distutils.extension import Extension
-from deism.version import __version__
 
 
 class get_pybind_include(object):
