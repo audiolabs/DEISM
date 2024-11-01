@@ -50,6 +50,7 @@ jobs:
             export ARCHFLAGS="-arch x86_64 -arch arm64"
           fi
           python -m pip install -e .
+        shell: bash
 
       - name: Test with pytest
         run: |

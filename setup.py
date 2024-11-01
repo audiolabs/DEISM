@@ -27,6 +27,7 @@ except ImportError:
     from distutils.command.build_ext import build_ext
     from distutils.core import setup
     from distutils.extension import Extension
+from deism.version import __version__
 
 
 class get_pybind_include(object):
@@ -207,7 +208,7 @@ class BuildExt(build_ext):
 
 setup_kwargs = dict(
     name="deism",
-    version=2.0,
+    version=__version__,
     # packages=find_packages(),
     packages=["deism"],
     description="An image source-based method used to simulate room transfer functions for arbitrary room shapes.",
