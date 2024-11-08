@@ -1,5 +1,7 @@
 # Diffraction Enhanced Image Source Method - Arbitrary Room Geometry (DEISM-ARG)
 
+[![DOI](https://zenodo.org/badge/666336301.svg)](https://doi.org/10.5281/zenodo.14055865)
+
 The code in this folder is able to solve the following problem: 
 
 A source and a receiver transducer with arbitrary directivity are mounted on one/two speakers; The local scattering and diffraction effects around the transducers result in complex directivity patterns. The directivity patterns can be obtained by analytical expressions, numerical simulations or measurements. 
