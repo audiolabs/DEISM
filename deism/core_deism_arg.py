@@ -423,7 +423,7 @@ class Room_deism_python:
         any_visible = False
         # TO DO: if later the microphone array is supported, changes the codes
         for m, mic in enumerate(self.microphones):
-            is_visible, list_intecp_p_to_is = self.is_visible_dfs(mic, old_is)
+            is_visible, list_intercept_p_to_is = self.is_visible_dfs(mic, old_is)
             if is_visible and not any_visible:
                 any_visible = is_visible
                 old_is.visible_mics = np.zeros(len(self.microphones), dtype=bool)
@@ -431,7 +431,7 @@ class Room_deism_python:
                 old_is.visible_mics[m] = is_visible
                 # NTPRA !!!
                 old_is.attenuation = self.get_image_attenuation(
-                    old_is, list_intecp_p_to_is
+                    old_is, list_intercept_p_to_is
                 )
         if any_visible:
             self.visible_sources.append(deepcopy(old_is))  #!!!IMPORTANT
@@ -453,20 +453,20 @@ class Room_deism_python:
             self.image_sources_dfs(new_is, max_order - 1)
 
     # NTPRA !!! the whole function below
-    def get_image_attenuation(self, old_is, list_intecp_p_to_is):  # !!! Speed up?
+    def get_image_attenuation(self, old_is, list_intercept_p_to_is):  # !!! Speed up?
         wall_id = old_is.gen_wall
         if wall_id >= 0:
             wall = self.walls[wall_id]
-            intecp_p_to_is = list_intecp_p_to_is.pop(0)
+            intercept_p_to_is = list_intercept_p_to_is.pop(0)
             inc_angle = np.arccos(
-                np.dot(intecp_p_to_is, wall.normal) / np.linalg.norm(intecp_p_to_is)
+                np.dot(intercept_p_to_is, wall.normal) / np.linalg.norm(intercept_p_to_is)
             )
             attenuation = wall.get_attenuation(inc_angle)
         else:
             return old_is.attenuation
         if old_is.parent is not None:
             return attenuation * self.get_image_attenuation(
-                old_is.parent, list_intecp_p_to_is
+                old_is.parent, list_intercept_p_to_is
             )
 
     def is_visible_dfs(self, p, old_is):
@@ -474,7 +474,7 @@ class Room_deism_python:
         # if self.is_obstructed_dfs(p, old_is):
         #     return False
         # NTPRA !!!
-        list_intecp_p_to_is = []
+        list_intercept_p_to_is = []
         if old_is.parent is not None:
             wall_id = old_is.gen_wall
             # Visibility check with the wall
@@ -483,19 +483,19 @@ class Room_deism_python:
             # NTPRA !!!
             if ret >= 0:
                 # NTPRA !!!
-                list_intecp_p_to_is.append(old_is.loc - intersect_p)
+                list_intercept_p_to_is.append(old_is.loc - intersect_p)
                 # NTPRA !!!
-                ret_dfs, intecp_p_to_is_new = self.is_visible_dfs(
+                ret_dfs, intercept_p_to_is_new = self.is_visible_dfs(
                     intersect_p, old_is.parent
                 )
                 # NTPRA !!!
-                list_intecp_p_to_is = list_intecp_p_to_is + intecp_p_to_is_new
+                list_intercept_p_to_is = list_intercept_p_to_is + intercept_p_to_is_new
                 # NTPRA !!!
-                return ret_dfs, list_intecp_p_to_is
+                return ret_dfs, list_intercept_p_to_is
             else:
                 # NTPRA !!!
-                return False, list_intecp_p_to_is
-        return True, list_intecp_p_to_is
+                return False, list_intercept_p_to_is
+        return True, list_intercept_p_to_is
 
     def plot_room(self):
         colors = ["r", "g", "b", "y", "c", "m", "orange", "purple"]
@@ -621,7 +621,7 @@ class Wall_deism_cpp:
         parameters:
             points:     Nx2 or Nx3 NDArrays
             centroid:   algebraic center of the wall
-            Z_S:        acoustic impedence,type:complex number, now only a integer number
+            Z_S:        acoustic impedance,type:complex number, now only a integer number
         """
 
         self.energy_absorp_coef = np.array([0.15])  # -->new
@@ -645,14 +645,14 @@ class Wall_deism_cpp:
         self.origin = self.libroom_walls.origin
         # self.points=self.order_points(points)
         self.points = self.libroom_walls.corners.T
-        self.impedence = Z_S
+        self.impedance = Z_S
         self.basis = self.libroom_walls.basis
         self.flat_corners = self.libroom_walls.flat_corners
         self.reflection_matrix = self.libroom_walls.reflection_matrix
         self.dim = self.libroom_walls.dim
 
     def _init_wall(
-        self, points, centroid, impedence, energy_absorp_coef, scatter_coef, name
+        self, points, centroid, impedance, energy_absorp_coef, scatter_coef, name
     ):
         """
         to initialize a Wall_deism object from libroom.Wall_deism/Wall2D
@@ -666,11 +666,11 @@ class Wall_deism_cpp:
         walls = None
         if points.shape[0] == 2:
             walls = libroom_deism.Wall2D_deism(
-                points, centroid, impedence, energy_absorp_coef, scatter_coef, name
+                points, centroid, impedance, energy_absorp_coef, scatter_coef, name
             )
         elif points.shape[0] == 3:
             walls = libroom_deism.Wall_deism(
-                points, centroid, impedence, energy_absorp_coef, scatter_coef, name
+                points, centroid, impedance, energy_absorp_coef, scatter_coef, name
             )
         else:
             raise TypeError("The first dimension of points should be 2 or 3!")
@@ -802,7 +802,7 @@ class Room_deism_cpp:
         self.c = params["soundSpeed"]
         self.ism_order = params["maxReflOrder"]
         self.visible_sources = []
-        self.impedence = params["acousImpend"]
+        self.impedance = params["acousImpend"]
 
         self.generate_walls(*choose_wall_centers)
 
@@ -853,7 +853,7 @@ class Room_deism_cpp:
             self.rt_args["receiver_radius"],
             self.rt_args["hist_bin_size"],
             self.simulationRequired,
-            self.impedence,
+            self.impedance,
         ]
 
         if self.dim == 2:
@@ -881,7 +881,7 @@ class Room_deism_cpp:
                     face_points.extend(hull.points[hull.simplices[i]])
             face_points = np.unique(face_points, axis=0)
             # The purpose should be to establish a unique surface based on the points passed in, by calculating the convex hull form,
-            new_wall = Wall_deism_cpp(face_points, self.centroid, self.impedence)
+            new_wall = Wall_deism_cpp(face_points, self.centroid, self.impedance)
             if not choose_wall_centers:
                 self.walls.append(new_wall)
                 # print("The walls are generated")  # !!! remember to remove
@@ -911,18 +911,18 @@ class Room_deism_cpp:
         pass
         # self.room_engine.image_sources_dfs(old_is,max_order)
 
-    def get_image_attenuation(self, old_is, list_intecp_p_to_is):
+    def get_image_attenuation(self, old_is, list_intercept_p_to_is):
         pass
-        # atten=self.room_engine.get_image_attenuation(old_is,list_intecp_p_to_is)
+        # atten=self.room_engine.get_image_attenuation(old_is,list_intercept_p_to_is)
 
         # return atten
 
     def is_visible_dfs(self, p, old_is):
         pass
-        # list_intercep_p_to_is=[np.zeros(self.dim,dtype=np.float32)]
-        # flag=self.room_engine.is_visible_dfs(p,old_is,list_intercep_p_to_is)
+        # list_intercept_p_to_is=[np.zeros(self.dim,dtype=np.float32)]
+        # flag=self.room_engine.is_visible_dfs(p,old_is,list_intercept_p_to_is)
 
-        # return flag,list_intercep_p_to_is
+        # return flag,list_intercept_p_to_is
 
     def plot_room(self):
         colors = ["r", "g", "b", "y", "c", "m", "orange", "purple"]
