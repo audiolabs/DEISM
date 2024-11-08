@@ -109,5 +109,5 @@ DEISM_specs:
   # If normalize the receiver directivity if the receiver directivity is obtained by placing a point source
   # with flow strength QFlowStrength at the receiver position and measuring the sound pressure at a sphere around the receiver
   # You need to specify QFlowStrength after the following flag
-  ifRecerverNormalize: 1 
+  ifReceiverNormalize: 1 
   QFlowStrength: 0.001

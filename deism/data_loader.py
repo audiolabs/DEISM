@@ -15,7 +15,7 @@ def compute_rest_params(params):
         params["nSourceOrder"] = 0
     if params["receiverType"] == "monopole":
         params["vReceiverOrder"] = 0
-        params["ifRecerverNormalize"] = 0
+        params["ifReceiverNormalize"] = 0
 
     params["nSamples"] = int(params["sampleRate"] * params["rt60"])
     params["freqs"] = np.arange(
@@ -24,7 +24,7 @@ def compute_rest_params(params):
     params["waveNumbers"] = (
         2 * np.pi * params["freqs"] / params["soundSpeed"]
     )  # wavenumbers
-    if params["ifRecerverNormalize"] == 1:
+    if params["ifReceiverNormalize"] == 1:
         params["pointSrcStrength"] = (
             1j
             * params["waveNumbers"]
@@ -117,7 +117,7 @@ def parseCmdArgs():
     parse.add_argument(
         "-zs",
         metavar=("Z_x1", "Z_x2", "Z_y1", "Z_y2", "Z_z1", "Z_z2"),
-        help="acoustic impendence of the all walls",
+        help="acoustic impedance of the all walls",
         nargs=6,
         type=float,
     )
@@ -267,7 +267,7 @@ def parseCmdArgs_ARG():
     parse.add_argument(
         "-zs",
         metavar=("Z_S"),
-        help="acoustic impendence of the all walls",
+        help="acoustic impedance of the all walls",
         nargs=1,
         type=float,
     )
@@ -477,8 +477,8 @@ def loadSingleParam(configs, args):
     except:
         pass
     params["numParaImages"] = args.npi or configs["DEISM_specs"]["numParaImages"]
-    params["ifRecerverNormalize"] = (
-        args.irn or configs["DEISM_specs"]["ifRecerverNormalize"]
+    params["ifReceiverNormalize"] = (
+        args.irn or configs["DEISM_specs"]["ifReceiverNormalize"]
     )
     params["qFlowStrength"] = args.q or configs["DEISM_specs"]["QFlowStrength"]
     params["silentMode"] = args.quiet or configs["SilentMode"]
@@ -562,9 +562,9 @@ def printDict(dict):
             "at the receiver position and measuring the sound pressure at a sphere around the receiver, ",
             end="",
         )
-        print("you need to specify QFlowStrength and set ifRecerverNormalize to 1. \n")
+        print("you need to specify QFlowStrength and set ifReceiverNormalize to 1. \n")
         print(
-            "If the receiver directivity is obtained by other methods, you can set ifRecerverNormalize to 0. ",
+            "If the receiver directivity is obtained by other methods, you can set ifReceiverNormalize to 0. ",
             end="\n\n",
         )
         # print("[All] ", end="\n")

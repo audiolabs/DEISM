@@ -173,7 +173,7 @@ def init_receiver_directivities(params):
         # If one needs to normalize the receiver directivity by point source strength
         # Note that this is because one uses point source as source to get the directivity data in FEM simulation
         # Thus the point source strength needs to be compensated
-        if params["ifRecerverNormalize"]:
+        if params["ifReceiverNormalize"]:
             S = params["pointSrcStrength"]
             Psh_receiver = Psh_receiver / S[..., None]
         # ------------------------------------------------
@@ -243,7 +243,7 @@ def init_receiver_directivities(params):
 #     # If one needs to normalize the receiver directivity by point source strength
 #     # Note that this is because one uses point source as source to get the directivity data in FEM simulation
 #     # Thus the point source strength needs to be compensated
-#     if params["ifRecerverNormalize"]:
+#     if params["ifReceiverNormalize"]:
 #         S = params["pointSrcStrength"]
 #         Psh_receiver = Psh_receiver / S[..., None]
 #     # ------------------------------------------------
@@ -538,7 +538,7 @@ def init_receiver_directivities_ARG(params, if_rotate_room, **kwargs):
         # ---------------- Some checks ----------------
         # Check the radius of the receiver if matches the one defined in params["radiusReceiver"]
         if np.abs(r0_receiver - params["radiusReceiver"]) > 1e-3:
-            # Raise a warning if the radius of the receiver is not the same as the one defined in params["radiusReceiver"]
+            # Raise a warning if the radius of the receiver is not the same as the one defined in params["radiusReceiver"]"
             print(
                 f"Warning: The radius of the receiver is {r0_receiver} m, not the same as the one defined in params['radiusReceiver']"
             )
@@ -550,7 +550,7 @@ def init_receiver_directivities_ARG(params, if_rotate_room, **kwargs):
                 "The frequencies in the directivity data are not the same as the ones defined in params['freqs']"
             )
         # ------------------------------------------------
-        if params["ifRecerverNormalize"]:
+        if params["ifReceiverNormalize"]:
             S = params["pointSrcStrength"]
             Psh_receiver = Psh_receiver / S[..., None]
         # Get the receiver sampling points in Cartesian coordinates w.r.t the origin
