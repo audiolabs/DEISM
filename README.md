@@ -23,7 +23,7 @@ In DEISM-ARG, we can model the room transfer function between transducers mounte
 - Use the command `conda env create -f deism_env.yml` to create a Conda environment for the DEISM algorithms. If this does not work, try `conda env create -f deism_env_exact.yml` as the file **deism_envs_exact.yml** records the versions of all packages.
 - Activate the created environment by "conda activate DEISM"
 - Running `pip install -e .` will build the deism package including the c++ extensions locally. You can also modify the sources codes and check out the effects. In case you receiver errors like "ModuleNotFoundError: No module named 'pybind11" even after activated the conda environment, you can use `python -m pip install -e .` to try install again. 
-- Run scripts in the **test** folder. 
+- Run scripts in the **examples** folder. 
 
 ## Using pip to install remotely
 
