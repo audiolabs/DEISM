@@ -631,7 +631,14 @@ def load_directive_pressure(silentMode, src_or_rec, name):
         # stop the program and print the error message
         pass
     data_location = "{}/{}/{}.mat".format(path, src_or_rec, name)
-    FEM_data = sio.loadmat(data_location)
+    try:
+        with open(data_location, "rb") as file:
+            FEM_data = sio.loadmat(file)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"File {data_location} not found.")
+    except Exception as e:
+        raise RuntimeError(f"An error occurred while loading the file: {e}")
+
     freqs_all = FEM_data["freqs_mesh"].flatten()
     pressure = FEM_data["Psh"]
     Dir_all = FEM_data["Dir_all"]
@@ -665,7 +672,14 @@ def load_directpath_pressure(silentMode, name):
         # stop the program and print the error message
         pass
     data_location = "{}/source/{}.mat".format(path, name)
-    FEM_data = sio.loadmat(data_location)
+    try:
+        with open(data_location, "rb") as file:
+            FEM_data = sio.loadmat(file)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"File {data_location} not found.")
+    except Exception as e:
+        raise RuntimeError(f"An error occurred while loading the file: {e}")
+
     freqs_all = FEM_data["freqs_mesh"].flatten()
     pressure = FEM_data["Psh"]
     mic_pos = FEM_data["mic_position"]
@@ -694,7 +708,14 @@ def load_RTF_data(silentMode, name):
         pass
 
     data_location = "{}/{}.mat".format(path, name)
-    P_COMSOL = sio.loadmat(data_location)
+    try:
+        with open(data_location, "rb") as file:
+            P_COMSOL = sio.loadmat(file)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"File {data_location} not found.")
+    except Exception as e:
+        raise RuntimeError(f"An error occurred while loading the file: {e}")
+
     # Flatten the 2D array to 1D array
     pressure = P_COMSOL["Psh"]
     try:
