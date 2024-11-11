@@ -123,7 +123,7 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("obstructing_walls", &Room_deism<3>::obstructing_walls)
         .def_readonly("microphones", &Room_deism<3>::microphones)
         .def_readonly("max_dist", &Room_deism<3>::max_dist)
-        .def_readonly("impedence",&Room_deism<3>::impedence)  //--> new
+        .def_readonly("impedance",&Room_deism<3>::impedance)  //--> new
         .def_readonly("reflection_matrix",&Room_deism<3>::reflection_matrix)  //--> new
         .def_readwrite("n_bands",&Room_deism<3>::n_bands);  //--> new
 
@@ -194,7 +194,7 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("obstructing_walls", &Room_deism<2>::obstructing_walls)
         .def_readonly("microphones", &Room_deism<2>::microphones)
         .def_readonly("max_dist", &Room_deism<2>::max_dist)
-        .def_readonly("impedence",&Room_deism<2>::impedence)  //--> new
+        .def_readonly("impedance",&Room_deism<2>::impedance)  //--> new
         .def_readonly("reflection_matrix",&Room_deism<2>::reflection_matrix)  //--> new
         .def_readwrite("n_bands",&Room_deism<2>::n_bands);  //--> new
 
@@ -213,7 +213,7 @@ PYBIND11_MODULE(libroom_deism, m) {
                         float&,
                         const Eigen::ArrayXf &, const Eigen::ArrayXf &,
                         const std::string &>(),
-            py::arg("corners"),py::arg("centroid"), py::arg("impedence"), 
+            py::arg("corners"),py::arg("centroid"), py::arg("impedance"), 
             py::arg("absorption") = Eigen::ArrayXf::Zero(1),
             py::arg("scattering") = Eigen::ArrayXf::Zero(1),
             py::arg("name") = "")    //--> new
@@ -242,7 +242,7 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("basis", &Wall_deism<3>::basis)
         .def_readonly("flat_corners", &Wall_deism<3>::flat_corners)
         .def_readonly("reflection_matrix", &Wall_deism<3>::reflection_matrix)     //tan new
-        .def_readonly("impedence", &Wall_deism<3>::impedence)     //tan new
+        .def_readonly("impedance", &Wall_deism<3>::impedance)     //tan new
         .def_readonly("centroid", &Wall_deism<3>::centroid);     //-->new
 
     py::enum_<Wall_deism<3>::Isect>(wall_cls, "Isect_deism")
@@ -270,7 +270,7 @@ PYBIND11_MODULE(libroom_deism, m) {
                         const Eigen::ArrayXf &,
                         const std::string & 
                         >(),
-            py::arg("corners"),py::arg("centroid"), py::arg("impedence"), 
+            py::arg("corners"),py::arg("centroid"), py::arg("impedance"), 
             py::arg("absorption") = Eigen::ArrayXf::Zero(1),
             py::arg("scattering") = Eigen::ArrayXf::Zero(1),
             py::arg("name") = "")    //--> new
@@ -299,7 +299,7 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("basis", &Wall_deism<2>::basis)
         .def_readonly("flat_corners", &Wall_deism<2>::flat_corners)
         .def_readonly("reflection_matrix", &Wall_deism<2>::reflection_matrix)     //--> new
-        .def_readonly("impedence", &Wall_deism<2>::impedence)                    //--> new
+        .def_readonly("impedance", &Wall_deism<2>::impedance)                    //--> new
         .def_readonly("centroid", &Wall_deism<2>::centroid);                    //--> new
 
     // The different wall intersection cases

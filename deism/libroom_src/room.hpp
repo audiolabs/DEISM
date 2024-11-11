@@ -171,9 +171,9 @@ class Room_deism
     /*20240705*/
     /**************************************************************************/
     /*                                                                        */
-    // impedence is a ndarray value, each value correspondes to a wall, its value 
+    // impedance is a ndarray value, each value correspondes to a wall, its value 
     // type is complex, like[], but now is only a integer number
-    float impedence;   // set initial value of impedence
+    float impedance;   // set initial value of impedance
     // the last dimension of reflection matrix is dynamic, which depends on running
     std::vector<Eigen::Matrix<float,D,D>> reflection_matrix;
     /*                                                                        */
@@ -217,7 +217,7 @@ class Room_deism
 
 
     /**************************************************************************/
-    // new constructor after increasing impedence variable
+    // new constructor after increasing impedance variable
     // Constructor for general rooms
     Room_deism(
         const std::vector<Wall_deism<D>> &_walls,
@@ -232,7 +232,7 @@ class Room_deism
         float _mic_radius,
         float _mic_hist_res,
         bool _is_hybrid_sim,
-        float _impedence
+        float _impedance
         );
 
     // Constructor for shoebox rooms
@@ -250,7 +250,7 @@ class Room_deism
         float _mic_radius,
         float _mic_hist_res,
         bool _is_hybrid_sim,
-        float _impedence
+        float _impedance
         );
     /**************************************************************************/
 
@@ -296,7 +296,7 @@ class Room_deism
         float _mic_radius,
         float _mic_hist_res,
         bool _is_hybrid_sim,
-        float _impedence
+        float _impedance
         )
     {
       sound_speed = _sound_speed;
@@ -307,7 +307,7 @@ class Room_deism
       mic_radius_sq = _mic_radius * _mic_radius;
       mic_hist_res = _mic_hist_res;
       is_hybrid_sim = _is_hybrid_sim;
-      impedence=_impedence;
+      impedance=_impedance;
     }
 
     Eigen::ArrayXf get_image_attenuation(ImageSource<D>& old_is,

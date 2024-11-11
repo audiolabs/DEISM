@@ -127,13 +127,13 @@ Room_deism<D>::Room_deism(
     float _mic_radius,
     float _mic_hist_res,
     bool _is_hybrid_sim,
-    float _impedence
+    float _impedance
     )
   : walls(_walls), obstructing_walls(_obstructing_walls), microphones(_microphones),
   sound_speed(_sound_speed), ism_order(_ism_order),
   energy_thres(_energy_thres), time_thres(_time_thres), mic_radius(_mic_radius),
   mic_radius_sq(_mic_radius * _mic_radius),
-  mic_hist_res(_mic_hist_res), is_hybrid_sim(_is_hybrid_sim),impedence(_impedence),is_shoebox(false)
+  mic_hist_res(_mic_hist_res), is_hybrid_sim(_is_hybrid_sim),impedance(_impedance),is_shoebox(false)
 {
   init();
 }
@@ -153,12 +153,12 @@ Room_deism<D>::Room_deism(
     float _mic_radius,
     float _mic_hist_res,
     bool _is_hybrid_sim,
-    float _impedence
+    float _impedance
     )
   : microphones(_microphones),
   sound_speed(_sound_speed), ism_order(_ism_order), energy_thres(_energy_thres), time_thres(_time_thres),
   mic_radius(_mic_radius), mic_radius_sq(_mic_radius * _mic_radius),
-  mic_hist_res(_mic_hist_res), is_hybrid_sim(_is_hybrid_sim),impedence(_impedence),
+  mic_hist_res(_mic_hist_res), is_hybrid_sim(_is_hybrid_sim),impedance(_impedance),
   is_shoebox(true), shoebox_size(_room_size), shoebox_absorption(_absorption),
   shoebox_scattering(_scattering)
 {

@@ -88,7 +88,7 @@ class Wall_deism
 
     /**************************************************************************/
     // area for new parameters
-    float impedence;        //-->new
+    float impedance;        //-->new
 
     /**************************************************************************/
 
@@ -127,7 +127,7 @@ class Wall_deism
     Wall_deism(
         const Eigen::Matrix<float, D, Eigen::Dynamic> &_corners,
         const Eigen::Matrix<float,D,1>& _centroid,    //-->new
-        float _impedence,
+        float _impedance,
         const Eigen::ArrayXf &_absorption,
         const Eigen::ArrayXf &_scatter,
         const std::string &_name
@@ -141,7 +141,7 @@ class Wall_deism
       transmission(w.transmission), energy_reflection(w.energy_reflection),
       normal(w.normal), corners(w.corners),
       origin(w.origin), basis(w.basis), flat_corners(w.flat_corners),
-      impedence(w.impedence),reflection_matrix(w.reflection_matrix),
+      impedance(w.impedance),reflection_matrix(w.reflection_matrix),
       centroid(w.centroid)
     {}
 

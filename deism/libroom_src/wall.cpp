@@ -166,7 +166,7 @@ void Wall_deism<D>::init()
   }
 }
 
-// original constructor without centroid and impedence
+// original constructor without centroid and impedance
 template<>
 Wall_deism<2>::Wall_deism(
     const Eigen::Matrix<float,2,Eigen::Dynamic> &_corners,
@@ -237,14 +237,14 @@ template<>
 Wall_deism<2>::Wall_deism(
     const Eigen::Matrix<float,2,Eigen::Dynamic> &_corners,
     const Eigen::Matrix<float,2,1>& _centroid,
-    float _impedence,
+    float _impedance,
     const Eigen::ArrayXf &_absorption,
     const Eigen::ArrayXf &_scatter,
     const std::string &_name
   )
   : Wall_deism<2>::Wall_deism(_corners,_centroid,_absorption,_scatter,_name) 
 {
-  impedence=_impedence;
+  impedance=_impedance;
 }
 /******************************************************************************/
 
@@ -380,13 +380,13 @@ template<>
 Wall_deism<3>::Wall_deism(
     const Eigen::Matrix<float,3,Eigen::Dynamic> &_corners,
     const Eigen::Matrix<float,3,1>& _centroid,
-    float _impedence,
+    float _impedance,
     const Eigen::ArrayXf &_absorption,
     const Eigen::ArrayXf &_scatter,
     const std::string &_name
   ):Wall_deism<3>::Wall_deism(_corners,_centroid,_absorption,_scatter,_name)
 {
-    impedence=_impedence;
+    impedance=_impedance;
 }
 /******************************************************************************/
 
@@ -590,7 +590,7 @@ float Wall_deism<D>::cosine_angle(
 // area for new member functions
 template<size_t D>
 float Wall_deism<D>::get_attenuation(float theta) const {
-    return (this->impedence*cos(theta)-1)/(this->impedence*cos(theta)+1);
+    return (this->impedance*cos(theta)-1)/(this->impedance*cos(theta)+1);
 };
 
 /**************************************************************************/
