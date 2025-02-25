@@ -29,6 +29,9 @@ In DEISM-ARG, we can model the room transfer function between transducers mounte
 
 - Run `pip install deism` to install deism. 
 
+## Additional heads up
+- You would need to an external LaTeX installation to render text properly when running the examples, since we enable `plt.rcParams["text.usetex"] = True` when plotting the simulated room transfer functions. Please refer to this page for more information [Matplotlib usetex Documentation](https://matplotlib.org/stable/users/explain/text/usetex.html). 
+
 # Running codes
 
 ## Single set of parameters
