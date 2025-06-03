@@ -1,5 +1,5 @@
 """
-An example of running DEISM-ARG with a single parameter set, 
+An example of running DEISM-ARG with a single parameter set,
 the parameters are defined in the configSingleParam_ARG.yaml file.
 You can also set the parameters and run the codes via the command line.
 """
@@ -64,6 +64,8 @@ def init_parameters(params):
     params["vertices"] = vertices
     params["if_rotate_room"] = if_rotate_room
     params["room_rotation"] = room_rotation
+    # Initialize wall centers before room rotation
+    params["wallCenters"] = find_wall_centers(vertices)
     # Apply room rotation to the room vertices and source/receiver positions
     if if_rotate_room:
         params = rotate_room_src_rec(params)
