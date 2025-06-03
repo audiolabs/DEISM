@@ -65,7 +65,11 @@ def init_parameters(params):
     params["if_rotate_room"] = if_rotate_room
     params["room_rotation"] = room_rotation
     # Initialize wall centers before room rotation
-    params["wallCenters"] = find_wall_centers(vertices)
+    wallCenters = find_wall_centers(vertices)
+    # Convert wallCenters to numpy array if it is a list
+    if isinstance(wallCenters, list):
+        wallCenters = np.array(wallCenters)
+    params["wallCenters"] = wallCenters
     # Apply room rotation to the room vertices and source/receiver positions
     if if_rotate_room:
         params = rotate_room_src_rec(params)
