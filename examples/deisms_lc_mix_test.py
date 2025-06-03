@@ -1,4 +1,4 @@
-""" 
+"""
 Testing DEISM-LC matrix calculation
 """
 
@@ -24,9 +24,7 @@ def initialize_params():
         # ---------- room parameters ----------------
         "roomSize": np.array([4, 3, 2.5]),  # Room size, can be randomized a bit
         "maxReflOrder": 10,  # Maximum reflection order
-        "acousImpend": np.array(
-            [18, 18, 18, 18, 18, 18]
-        ),  # The acoustic impedance of the walls, can be randomized a bit
+        "acousImpend": 18,  # The acoustic impedance of the walls, can be randomized a bit
         "angDepFlag": 1,  # 1: angle-dependent reflection coefficient, 0: angle-independent reflection coefficient
         # ---------- simulation parameter ----------------
         "sampleRate": 2000,  # Sampling rate
@@ -49,7 +47,7 @@ def initialize_params():
         # ---------- source and receiver parameters ----------------
         # source and receiver parameters, which might not be necessary for version 1.1
         "qFlowStrength": 0.001,  # Point source flow strength used in FEM simulation !!!
-        "ifRecerverNormalize": 1,  # If normalize the receiver directivity
+        "ifReceiverNormalize": 1,  # If normalize the receiver directivity
         # ---------- DEISM parameters ----------------
         "sourceType": "speaker_cuboid_cyldriver_1",  # Try to use smarter way to load data !!!
         "receiverType": "speaker_cuboid_cyldriver_1",  # Try to use smarter way to load data !!!
@@ -110,7 +108,7 @@ def main():
     ray.shutdown()
 
     # Load FEM solutions
-    freqs_COMSOL, P_COMSOL = load_RTF_data(
+    freqs_COMSOL, P_COMSOL, mic_pos = load_RTF_data(
         params["silentMode"], "room_two_speaker_cuboid_cyldriver_1"
     )
 

@@ -35,7 +35,10 @@
 #include "wall.hpp"
 #include "geometry.hpp"
 #include "common.hpp"
-// M_PI is not defined in C++ standard in windows
+
+// because M_PI is not part of standard C/C++ standards, in windows, it's not defined
+// so we have to define it manualy if not explicitly defined
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -43,6 +46,7 @@
 // -->new for line 35 and 36
 template<size_t D>
 using Vectorf = Eigen::Matrix<float, D, 1>;
+
 
 
 template<>
@@ -166,7 +170,7 @@ void Wall_deism<D>::init()
   }
 }
 
-// original constructor without centroid and impedance
+// original constructor without centroid and impedence_bands
 template<>
 Wall_deism<2>::Wall_deism(
     const Eigen::Matrix<float,2,Eigen::Dynamic> &_corners,
@@ -237,14 +241,15 @@ template<>
 Wall_deism<2>::Wall_deism(
     const Eigen::Matrix<float,2,Eigen::Dynamic> &_corners,
     const Eigen::Matrix<float,2,1>& _centroid,
-    float _impedance,
+    const Eigen::ArrayXf &_impedence_bands,
     const Eigen::ArrayXf &_absorption,
     const Eigen::ArrayXf &_scatter,
     const std::string &_name
   )
+  
   : Wall_deism<2>::Wall_deism(_corners,_centroid,_absorption,_scatter,_name) 
 {
-  impedance=_impedance;
+  impedence_bands=_impedence_bands;
 }
 /******************************************************************************/
 
@@ -380,13 +385,13 @@ template<>
 Wall_deism<3>::Wall_deism(
     const Eigen::Matrix<float,3,Eigen::Dynamic> &_corners,
     const Eigen::Matrix<float,3,1>& _centroid,
-    float _impedance,
+    const Eigen::ArrayXf &_impedence_bands,
     const Eigen::ArrayXf &_absorption,
     const Eigen::ArrayXf &_scatter,
     const std::string &_name
   ):Wall_deism<3>::Wall_deism(_corners,_centroid,_absorption,_scatter,_name)
 {
-    impedance=_impedance;
+    impedence_bands=_impedence_bands;
 }
 /******************************************************************************/
 
@@ -588,10 +593,20 @@ float Wall_deism<D>::cosine_angle(
 
 /**************************************************************************/
 // area for new member functions
+// a step further, if attenuation is coonected with frequency, then there must be one more arg 
+// called freq. besides, one more arg, wall_id is necessary
 template<size_t D>
-float Wall_deism<D>::get_attenuation(float theta) const {
-    return (this->impedance*cos(theta)-1)/(this->impedance*cos(theta)+1);
+Eigen::ArrayXf Wall_deism<D>::get_attenuation(float theta) const {
+    return (impedence_bands*cos(theta)-1)/(impedence_bands*cos(theta)+1);
 };
+
+// if frequency and wall are considered, then args should be wall_id, frequency
+// this should be confirmed.
+// template<size_t D>
+// float Wall_deism<D>::get_attenuation(float theta,float freq) const {
+//     // return (this->impedence*cos(theta)-1)/(this->impedence*cos(theta)+1);
+//     // return (impedence[freq]*cos(theta)-1)/(impedence[freq]*cos(theta)+1);
+// };
 
 /**************************************************************************/
 

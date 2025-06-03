@@ -88,6 +88,7 @@ def init_source_directivities(params):
         # Calculate source directivity coefficients C_nm^s
         C_nm_s = -1j * k * scy.spherical_jn(0, 0) * np.conj(scy.sph_harm(0, 0, 0, 0))
         params["C_nm_s"] = C_nm_s[..., None, None]
+        params["nSourceOrder"] = 0
     else:  # If not simple source directivities are used, load the directivity data
         # ------------- Load simulation data -------------
         freqs, Psh_source, Dir_all_source, r0_source = load_directive_pressure(
@@ -150,6 +151,7 @@ def init_receiver_directivities(params):
         # Calculate receiver directivity coefficients C_vu^r
         C_vu_r = -1j * k * scy.spherical_jn(0, 0) * np.conj(scy.sph_harm(0, 0, 0, 0))
         params["C_vu_r"] = C_vu_r[..., None, None]
+        params["vReceiverOrder"] = 0
     else:  # If not simple source directivities are used, load the directivity data
         # ------------- Load simulation data -------------
         freqs, Psh_receiver, Dir_all_receiver, r0_receiver = load_directive_pressure(
@@ -848,19 +850,19 @@ def pre_calc_images_src_rec(params):
                                     inc_angle_z = np.arccos(
                                         np.abs(R_sI_r[2]) / np.linalg.norm(R_sI_r)
                                     )
-                                    beta_x1 = ref_coef(inc_angle_x, Z_S[0])
-                                    beta_x2 = ref_coef(inc_angle_x, Z_S[1])
-                                    beta_y1 = ref_coef(inc_angle_y, Z_S[2])
-                                    beta_y2 = ref_coef(inc_angle_y, Z_S[3])
-                                    beta_z1 = ref_coef(inc_angle_z, Z_S[4])
-                                    beta_z2 = ref_coef(inc_angle_z, Z_S[5])
+                                    beta_x1 = ref_coef(inc_angle_x, Z_S[0, :])
+                                    beta_x2 = ref_coef(inc_angle_x, Z_S[1, :])
+                                    beta_y1 = ref_coef(inc_angle_y, Z_S[2, :])
+                                    beta_y2 = ref_coef(inc_angle_y, Z_S[3, :])
+                                    beta_z1 = ref_coef(inc_angle_z, Z_S[4, :])
+                                    beta_z2 = ref_coef(inc_angle_z, Z_S[5, :])
                                 else:
-                                    beta_x1 = ref_coef(0, Z_S[0])
-                                    beta_x2 = ref_coef(0, Z_S[1])
-                                    beta_y1 = ref_coef(0, Z_S[2])
-                                    beta_y2 = ref_coef(0, Z_S[3])
-                                    beta_z1 = ref_coef(0, Z_S[4])
-                                    beta_z2 = ref_coef(0, Z_S[5])
+                                    beta_x1 = ref_coef(0, Z_S[0, :])
+                                    beta_x2 = ref_coef(0, Z_S[1, :])
+                                    beta_y1 = ref_coef(0, Z_S[2, :])
+                                    beta_y2 = ref_coef(0, Z_S[3, :])
+                                    beta_z1 = ref_coef(0, Z_S[4, :])
+                                    beta_z2 = ref_coef(0, Z_S[5, :])
 
                                 atten = (
                                     beta_x1 ** np.abs(q_x - p_x)
@@ -1536,7 +1538,7 @@ def ray_run_DEISM_ARG_ORG(params, images, Wigner):
     # -------------------------------
     P_DEISM_ARG = np.zeros(k.size, dtype="complex")
     # -------------------------------
-    n_images = atten_all.shape[0]
+    n_images = max(R_sI_r_all.shape)
     if not params["silentMode"]:
         print("{} images, ".format(n_images), end="")
     for n in range(int(n_images / batch_size) + 1):
@@ -1554,7 +1556,7 @@ def ray_run_DEISM_ARG_ORG(params, images, Wigner):
                     V_rec_dir_id,
                     C_nm_s_ARG[:, :, :, i],
                     C_vu_r_id,
-                    atten_all[i],
+                    atten_all[:, i],
                     R_sI_r_all[:, i],
                     W_1_all_id,
                     W_2_all_id,
@@ -1668,7 +1670,7 @@ def ray_run_DEISM_ARG_LC_matrix(params, images):
                     C_nm_s_ARG_vec[:, :, i],
                     C_vu_r_vec_id,
                     R_sI_r_all[:, i],
-                    atten_all[i],
+                    atten_all[:, i],
                     k_id,
                     # bar,  # progress bar
                 )
@@ -1752,7 +1754,7 @@ def ray_run_DEISM_ARG_MIX(params, images, Wigner):
                 V_rec_dir_id,
                 C_nm_s_ARG[:, :, :, index],
                 C_vu_r_id,
-                atten_all[index],
+                atten_all[:, index],
                 R_sI_r_all[:, index],
                 W_1_all_id,
                 W_2_all_id,
@@ -1782,7 +1784,7 @@ def ray_run_DEISM_ARG_MIX(params, images, Wigner):
                     C_nm_s_ARG_vec[:, :, index],
                     C_vu_r_vec_id,
                     R_sI_r_all[:, index],
-                    atten_all[index],
+                    atten_all[:, index],
                     k_id,
                 )
             )

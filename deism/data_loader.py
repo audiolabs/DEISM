@@ -24,6 +24,30 @@ def compute_rest_params(params):
     params["waveNumbers"] = (
         2 * np.pi * params["freqs"] / params["soundSpeed"]
     )  # wavenumbers
+    # For the impedance, we may have a few cases
+    # 1. input is just a single value, which means the impedance is uniform in frequency and walls
+    # 2. input is a list of single values, which means the impedance is non-uniform in walls but uniform in frequency
+    # 3. input is a 2D array of size (6, len(params["freqs"])), which means the impedance is non-uniform in frequency and walls
+    # We want to make sure the impedance is a 2D array of size (6, len(params["freqs"]))
+    if isinstance(params["acousImpend"], (int, float)):
+        params["acousImpend"] = np.full(
+            (6, len(params["freqs"])), params["acousImpend"]
+        )
+    elif isinstance(params["acousImpend"], list):
+        # If the impedance is a list of single values, we need to repeat the value for each frequency
+        params["acousImpend"] = np.tile(
+            np.array(params["acousImpend"])[:, None], (1, len(params["freqs"]))
+        )
+    elif isinstance(params["acousImpend"], np.ndarray):
+        if params["acousImpend"].shape == (6,):
+            params["acousImpend"] = np.tile(
+                params["acousImpend"][:, None], (1, len(params["freqs"]))
+            )
+        elif params["acousImpend"].shape == (6, len(params["freqs"])):
+            pass
+        else:
+            raise ValueError("Invalid impedance array shape")
+    # ------------------------------------------------------------
     if params["ifReceiverNormalize"] == 1:
         params["pointSrcStrength"] = (
             1j
@@ -339,6 +363,11 @@ def parseCmdArgs_ARG():
     # parse.add_argument('-nos',help='number of sample points',type=int)
     # # parse.add_argument('-brc',help='beta reference coefficients',type=float)
     parse.add_argument(
+        "-ifconvex",
+        help="If the room is convex or not(0: not convex, 1: convex)",
+        type=int,
+    )
+    parse.add_argument(
         "-ird",
         help="If remove the direct path or not(0: not remove, 1: remove)",
         type=int,
@@ -428,7 +457,10 @@ def loadSingleParam(configs, args):
     # Reflections
     params["maxReflOrder"] = args.nro or configs["Reflections"]["maxReflectionOrder"]
     # Impedance, float or list of floats, !!! Should support string or list of strings
-    params["acousImpend"] = args.zs or configs["Reflections"]["acoustImpendence"]
+    try:
+        params["acousImpend"] = args.zs or configs["Reflections"]["acoustImpendence"]
+    except:
+        pass
     # Angle dependent flag, could be 0 or 1 or not defined
     try:
         params["angDepFlag"] = args.adrc or configs["Reflections"]["angleDependentFlag"]
@@ -470,6 +502,7 @@ def loadSingleParam(configs, args):
     params["radiusReceiver"] = args.recr0 or configs["Radius"]["receiver"]
     params["sourceType"] = args.srctype or configs["Directivities"]["source"]
     params["receiverType"] = args.rectype or configs["Directivities"]["receiver"]
+    params["convexRoom"] = args.ifconvex or configs["DEISM_specs"]["convexRoom"]
     params["ifRemoveDirectPath"] = args.ird or configs["DEISM_specs"]["ifRemoveDirect"]
     params["DEISM_mode"] = args.mode or configs["DEISM_specs"]["Mode"]
     try:
@@ -521,10 +554,11 @@ def printDict(dict):
             maxLen = maxLen if len(key) < maxLen else len(key)
         # For all parameter name-value pairs
         for key, value in dict1.items():
-            # If the value is a list or numpy array and the length of the value is greater than 6
-            if (isinstance(value, list) or isinstance(value, np.ndarray)) and len(
-                value
-            ) > 6:
+            # If the value is a list and the length of the value is greater than 6
+            # Or the value is a 2D numpy array
+            if (isinstance(value, list) and len(value) > 6) or isinstance(
+                value, np.ndarray
+            ):
                 # If print the 2D array value of the key "vertices",
                 if key == "vertices":
                     # If "if_rotate_room" is 1, add "rotated" before the key "vertices"
@@ -540,8 +574,32 @@ def printDict(dict):
                         print(f"{key:>{maxLen}} {row_id} : {row}", end="\n")
                     # Skip the following output
                     continue
+                # If the key is acousImpend with 2D arrays, output the key and the 2D array separately
+                # Each entry's name is Impedance wall 1, Impedance wall 2, etc.
+                if key == "acousImpend":
+                    key = "Impedance wall "
+                    # For each row in the 2D array
+                    row_id = 0
+                    for row in value:
+                        # Output the key with incrementing ids and the row
+                        row_id += 1
+                        # Round the row to 2 decimal places
+                        row = np.round(row, 2)
+                        print(
+                            f"{key:>{maxLen}} {row_id} : {row[:2]} ... {row[-2:]}",
+                            end="\n",
+                        )
+                    # Skip the following output
+                    continue
                 # The value is truncated to the first two elements and last two elements
-                valueStr = f"{value[:2]} ... {value[-2:]}"
+                if isinstance(value, list):
+                    valueStr = f"{value[:2]} ... {value[-2:]}"
+                elif isinstance(value, np.ndarray) and value.ndim == 1:
+                    if len(value) < 6:
+                        valueStr = f"{value}"
+                    else:
+                        valueStr = f"{value[:2]} ... {value[-2:]}"
+
             else:
                 # Otherwise, the value is converted to a string
                 valueStr = str(value)

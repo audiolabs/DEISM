@@ -32,7 +32,7 @@ from deism.data_loader import (
 from deism.utilities import plot_RTFs
 
 
-def init_parameters(params):
+def init_parameters_convex(params):
     """
     Initialize some important additional parameters for DEISM-ARG
     In addition to the ones defined in configSingleParam_ARG.yaml
@@ -53,6 +53,24 @@ def init_parameters(params):
     # If you need to find the wall centers, use the following code
     # This may be useful for some applications, e.g., bonding the impedance to the walls using the room center
     # wall_centers = find_wall_centers(vertices)
+    wallCenters = np.array(
+        [
+            [0, 1.5, 1.5],
+            [2, 3, 1.25],
+            [4, 1.5, 1.5],
+            [2, 0, 1.75],
+            [2, 1.5, 0],
+            [2, 1.5, 3],
+        ]
+    )
+    # You need to adlign the acoustic impedance to the wall centers defined above
+    # The format of the impedance is [number of walls, len(freqs)], 2D numpy array
+    # params["acousImpend"] = np.arange(1, 6 * len(params["freqs"]) + 1).reshape(
+    #     6, len(params["freqs"])
+    # )
+    params["acousImpend"] = (
+        np.ones((6, len(params["freqs"]))) * 18
+    )  # recreating the old example
     # --- Room rotation, if rotate the room w.r.t the origin ---
     if_rotate_room = 1
     # --- Room rotation angles using Z-X-Z Euler angles ---
@@ -63,6 +81,7 @@ def init_parameters(params):
     room_rotation = np.array([90, 90, 90])  # [alpha, beta, gamma] in degrees
     # --- Add the above parameters to the params dictionary ---
     params["vertices"] = vertices
+    params["wallCenters"] = wallCenters
     params["if_rotate_room"] = if_rotate_room
     params["room_rotation"] = room_rotation
     # Apply room rotation to the room vertices and source/receiver positions
@@ -73,7 +92,7 @@ def init_parameters(params):
 
 def main():
     params, cmdArgs = cmdArgsToDict_ARG("configSingleParam_arg.yml")
-    params = init_parameters(params)
+    params = init_parameters_convex(params)
     # print the parameters or not
     if cmdArgs.quiet:
         params["silentMode"] = 1

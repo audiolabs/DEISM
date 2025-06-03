@@ -89,6 +89,7 @@ Directivities:
 # 2. LC: Low-complexity DEISM with vectorized calculation, which is supposed to be faster than ORG, but less accurate
 # 3. MIX: Early reflections up to order 2 are calculated using ORG, and the rest are calculated using LC
 DEISM_specs: 
+  convexRoom: 1 # If the room is convex
   ifRemoveDirect: 0 # If remove the direct sound from the image sources
   Mode: "MIX" # "ORG", "LC", "MIX"
   mixEarlyOrder: 2 # The order of reflections using DEISM-ORG if choose "MIX"

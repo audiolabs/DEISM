@@ -64,19 +64,19 @@ PYBIND11_MODULE(libroom_deism, m) {
                     const Eigen::Array<float, Eigen::Dynamic, 6> &,
                     const std::vector<Microphone_deism<3>> &, float, int, float,
                     float, float, float, bool>())
-        .def(py::init<const std::vector<Wall_deism<3>> &,const std::vector<int> &,
-                    const std::vector<Microphone_deism<3>> &, float, int, float,
-                    float, float, float, bool, float>())    //tan new constructor←←
-        .def(py::init<const Vectorf<3> &,
-                    const Eigen::Array<float,Eigen::Dynamic,2*3> &,
-                    const Eigen::Array<float,Eigen::Dynamic,2*3> &,
-                    const std::vector<Microphone_deism<3>> &, float, int, float,
-                    float, float, float, bool, float>())    //tan new constructor←←
+        // .def(py::init<const std::vector<Wall_deism<3>> &,const std::vector<int> &,
+        //             const std::vector<Microphone_deism<3>> &, float, int, float,
+        //             float, float, float, bool, float>())    //tan new constructor←←
+        // .def(py::init<const Vectorf<3> &,
+        //             const Eigen::Array<float,Eigen::Dynamic,2*3> &,
+        //             const Eigen::Array<float,Eigen::Dynamic,2*3> &,
+        //             const std::vector<Microphone_deism<3>> &, float, int, float,
+        //             float, float, float, bool, float>())    //tan new constructor←←
     //   .def("set_params", &Room_deism<3>::set_params)
         .def("set_params",static_cast<void (Room_deism<3>::*)(float,int,float,float,
                     float,float,bool)>(&Room_deism<3>::set_params))   //original
-        .def("set_params",static_cast<void (Room_deism<3>::*)(float,int,float,float,
-                    float,float,bool,float)>(&Room_deism<3>::set_params))     //tan overloaded
+        // .def("set_params",static_cast<void (Room_deism<3>::*)(float,int,float,float,
+        //             float,float,bool,float)>(&Room_deism<3>::set_params))     //tan overloaded
         .def("get_image_attenuation",&Room_deism<3>::get_image_attenuation)   //tan new added
         .def("add_mic", &Room_deism<3>::add_mic)
         .def("reset_mics", &Room_deism<3>::reset_mics)
@@ -123,7 +123,7 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("obstructing_walls", &Room_deism<3>::obstructing_walls)
         .def_readonly("microphones", &Room_deism<3>::microphones)
         .def_readonly("max_dist", &Room_deism<3>::max_dist)
-        .def_readonly("impedance",&Room_deism<3>::impedance)  //--> new
+        // .def_readonly("impedence",&Room_deism<3>::impedence)  //--> new
         .def_readonly("reflection_matrix",&Room_deism<3>::reflection_matrix)  //--> new
         .def_readwrite("n_bands",&Room_deism<3>::n_bands);  //--> new
 
@@ -138,19 +138,19 @@ PYBIND11_MODULE(libroom_deism, m) {
                         const Eigen::Array<float, Eigen::Dynamic, 4> &,
                         const std::vector<Microphone_deism<2>> &, float, int, float,
                         float, float, float, bool>())
-        .def(py::init<const std::vector<Wall_deism<2>> &, const std::vector<int> &,
-                        const std::vector<Microphone_deism<2>> &, float, int, float,
-                        float, float, float, bool, float>())   //tan new constructor←←
-        .def(py::init<const Vectorf<2> &,
-                        const Eigen::Array<float, Eigen::Dynamic, 4> &,
-                        const Eigen::Array<float, Eigen::Dynamic, 4> &,
-                        const std::vector<Microphone_deism<2>> &, float, int, float,
-                        float, float, float, bool, float>())   //tan new constructor←←
+        // .def(py::init<const std::vector<Wall_deism<2>> &, const std::vector<int> &,
+        //                 const std::vector<Microphone_deism<2>> &, float, int, float,
+        //                 float, float, float, bool, float>())   //tan new constructor←←
+        // .def(py::init<const Vectorf<2> &,
+        //                 const Eigen::Array<float, Eigen::Dynamic, 4> &,
+        //                 const Eigen::Array<float, Eigen::Dynamic, 4> &,
+        //                 const std::vector<Microphone_deism<2>> &, float, int, float,
+        //                 float, float, float, bool, float>())   //tan new constructor←←
         // .def("set_params", &Room_deism<2>::set_params)
         .def("set_params",static_cast<void (Room_deism<2>::*)(float,int,float,float,
                     float,float,bool)>(&Room_deism<2>::set_params))   //original
-        .def("set_params",static_cast<void (Room_deism<2>::*)(float,int,float,float,
-                    float,float,bool,float)>(&Room_deism<2>::set_params))     //tan overloaded
+        // .def("set_params",static_cast<void (Room_deism<2>::*)(float,int,float,float,
+        //             float,float,bool,float)>(&Room_deism<2>::set_params))     //tan overloaded
         .def("get_image_attenuation",&Room_deism<2>::get_image_attenuation)   //tan new added
         .def("add_mic", &Room_deism<2>::add_mic)
         .def("reset_mics", &Room_deism<2>::reset_mics)
@@ -194,7 +194,7 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("obstructing_walls", &Room_deism<2>::obstructing_walls)
         .def_readonly("microphones", &Room_deism<2>::microphones)
         .def_readonly("max_dist", &Room_deism<2>::max_dist)
-        .def_readonly("impedance",&Room_deism<2>::impedance)  //--> new
+        // .def_readonly("impedence",&Room_deism<2>::impedence)  //--> new
         .def_readonly("reflection_matrix",&Room_deism<2>::reflection_matrix)  //--> new
         .def_readwrite("n_bands",&Room_deism<2>::n_bands);  //--> new
 
@@ -210,10 +210,10 @@ PYBIND11_MODULE(libroom_deism, m) {
             py::arg("name") = "")
         .def(py::init<const Eigen::Matrix<float, 3, Eigen::Dynamic> &,
                         const Eigen::Matrix<float,3,1>&, 
-                        float&,
+                        const Eigen::ArrayXf &,
                         const Eigen::ArrayXf &, const Eigen::ArrayXf &,
                         const std::string &>(),
-            py::arg("corners"),py::arg("centroid"), py::arg("impedance"), 
+            py::arg("corners"),py::arg("centroid"), py::arg("impedence_bands"), 
             py::arg("absorption") = Eigen::ArrayXf::Zero(1),
             py::arg("scattering") = Eigen::ArrayXf::Zero(1),
             py::arg("name") = "")    //--> new
@@ -242,7 +242,7 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("basis", &Wall_deism<3>::basis)
         .def_readonly("flat_corners", &Wall_deism<3>::flat_corners)
         .def_readonly("reflection_matrix", &Wall_deism<3>::reflection_matrix)     //tan new
-        .def_readonly("impedance", &Wall_deism<3>::impedance)     //tan new
+        // .def_readonly("impedence_bands", &Wall_deism<3>::impedence_bands)     //tan new
         .def_readonly("centroid", &Wall_deism<3>::centroid);     //-->new
 
     py::enum_<Wall_deism<3>::Isect>(wall_cls, "Isect_deism")
@@ -265,12 +265,11 @@ PYBIND11_MODULE(libroom_deism, m) {
             py::arg("name") = "")
         .def(py::init<const Eigen::Matrix<float, 2, Eigen::Dynamic> &,
                         const Eigen::Matrix<float,2,1>&,
-                        float&,
+                        const Eigen::ArrayXf &,
                         const Eigen::ArrayXf &, 
                         const Eigen::ArrayXf &,
-                        const std::string & 
-                        >(),
-            py::arg("corners"),py::arg("centroid"), py::arg("impedance"), 
+                        const std::string & >(),
+            py::arg("corners"), py::arg("centroid"), py::arg("impedence_bands"), 
             py::arg("absorption") = Eigen::ArrayXf::Zero(1),
             py::arg("scattering") = Eigen::ArrayXf::Zero(1),
             py::arg("name") = "")    //--> new
@@ -299,7 +298,7 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("basis", &Wall_deism<2>::basis)
         .def_readonly("flat_corners", &Wall_deism<2>::flat_corners)
         .def_readonly("reflection_matrix", &Wall_deism<2>::reflection_matrix)     //--> new
-        .def_readonly("impedance", &Wall_deism<2>::impedance)                    //--> new
+        .def_readonly("impedence_bands", &Wall_deism<2>::impedence_bands)                    //--> new
         .def_readonly("centroid", &Wall_deism<2>::centroid);                    //--> new
 
     // The different wall intersection cases
@@ -371,3 +370,4 @@ PYBIND11_MODULE(libroom_deism, m) {
     m.def("delay_sum", &delay_sum, "Delay and sum");
     m.def("fractional_delay", &fractional_delay, "Fractional delays");
 }
+

@@ -1,12 +1,12 @@
 """
-Recreating the results of Figure 5 and Figure 6 from the following conference paper: 
-Z. Xu, E. A. P. Habets and A. G. Prinn, 
-"Simulating Sound Fields in Rooms with Arbitrary Geometries Using the Diffraction-Enhanced Image Source Method," 
-2024 18th International Workshop on Acoustic Signal Enhancement (IWAENC), Aalborg, Denmark, 2024, pp. 284-288, 
+Recreating the results of Figure 5 and Figure 6 from the following conference paper:
+Z. Xu, E. A. P. Habets and A. G. Prinn,
+"Simulating Sound Fields in Rooms with Arbitrary Geometries Using the Diffraction-Enhanced Image Source Method,"
+2024 18th International Workshop on Acoustic Signal Enhancement (IWAENC), Aalborg, Denmark, 2024, pp. 284-288,
 doi: 10.1109/IWAENC61483.2024.10693991.
-The following scnario is considered in Figure 5: 
+The following scnario is considered in Figure 5:
 1. A room with tilted ceiling compared to a shoebox room
-2. 
+2.
 """
 
 import time
@@ -122,7 +122,7 @@ def plot_DEISM_ARG_FEM(P_DEISM_ARG, P_FEM, freqs, save_path, fig_name):
 
 def main():
     # Choose plot figure 5 or 6
-    fig = "fig6"  # "fig5" or "fig6"
+    fig = "fig5"  # "fig5" or "fig6"
     # Load the parameters from the configSingleParam_ARG.yaml file amd command line
     params, cmdArgs = cmdArgsToDict_ARG("configSingleParam_arg.yml")
     # Initialize some additional parameters for DEISM-ARG

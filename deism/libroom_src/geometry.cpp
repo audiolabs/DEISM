@@ -384,5 +384,6 @@ float dist_line_point(
   float proj = v.adjoint() * unit_vec; // scalar
 
   return (v - proj * unit_vec).norm(); // scalar
-}						  
+}
+
 

@@ -66,7 +66,7 @@ Room_deism<D>::Room_deism(
     float _mic_radius,
     float _mic_hist_res,
     bool _is_hybrid_sim
-    )
+  )
   : walls(_walls), obstructing_walls(_obstructing_walls), microphones(_microphones),
   sound_speed(_sound_speed), ism_order(_ism_order),
   energy_thres(_energy_thres), time_thres(_time_thres), mic_radius(_mic_radius),
@@ -91,7 +91,7 @@ Room_deism<D>::Room_deism(
     float _mic_radius,
     float _mic_hist_res,
     bool _is_hybrid_sim
-    )
+  )
   : microphones(_microphones),
   sound_speed(_sound_speed), ism_order(_ism_order), energy_thres(_energy_thres), time_thres(_time_thres),
   mic_radius(_mic_radius), mic_radius_sq(_mic_radius * _mic_radius),
@@ -113,63 +113,60 @@ Room_deism<D>::Room_deism(
 
 /******************************************************************************/
 // overloaded constructors
-template<size_t D>
-Room_deism<D>::Room_deism(
-    const std::vector<Wall_deism<D>> &_walls,
-    const std::vector<int> &_obstructing_walls,
-    const std::vector<Microphone_deism<D>> &_microphones,
-    float _sound_speed,
-    // parameters for the image source model
-    int _ism_order,
-    // parameters for the ray tracing
-    float _energy_thres,
-    float _time_thres,
-    float _mic_radius,
-    float _mic_hist_res,
-    bool _is_hybrid_sim,
-    float _impedance
-    )
-  : walls(_walls), obstructing_walls(_obstructing_walls), microphones(_microphones),
-  sound_speed(_sound_speed), ism_order(_ism_order),
-  energy_thres(_energy_thres), time_thres(_time_thres), mic_radius(_mic_radius),
-  mic_radius_sq(_mic_radius * _mic_radius),
-  mic_hist_res(_mic_hist_res), is_hybrid_sim(_is_hybrid_sim),impedance(_impedance),is_shoebox(false)
-{
-  init();
-}
+// template<size_t D>
+// Room_deism<D>::Room_deism(
+//     const std::vector<Wall_deism<D>> &_walls,
+//     const std::vector<int> &_obstructing_walls,
+//     const std::vector<Microphone_deism<D>> &_microphones,
+//     float _sound_speed,
+//     // parameters for the image source model
+//     int _ism_order,
+//     // parameters for the ray tracing
+//     float _energy_thres,
+//     float _time_thres,
+//     float _mic_radius,
+//     float _mic_hist_res,
+//     bool _is_hybrid_sim
+// ): walls(_walls), obstructing_walls(_obstructing_walls), microphones(_microphones),
+//   sound_speed(_sound_speed), ism_order(_ism_order),
+//   energy_thres(_energy_thres), time_thres(_time_thres), mic_radius(_mic_radius),
+//   mic_radius_sq(_mic_radius * _mic_radius),
+//   mic_hist_res(_mic_hist_res), is_hybrid_sim(_is_hybrid_sim),is_shoebox(false)
+// {
+//   init();
+// }
 
-template<size_t D>
-Room_deism<D>::Room_deism(
-    const Vectorf<D> &_room_size,
-    const Eigen::Array<float,Eigen::Dynamic,2*D> &_absorption,
-    const Eigen::Array<float,Eigen::Dynamic,2*D> &_scattering,
-    const std::vector<Microphone_deism<D>> &_microphones,
-    float _sound_speed,
-    // parameters for the image source model
-    int _ism_order,
-    // parameters for the ray tracing
-    float _energy_thres,
-    float _time_thres,
-    float _mic_radius,
-    float _mic_hist_res,
-    bool _is_hybrid_sim,
-    float _impedance
-    )
-  : microphones(_microphones),
-  sound_speed(_sound_speed), ism_order(_ism_order), energy_thres(_energy_thres), time_thres(_time_thres),
-  mic_radius(_mic_radius), mic_radius_sq(_mic_radius * _mic_radius),
-  mic_hist_res(_mic_hist_res), is_hybrid_sim(_is_hybrid_sim),impedance(_impedance),
-  is_shoebox(true), shoebox_size(_room_size), shoebox_absorption(_absorption),
-  shoebox_scattering(_scattering)
-{
-  if (shoebox_absorption.rows() != _scattering.rows())
-  {
-    throw std::runtime_error("Error: The same number of absorption and scattering coefficients are required");
-  }
+// template<size_t D>
+// Room_deism<D>::Room_deism(
+//     const Vectorf<D> &_room_size,
+//     const Eigen::Array<float,Eigen::Dynamic,2*D> &_absorption,
+//     const Eigen::Array<float,Eigen::Dynamic,2*D> &_scattering,
+//     const std::vector<Microphone_deism<D>> &_microphones,
+//     float _sound_speed,
+//     // parameters for the image source model
+//     int _ism_order,
+//     // parameters for the ray tracing
+//     float _energy_thres,
+//     float _time_thres,
+//     float _mic_radius,
+//     float _mic_hist_res,
+//     bool _is_hybrid_sim
+//   )
+//   : microphones(_microphones),
+//   sound_speed(_sound_speed), ism_order(_ism_order), energy_thres(_energy_thres), time_thres(_time_thres),
+//   mic_radius(_mic_radius), mic_radius_sq(_mic_radius * _mic_radius),
+//   mic_hist_res(_mic_hist_res), is_hybrid_sim(_is_hybrid_sim),
+//   is_shoebox(true), shoebox_size(_room_size), shoebox_absorption(_absorption),
+//   shoebox_scattering(_scattering)
+// {
+//   if (shoebox_absorption.rows() != _scattering.rows())
+//   {
+//     throw std::runtime_error("Error: The same number of absorption and scattering coefficients are required");
+//   }
 
-  make_shoebox_walls(shoebox_size, _absorption, _scattering);
-  init();
-}
+//   make_shoebox_walls(shoebox_size, _absorption, _scattering);
+//   init();
+// }
 /******************************************************************************/
 
 
@@ -440,8 +437,9 @@ std::pair<bool,std::vector<Vectorf<D>>> Room_deism<D>::is_visible_dfs(
      */
 
   // -->new 0816
-  // if (is_obstructed_dfs(p, is))
-  //   return false;
+  if (is_obstructed_dfs(p, is))
+    // return false;
+    return std::make_pair<bool,std::vector<Vectorf<D>>>(false,std::vector<Vectorf<D>>());
 
   // -->new 0816
   // From the code logic, a brand-new list_p_to_is is needed for each call, 
@@ -481,8 +479,14 @@ std::pair<bool,std::vector<Vectorf<D>>> Room_deism<D>::is_visible_dfs(
 template <size_t D>
 Eigen::ArrayXf Room_deism<D>::get_image_attenuation(ImageSource<D>& old_is,
   std::vector<Vectorf<D>>& list_intercep_p_to_is){
+    /*
+    args- the major concern is frequency. how do we get the frequency?
+    */
+    // gen_wall means which wall generates this old_is?
     int wall_id=old_is.gen_wall;
-    float attenuationOfWall=1.0f;
+    // float attenuationOfWall=1.0f;
+    // since the impedence is array-like, so attenuationOfWall should be array-like 
+    Eigen::ArrayXf attenuationOfWall=Eigen::ArrayXf::Ones(1);
     if(wall_id>=0){
       Wall_deism<D> oneWall=walls[wall_id];
       // acquire the top element
@@ -502,6 +506,36 @@ Eigen::ArrayXf Room_deism<D>::get_image_attenuation(ImageSource<D>& old_is,
     }
 }
 
+// template <size_t D>
+// Eigen::ArrayXf Room_deism<D>::get_image_attenuation(ImageSource<D>& old_is,
+//   std::vector<Vectorf<D>>& list_intercep_p_to_is,float freq){
+//     /*
+//     args- the major concern is frequency. how do we get the frequency?
+//      another question is after reflection and scattering of the last wall, 
+//      does frequency of sound change?
+//     */
+//     // gen_wall means which wall generates this old_is?
+//     int wall_id=old_is.gen_wall;
+//     float attenuationOfWall=1.0f;
+//     if(wall_id>=0){
+//       Wall_deism<D> oneWall=walls[wall_id];
+//       // acquire the top element
+//       Vectorf<D> intercep_p_to_is=list_intercep_p_to_is.front();
+//       // delete the top element
+//       list_intercep_p_to_is.erase(list_intercep_p_to_is.begin());
+//       float inc_angle=std::acos(intercep_p_to_is.dot(oneWall.normal)/(intercep_p_to_is.norm()));
+//       attenuationOfWall=oneWall.get_attenuation(inc_angle,freq);
+//     }else{
+//       return old_is.attenuation;
+//     }
+
+//     if(old_is.parent!=nullptr){
+//       return attenuationOfWall*get_image_attenuation(*(old_is.parent),list_intercep_p_to_is,freq);
+//     }else{
+//       return old_is.attenuation;
+//     }
+// }
+
 // ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
 /******************************************************************************/
 
@@ -513,14 +547,15 @@ bool Room_deism<D>::is_obstructed_dfs(const Vectorf<D> &p, ImageSource<D> &is)
   /*
      Checks if there is a wall obstructing the line of sight going from a source to a point.
 
-     room - the structure that contains all the sources and stuff
-     p (np.array size 2 or 3) coordinates of the point where we check obstruction
+     room - the structure that contains all the sources and stuff,
+     p (np.array size 2 or 3) coordinates of the point where we check obstruction,
      imageId (int) id of the image within the SoundSource object
 
      Returns (bool)
      False (0) : not obstructed
      True (1) :  obstructed
      */
+  // first get the wall which generates the image-source is
   int gen_wall_id = is.gen_wall;
 
   // Check candidate walls for obstructions
@@ -1349,4 +1384,3 @@ bool Room_deism<D>::contains(const Vectorf<D> point)
   // then the point is in the room  => return true
   return ((n_intersections % 2) == 1);
 }
-

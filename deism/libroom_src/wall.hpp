@@ -82,14 +82,24 @@ class Wall_deism
     /**************************************************************************/
     // reflection matrix
     Eigen::Matrix<float,D,D> reflection_matrix;     //-->new
+    // centroid means the centroid of the room, used to redirect the direction of 
+    // norm vectors of walls
     Eigen::Matrix<float,D,1> centroid;    //-->new
     /**************************************************************************/
 
 
     /**************************************************************************/
     // area for new parameters
-    float impedance;        //-->new
+    // float impedence;        //-->new
 
+    // if impedence is connected with frequency, then how to set the corresponding 
+    // impedence under some freqneucy? use map? the question is how do we get 
+    // the impedence of e.g. 1000Hz? since impedence is defined as a dynamic array
+    // n_bands-->how many frequency bands are there.
+    // int n_bands;    //-->new
+    Eigen::ArrayXf impedence_bands;     //-->new
+    // solution: define impedence under certain points and propagate to all 
+    // frequency by interpolation
     /**************************************************************************/
 
     // Constructor
@@ -107,7 +117,6 @@ class Wall_deism
 
     /**************************************************************************/
     // area for new constructors
-    //-->new from line 100 to line 107
     // inserting centroid
     Wall_deism(
         const Eigen::Matrix<float, D, Eigen::Dynamic> &_corners,
@@ -124,24 +133,35 @@ class Wall_deism
         ) : Wall_deism(_corners,_centroid, _absorption, _scatter, "") {}
 
 
+    // Wall_deism(
+    //     const Eigen::Matrix<float, D, Eigen::Dynamic> &_corners,
+    //     const Eigen::Matrix<float,D,1>& _centroid,    //-->new
+    //     float _impedence,
+    //     const Eigen::ArrayXf &_absorption,
+    //     const Eigen::ArrayXf &_scatter,
+    //     const std::string &_name
+    //   );
+
+    // the main constructor we should consider
     Wall_deism(
         const Eigen::Matrix<float, D, Eigen::Dynamic> &_corners,
         const Eigen::Matrix<float,D,1>& _centroid,    //-->new
-        float _impedance,
+        const Eigen::ArrayXf &_impedence_bands,         //-->new
         const Eigen::ArrayXf &_absorption,
         const Eigen::ArrayXf &_scatter,
         const std::string &_name
-      );
+    );
 
     /**************************************************************************/
 
     // Copy constructor
+    // here only copy parameter impedence_bands, but not consider the parameter impedence(float)
     Wall_deism(const Wall_deism<D> &w) :
       absorption(w.absorption), scatter(w.scatter), name(w.name),
       transmission(w.transmission), energy_reflection(w.energy_reflection),
       normal(w.normal), corners(w.corners),
       origin(w.origin), basis(w.basis), flat_corners(w.flat_corners),
-      impedance(w.impedance),reflection_matrix(w.reflection_matrix),
+      impedence_bands(w.impedence_bands),reflection_matrix(w.reflection_matrix),
       centroid(w.centroid)
     {}
 
@@ -154,7 +174,7 @@ class Wall_deism
         const Vectorf<D> &p1,
         const Vectorf<D> &p2,
         Eigen::Ref<Vectorf<D>> intersection
-        ) const;
+    ) const;
     /*-->new 
     for the above method, p1 and p2 should be two points,while intersection 
     is the coordinates of the intersected point with the wall?
@@ -185,7 +205,9 @@ class Wall_deism
 
     /**************************************************************************/
     // area for new member functions
-    float get_attenuation(float theta) const;
+    // since impedence is a array, so the attenuation should be a array,too.
+    // float get_attenuation(float theta) const;   //-->new
+    Eigen::ArrayXf get_attenuation(float theta) const;   //-->new
 
     Eigen::Matrix<float,D,Eigen::Dynamic> orderPoints(
         const Eigen::Matrix<float,D,Eigen::Dynamic>& points);   //-->new
