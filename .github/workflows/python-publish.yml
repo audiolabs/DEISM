@@ -10,7 +10,7 @@ name: deism
 
 on:
   release:
-    types: [published]
+    types: [published, prereleased]
 
 jobs:
   build-and-publish:
@@ -91,8 +91,8 @@ jobs:
         if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'ubuntu-latest'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          repository_url: https://upload.pypi.org/legacy/
-          skip_existing: true 
+          repository-url: https://upload.pypi.org/legacy/
+          skip-existing: true 
         env:
           TWINE_USERNAME: __token__  # OIDC uses __token__ for authentication
           TWINE_PASSWORD: ${{ secrets.API_TOKEN }}  # OIDC token automatically provided
