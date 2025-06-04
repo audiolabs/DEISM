@@ -1,2 +1,2 @@
 # deism/version.py
-__version__ = "2.0.2"  # Update this for new versions
+__version__ = "2.1.0"  # Update this for new versions
