@@ -9,7 +9,7 @@ A source and a receiver transducer with arbitrary directivity are mounted on one
 In DEISM-ARG, we can model the room transfer function between transducers mounted on one/two speakers using the image source method while incorporating the local diffraction effects around the transducers. The local diffraction effects are captured using spherical-harmonic directivity coefficients obtained on a sphere around the transducers. In addition to DEISM in shoebox rooms, DEISM-ARG can model more complex room shapes. However, for version 2.0, we now only supports convex shapes. In short, DEISM-ARG has the following features: 
 
 1. Arbitrary directivities of the source and receiver
-2. Angle-dependent reflection coefficients
+2. Angle-dependent reflection coefficients, frequency- and wall-dependent impedance definition.
 3. Convex room shapes
 
 ![image-20240812131054348](/docs/figures/scenario.png)
@@ -54,7 +54,7 @@ The default parameters are defined in file **configSingleParam.yml** or **config
 
 - An example of running DEISM-ARG is **examples/deism_arg_single_example.py**
   - You can run this from IDEs or via the command line, as introduced in the previous section
-- An example of comparing different versions of DEISM-ARG is given in **examples/deism_args_compare.py**. The room transfer functions are compared among:
+- An example of comparing different versions of DEISM-ARG is given in **examples/deism_args_compare.py**. A frequency- and wall-dependent impedance definition can also be applied for a convex room. The room transfer functions are compared among:
   - Original version (most computation-costly)
   - LC version (fastest)
   - Mix version (Trade-offs between Original and LC versions): Early reflections up to some changeable order (default is 2) are calculated using the original version and the higher orders are calculated using the LC version. 
