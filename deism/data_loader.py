@@ -502,7 +502,10 @@ def loadSingleParam(configs, args):
     params["radiusReceiver"] = args.recr0 or configs["Radius"]["receiver"]
     params["sourceType"] = args.srctype or configs["Directivities"]["source"]
     params["receiverType"] = args.rectype or configs["Directivities"]["receiver"]
-    params["convexRoom"] = args.ifconvex or configs["DEISM_specs"]["convexRoom"]
+    try:
+        params["convexRoom"] = args.ifconvex or configs["DEISM_specs"]["convexRoom"]
+    except:
+        pass
     params["ifRemoveDirectPath"] = args.ird or configs["DEISM_specs"]["ifRemoveDirect"]
     params["DEISM_mode"] = args.mode or configs["DEISM_specs"]["Mode"]
     try:
