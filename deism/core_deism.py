@@ -8,6 +8,8 @@ import ray
 from sound_field_analysis.sph import sphankel2
 from deism.utilities import *
 from deism.data_loader import *
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import cpu_count
 
 
 # -------------------------------
@@ -152,6 +154,7 @@ def init_receiver_directivities(params):
         C_vu_r = -1j * k * scy.spherical_jn(0, 0) * np.conj(scy.sph_harm(0, 0, 0, 0))
         params["C_vu_r"] = C_vu_r[..., None, None]
         params["vReceiverOrder"] = 0
+        params["ifReceiverNormalize"] = 0
     else:  # If not simple source directivities are used, load the directivity data
         # ------------- Load simulation data -------------
         freqs, Psh_receiver, Dir_all_receiver, r0_receiver = load_directive_pressure(
@@ -441,7 +444,7 @@ def init_source_directivities_ARG(params, if_rotate_room, reflection_matrix, **k
         params["C_nm_s_ARG"] = C_nm_s[..., None, None, None] * np.ones(  # noqa: E203
             (1, 1, 1, reflection_matrix.shape[2])
         )
-
+        params["nSourceOrder"] = 0
     else:  # If not simple source directivities are used, load the directivity data
         # load directivities
         freqs, Psh_source, Dir_all_source, r0_source = load_directive_pressure(
@@ -533,6 +536,8 @@ def init_receiver_directivities_ARG(params, if_rotate_room, **kwargs):
         # Calculate receiver directivity coefficients C_vu^r
         C_vu_r = -1j * k * scy.spherical_jn(0, 0) * np.conj(scy.sph_harm(0, 0, 0, 0))
         params["C_vu_r"] = C_vu_r[..., None, None]
+        params["vReceiverOrder"] = 0
+        params["ifReceiverNormalize"] = 0
     else:  # If not simple source directivities are used, load the directivity data
         freqs, Psh_receiver, Dir_all_receiver, r0_receiver = load_directive_pressure(
             params["silentMode"], "receiver", params["receiverType"]
@@ -715,7 +720,6 @@ def pre_calc_images_src_rec_original(params):
     n2 = params["n2"]
     n3 = params["n3"]
     LL = params["roomSize"]
-    x_c = 0.5 * LL
     x_r = params["posReceiver"]
     x_s = params["posSource"]
     RefCoef_angdep_flag = params["angDepFlag"]
@@ -730,9 +734,6 @@ def pre_calc_images_src_rec_original(params):
     if N_o < N_o_ORG:
         N_o_ORG = N_o
 
-    # I_s_all = []
-    # I_r_all = []
-    # I_c_all = []
     # Store the ones for the earch reflections
     R_sI_r_all_early = []  # Only used in DEISM-ORG
     R_s_rI_all_early = []  # Used in DEISM-LC
@@ -752,8 +753,12 @@ def pre_calc_images_src_rec_original(params):
     x_r_room_c = x_r - room_c
     # v_src = np.array([x_s_room_c[0], x_s_room_c[1], x_s_room_c[2], 1])
     v_rec = np.array([x_r_room_c[0], x_r_room_c[1], x_r_room_c[2], 1])
+    # Show n1, n2, n3
+    # print(f"n1: {n1}, n2: {n2}, n3: {n3}")
+    # print max reflection order
+    print(f"max reflection order: {N_o}")
     # count the total time in the loop after the if condition
-    count = 0
+    # count = 0
     for q_x in range(-n1, n1 + 1):
         for q_y in range(-n2, n2 + 1):
             for q_z in range(-n3, n3 + 1):
@@ -766,7 +771,7 @@ def pre_calc_images_src_rec_original(params):
                                 + np.abs(2 * q_z - p_z)
                             )
                             if ref_order <= N_o or N_o == -1:
-                                count += 1
+
                                 R_q = np.array(
                                     [
                                         2 * q_x * LL[0],
@@ -774,6 +779,7 @@ def pre_calc_images_src_rec_original(params):
                                         2 * q_z * LL[2],
                                     ]
                                 )
+
                                 # Source images
                                 R_p_s = np.array(
                                     [
@@ -784,6 +790,12 @@ def pre_calc_images_src_rec_original(params):
                                 )
                                 I_s = R_p_s + R_q
                                 # I_s_all.append(I_s)
+                                # The following codes are only calculated if the distance from image to receiver is no larger than nSamples in params
+                                if (
+                                    np.floor(np.linalg.norm(I_s - x_r) / params["cTs"])
+                                    >= params["nSamples"]
+                                ):
+                                    continue
 
                                 # Receiver images
                                 # R_p_r = np.array([x_r[0] - 2*p_x*x_r[0], x_r[1] - 2*p_y*x_r[1], x_r[2] - 2*p_z*x_r[2]])
@@ -890,7 +902,7 @@ def pre_calc_images_src_rec_original(params):
                                         [phi_R_r_sI, theta_R_r_sI, r_R_r_sI]
                                     )
                                     atten_all_late.append(atten)
-    print(f"Total number of reflections: {count}")
+    # print(f"Total number of reflections: {count}")
     if params["ifRemoveDirectPath"]:
         print("Remove the direct path")
         # find the direct path index, which is the one with q_x=q_y=q_z=p_x=p_y=p_z=0
@@ -922,9 +934,587 @@ def pre_calc_images_src_rec_original(params):
     return images
 
 
+def pre_calc_images_src_rec_optimized(params):
+    """
+    Optimized version: Calculate images, reflection paths, and attenuation due to reflections
+    This version directly generates combinations that satisfy the reflection order constraint
+    instead of iterating through all possible combinations and filtering.
+    """
+    if not params["silentMode"]:
+        print("[Calculating] Images and attenuations (OPTIMIZED), ", end="")
+    start = time.perf_counter()
+
+    LL = params["roomSize"]
+    x_r = params["posReceiver"]
+    x_s = params["posSource"]
+    RefCoef_angdep_flag = params["angDepFlag"]
+
+    if RefCoef_angdep_flag == 1:
+        print("using angle-dependent reflection coefficients, ", end="")
+
+    N_o = params["maxReflOrder"]
+    Z_S = params["acousImpend"]
+    N_o_ORG = params["mixEarlyOrder"]
+
+    if N_o < N_o_ORG:
+        N_o_ORG = N_o
+
+    # Storage for early and late reflections
+    R_sI_r_all_early = []
+    R_s_rI_all_early = []
+    R_r_sI_all_early = []
+    atten_all_early = []
+    A_early = []
+
+    R_sI_r_all_late = []
+    R_s_rI_all_late = []
+    R_r_sI_all_late = []
+    atten_all_late = []
+    A_late = []
+
+    # Other variables
+    room_c = LL / 2
+    x_r_room_c = x_r - room_c
+    v_rec = np.array([x_r_room_c[0], x_r_room_c[1], x_r_room_c[2], 1])
+
+    print(f"maxReflectionOrder: {N_o}")
+    # count = 0
+
+    # Optimized approach: directly generate combinations that satisfy reflection order constraint
+    for p_x in range(2):
+        for p_y in range(2):
+            for p_z in range(2):
+                # For each (p_x, p_y, p_z), generate all (q_x, q_y, q_z) that give valid reflection orders
+                for ref_order in range(N_o + 1):
+                    # Generate all combinations (i, j, k) such that |i| + |j| + |k| = ref_order
+                    # where i = 2*q_x - p_x, j = 2*q_y - p_y, k = 2*q_z - p_z
+
+                    for i_abs in range(ref_order + 1):
+                        for j_abs in range(ref_order - i_abs + 1):
+                            k_abs = ref_order - i_abs - j_abs
+
+                            # Generate all sign combinations for i, j, k
+                            i_values = [i_abs] if i_abs == 0 else [-i_abs, i_abs]
+                            j_values = [j_abs] if j_abs == 0 else [-j_abs, j_abs]
+                            k_values = [k_abs] if k_abs == 0 else [-k_abs, k_abs]
+
+                            for i in i_values:
+                                for j in j_values:
+                                    for k in k_values:
+                                        # Convert back to q_x, q_y, q_z
+                                        # i = 2*q_x - p_x => q_x = (i + p_x) / 2
+                                        # j = 2*q_y - p_y => q_y = (j + p_y) / 2
+                                        # k = 2*q_z - p_z => q_z = (k + p_z) / 2
+
+                                        if (
+                                            (i + p_x) % 2 == 0
+                                            and (j + p_y) % 2 == 0
+                                            and (k + p_z) % 2 == 0
+                                        ):
+                                            q_x = (i + p_x) // 2
+                                            q_y = (j + p_y) // 2
+                                            q_z = (k + p_z) // 2
+
+                                            # Verify the reflection order calculation
+                                            calculated_ref_order = (
+                                                abs(i) + abs(j) + abs(k)
+                                            )
+                                            assert calculated_ref_order == ref_order
+
+                                            # count += 1
+
+                                            # All the original calculations remain the same
+                                            R_q = np.array(
+                                                [
+                                                    2 * q_x * LL[0],
+                                                    2 * q_y * LL[1],
+                                                    2 * q_z * LL[2],
+                                                ]
+                                            )
+
+                                            # Source images
+                                            R_p_s = np.array(
+                                                [
+                                                    x_s[0] - 2 * p_x * x_s[0],
+                                                    x_s[1] - 2 * p_y * x_s[1],
+                                                    x_s[2] - 2 * p_z * x_s[2],
+                                                ]
+                                            )
+                                            I_s = R_p_s + R_q
+                                            # The following codes are only calculated if the distance from image to receiver is no larger than nsamples in params
+                                            if (
+                                                np.floor(
+                                                    np.linalg.norm(I_s - x_r)
+                                                    / params["cTs"]
+                                                )
+                                                >= params["nSamples"]
+                                            ):
+                                                continue
+
+                                            # Receiver images
+                                            [i_calc, j_calc, k_calc] = [
+                                                2 * q_x - p_x,
+                                                2 * q_y - p_y,
+                                                2 * q_z - p_z,
+                                            ]
+                                            cross_i = int(
+                                                np.cos(int((i_calc % 2) == 0) * np.pi)
+                                                * i_calc
+                                            )
+                                            cross_j = int(
+                                                np.cos(int((j_calc % 2) == 0) * np.pi)
+                                                * j_calc
+                                            )
+                                            cross_k = int(
+                                                np.cos(int((k_calc % 2) == 0) * np.pi)
+                                                * k_calc
+                                            )
+
+                                            r_ijk = (
+                                                T_x(cross_i, LL[0])
+                                                @ T_y(cross_j, LL[1])
+                                                @ T_z(cross_k, LL[2])
+                                                @ v_rec
+                                            )
+                                            I_r = r_ijk[0:3] + LL / 2
+
+                                            # Vector from source images to receiver
+                                            R_sI_r = x_r - I_s
+                                            phi_R_sI_r, theta_R_sI_r, r_R_sI_r = (
+                                                cart2sph(
+                                                    R_sI_r[0], R_sI_r[1], R_sI_r[2]
+                                                )
+                                            )
+                                            theta_R_sI_r = np.pi / 2 - theta_R_sI_r
+
+                                            # Vector pointing from source to receiver images
+                                            R_s_rI = I_r - x_s
+                                            phi_R_s_rI, theta_R_s_rI, r_R_s_rI = (
+                                                cart2sph(
+                                                    R_s_rI[0], R_s_rI[1], R_s_rI[2]
+                                                )
+                                            )
+                                            theta_R_s_rI = np.pi / 2 - theta_R_s_rI
+
+                                            # Vector pointing from receiver to source images
+                                            R_r_sI = I_s - x_r
+                                            phi_R_r_sI, theta_R_r_sI, r_R_r_sI = (
+                                                cart2sph(
+                                                    R_r_sI[0], R_r_sI[1], R_r_sI[2]
+                                                )
+                                            )
+                                            theta_R_r_sI = np.pi / 2 - theta_R_r_sI
+
+                                            # Reflection coefficient calculations
+                                            if RefCoef_angdep_flag == 1:
+                                                inc_angle_x = np.arccos(
+                                                    np.abs(R_sI_r[0])
+                                                    / np.linalg.norm(R_sI_r)
+                                                )
+                                                inc_angle_y = np.arccos(
+                                                    np.abs(R_sI_r[1])
+                                                    / np.linalg.norm(R_sI_r)
+                                                )
+                                                inc_angle_z = np.arccos(
+                                                    np.abs(R_sI_r[2])
+                                                    / np.linalg.norm(R_sI_r)
+                                                )
+                                                beta_x1 = ref_coef(
+                                                    inc_angle_x, Z_S[0, :]
+                                                )
+                                                beta_x2 = ref_coef(
+                                                    inc_angle_x, Z_S[1, :]
+                                                )
+                                                beta_y1 = ref_coef(
+                                                    inc_angle_y, Z_S[2, :]
+                                                )
+                                                beta_y2 = ref_coef(
+                                                    inc_angle_y, Z_S[3, :]
+                                                )
+                                                beta_z1 = ref_coef(
+                                                    inc_angle_z, Z_S[4, :]
+                                                )
+                                                beta_z2 = ref_coef(
+                                                    inc_angle_z, Z_S[5, :]
+                                                )
+                                            else:
+                                                beta_x1 = ref_coef(0, Z_S[0, :])
+                                                beta_x2 = ref_coef(0, Z_S[1, :])
+                                                beta_y1 = ref_coef(0, Z_S[2, :])
+                                                beta_y2 = ref_coef(0, Z_S[3, :])
+                                                beta_z1 = ref_coef(0, Z_S[4, :])
+                                                beta_z2 = ref_coef(0, Z_S[5, :])
+
+                                            atten = (
+                                                beta_x1 ** np.abs(q_x - p_x)
+                                                * beta_x2 ** np.abs(q_x)
+                                                * beta_y1 ** np.abs(q_y - p_y)
+                                                * beta_y2 ** np.abs(q_y)
+                                                * beta_z1 ** np.abs(q_z - p_z)
+                                                * beta_z2 ** np.abs(q_z)
+                                            )
+
+                                            if ref_order <= N_o_ORG:
+                                                A_early.append(
+                                                    [q_x, q_y, q_z, p_x, p_y, p_z]
+                                                )
+                                                R_sI_r_all_early.append(
+                                                    [phi_R_sI_r, theta_R_sI_r, r_R_sI_r]
+                                                )
+                                                R_s_rI_all_early.append(
+                                                    [phi_R_s_rI, theta_R_s_rI, r_R_s_rI]
+                                                )
+                                                R_r_sI_all_early.append(
+                                                    [phi_R_r_sI, theta_R_r_sI, r_R_r_sI]
+                                                )
+                                                atten_all_early.append(atten)
+                                            else:
+                                                A_late.append(
+                                                    [q_x, q_y, q_z, p_x, p_y, p_z]
+                                                )
+                                                R_sI_r_all_late.append(
+                                                    [phi_R_sI_r, theta_R_sI_r, r_R_sI_r]
+                                                )
+                                                R_s_rI_all_late.append(
+                                                    [phi_R_s_rI, theta_R_s_rI, r_R_s_rI]
+                                                )
+                                                R_r_sI_all_late.append(
+                                                    [phi_R_r_sI, theta_R_r_sI, r_R_r_sI]
+                                                )
+                                                atten_all_late.append(atten)
+
+    # print(f"Total number of reflections: {count}")
+
+    if params["ifRemoveDirectPath"]:
+        print("Remove the direct path")
+        try:
+            idx = A_early.index([0, 0, 0, 0, 0, 0])
+            R_sI_r_all_early.pop(idx)
+            R_s_rI_all_early.pop(idx)
+            R_r_sI_all_early.pop(idx)
+            atten_all_early.pop(idx)
+            A_early.pop(idx)
+        except ValueError:
+            print("Direct path not found in early reflections")
+
+    images = {
+        "R_sI_r_all_early": R_sI_r_all_early,
+        "R_s_rI_all_early": R_s_rI_all_early,
+        "R_r_sI_all_early": R_r_sI_all_early,
+        "atten_all_early": atten_all_early,
+        "A_early": A_early,
+        "R_sI_r_all_late": R_sI_r_all_late,
+        "R_s_rI_all_late": R_s_rI_all_late,
+        "R_r_sI_all_late": R_r_sI_all_late,
+        "atten_all_late": atten_all_late,
+        "A_late": A_late,
+    }
+
+    end = time.perf_counter()
+    if not params["silentMode"]:
+        minutes, seconds = divmod(end - start, 60)
+        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
+
+    return images
+
+
+def calculate_single_image_source(args):
+    """
+    Calculate image source data for a single (q_x, q_y, q_z, p_x, p_y, p_z) combination
+    This function is designed to be called in parallel
+    """
+    (
+        q_x,
+        q_y,
+        q_z,
+        p_x,
+        p_y,
+        p_z,
+        LL,
+        v_rec,
+        x_s,
+        x_r,
+        Z_S,
+        RefCoef_angdep_flag,
+    ) = args
+
+    # All the original calculations remain the same
+    R_q = np.array([2 * q_x * LL[0], 2 * q_y * LL[1], 2 * q_z * LL[2]])
+
+    # Source images
+    R_p_s = np.array(
+        [
+            x_s[0] - 2 * p_x * x_s[0],
+            x_s[1] - 2 * p_y * x_s[1],
+            x_s[2] - 2 * p_z * x_s[2],
+        ]
+    )
+    I_s = R_p_s + R_q
+
+    # Receiver images
+    [i_calc, j_calc, k_calc] = [2 * q_x - p_x, 2 * q_y - p_y, 2 * q_z - p_z]
+    cross_i = int(np.cos(int((i_calc % 2) == 0) * np.pi) * i_calc)
+    cross_j = int(np.cos(int((j_calc % 2) == 0) * np.pi) * j_calc)
+    cross_k = int(np.cos(int((k_calc % 2) == 0) * np.pi) * k_calc)
+
+    r_ijk = T_x(cross_i, LL[0]) @ T_y(cross_j, LL[1]) @ T_z(cross_k, LL[2]) @ v_rec
+    I_r = r_ijk[0:3] + LL / 2
+
+    # Vector calculations
+    R_sI_r = x_r - I_s
+    phi_R_sI_r, theta_R_sI_r, r_R_sI_r = cart2sph(R_sI_r[0], R_sI_r[1], R_sI_r[2])
+    theta_R_sI_r = np.pi / 2 - theta_R_sI_r
+
+    R_s_rI = I_r - x_s
+    phi_R_s_rI, theta_R_s_rI, r_R_s_rI = cart2sph(R_s_rI[0], R_s_rI[1], R_s_rI[2])
+    theta_R_s_rI = np.pi / 2 - theta_R_s_rI
+
+    R_r_sI = I_s - x_r
+    phi_R_r_sI, theta_R_r_sI, r_R_r_sI = cart2sph(R_r_sI[0], R_r_sI[1], R_r_sI[2])
+    theta_R_r_sI = np.pi / 2 - theta_R_r_sI
+
+    # Reflection coefficient calculations
+    if RefCoef_angdep_flag == 1:
+        inc_angle_x = np.arccos(np.abs(R_sI_r[0]) / np.linalg.norm(R_sI_r))
+        inc_angle_y = np.arccos(np.abs(R_sI_r[1]) / np.linalg.norm(R_sI_r))
+        inc_angle_z = np.arccos(np.abs(R_sI_r[2]) / np.linalg.norm(R_sI_r))
+        beta_x1 = ref_coef(inc_angle_x, Z_S[0, :])
+        beta_x2 = ref_coef(inc_angle_x, Z_S[1, :])
+        beta_y1 = ref_coef(inc_angle_y, Z_S[2, :])
+        beta_y2 = ref_coef(inc_angle_y, Z_S[3, :])
+        beta_z1 = ref_coef(inc_angle_z, Z_S[4, :])
+        beta_z2 = ref_coef(inc_angle_z, Z_S[5, :])
+    else:
+        beta_x1 = ref_coef(0, Z_S[0, :])
+        beta_x2 = ref_coef(0, Z_S[1, :])
+        beta_y1 = ref_coef(0, Z_S[2, :])
+        beta_y2 = ref_coef(0, Z_S[3, :])
+        beta_z1 = ref_coef(0, Z_S[4, :])
+        beta_z2 = ref_coef(0, Z_S[5, :])
+
+    atten = (
+        beta_x1 ** np.abs(q_x - p_x)
+        * beta_x2 ** np.abs(q_x)
+        * beta_y1 ** np.abs(q_y - p_y)
+        * beta_y2 ** np.abs(q_y)
+        * beta_z1 ** np.abs(q_z - p_z)
+        * beta_z2 ** np.abs(q_z)
+    )
+
+    return {
+        "A": [q_x, q_y, q_z, p_x, p_y, p_z],
+        "R_sI_r": [phi_R_sI_r, theta_R_sI_r, r_R_sI_r],
+        "R_s_rI": [phi_R_s_rI, theta_R_s_rI, r_R_s_rI],
+        "R_r_sI": [phi_R_r_sI, theta_R_r_sI, r_R_r_sI],
+        "atten": atten,
+    }
+
+
+def process_parity_combination(args):
+    """
+    Process all reflection orders for a single (p_x, p_y, p_z) combination
+    This provides better load balancing than processing individual image sources
+    """
+    (
+        p_x,
+        p_y,
+        p_z,
+        N_o,
+        N_o_ORG,
+        LL,
+        v_rec,
+        x_s,
+        x_r,
+        Z_S,
+        RefCoef_angdep_flag,
+    ) = args
+
+    local_early = {"A": [], "R_sI_r": [], "R_s_rI": [], "R_r_sI": [], "atten": []}
+    local_late = {"A": [], "R_sI_r": [], "R_s_rI": [], "R_r_sI": [], "atten": []}
+
+    for ref_order in range(N_o + 1):
+        for i_abs in range(ref_order + 1):
+            for j_abs in range(ref_order - i_abs + 1):
+                k_abs = ref_order - i_abs - j_abs
+
+                # Generate all sign combinations for i, j, k
+                i_values = [i_abs] if i_abs == 0 else [-i_abs, i_abs]
+                j_values = [j_abs] if j_abs == 0 else [-j_abs, j_abs]
+                k_values = [k_abs] if k_abs == 0 else [-k_abs, k_abs]
+
+                for i in i_values:
+                    for j in j_values:
+                        for k in k_values:
+                            if (
+                                (i + p_x) % 2 == 0
+                                and (j + p_y) % 2 == 0
+                                and (k + p_z) % 2 == 0
+                            ):
+                                q_x = (i + p_x) // 2
+                                q_y = (j + p_y) // 2
+                                q_z = (k + p_z) // 2
+
+                                # Calculate image source (same as before)
+                                result = calculate_single_image_source(
+                                    (
+                                        q_x,
+                                        q_y,
+                                        q_z,
+                                        p_x,
+                                        p_y,
+                                        p_z,
+                                        LL,
+                                        v_rec,
+                                        x_s,
+                                        x_r,
+                                        Z_S,
+                                        RefCoef_angdep_flag,
+                                    )
+                                )
+
+                                if ref_order <= N_o_ORG:
+                                    local_early["A"].append(result["A"])
+                                    local_early["R_sI_r"].append(result["R_sI_r"])
+                                    local_early["R_s_rI"].append(result["R_s_rI"])
+                                    local_early["R_r_sI"].append(result["R_r_sI"])
+                                    local_early["atten"].append(result["atten"])
+                                else:
+                                    local_late["A"].append(result["A"])
+                                    local_late["R_sI_r"].append(result["R_sI_r"])
+                                    local_late["R_s_rI"].append(result["R_s_rI"])
+                                    local_late["R_r_sI"].append(result["R_r_sI"])
+                                    local_late["atten"].append(result["atten"])
+
+    return local_early, local_late
+
+
+def pre_calc_images_src_rec_optimized_parallel(params):
+    """
+    Parallel Version 2: Parallelize by (p_x, p_y, p_z) combinations
+    Better load balancing than V1
+    """
+    if not params["silentMode"]:
+        print("[Calculating] Images and attenuations (PARALLEL OPTIMIZED), ", end="")
+    start = time.perf_counter()
+
+    LL = params["roomSize"]
+    x_r = params["posReceiver"]
+    x_s = params["posSource"]
+    RefCoef_angdep_flag = params["angDepFlag"]
+
+    if RefCoef_angdep_flag == 1:
+        print("using angle-dependent reflection coefficients, ", end="")
+
+    N_o = params["maxReflOrder"]
+    Z_S = params["acousImpend"]
+    N_o_ORG = params["mixEarlyOrder"]
+
+    if N_o < N_o_ORG:
+        N_o_ORG = N_o
+
+    print(f"maxReflectionOrder: {N_o}")
+
+    # Prepare arguments for 8 parallel tasks (one per (p_x, p_y, p_z) combination)
+    room_c = LL / 2
+    x_r_room_c = x_r - room_c
+    v_rec = np.array([x_r_room_c[0], x_r_room_c[1], x_r_room_c[2], 1])
+
+    args_list = []
+    for p_x in range(2):
+        for p_y in range(2):
+            for p_z in range(2):
+                args_list.append(
+                    (
+                        p_x,
+                        p_y,
+                        p_z,
+                        N_o,
+                        N_o_ORG,
+                        LL,
+                        v_rec,
+                        x_s,
+                        x_r,
+                        Z_S,
+                        RefCoef_angdep_flag,
+                    )
+                )
+
+    # Process in parallel
+    print("processing 8 parity combinations in parallel, ", end="")
+    with ProcessPoolExecutor(max_workers=min(8, cpu_count())) as executor:
+        results = list(executor.map(process_parity_combination, args_list))
+
+    # Combine results
+    R_sI_r_all_early = []
+    R_s_rI_all_early = []
+    R_r_sI_all_early = []
+    atten_all_early = []
+    A_early = []
+
+    R_sI_r_all_late = []
+    R_s_rI_all_late = []
+    R_r_sI_all_late = []
+    atten_all_late = []
+    A_late = []
+
+    # total_count = 0
+    for early_result, late_result in results:
+        A_early.extend(early_result["A"])
+        R_sI_r_all_early.extend(early_result["R_sI_r"])
+        R_s_rI_all_early.extend(early_result["R_s_rI"])
+        R_r_sI_all_early.extend(early_result["R_r_sI"])
+        atten_all_early.extend(early_result["atten"])
+
+        A_late.extend(late_result["A"])
+        R_sI_r_all_late.extend(late_result["R_sI_r"])
+        R_s_rI_all_late.extend(late_result["R_s_rI"])
+        R_r_sI_all_late.extend(late_result["R_r_sI"])
+        atten_all_late.extend(late_result["atten"])
+
+    #     total_count += len(early_result["A"]) + len(late_result["A"])
+
+    # print(f"Total number of reflections: {total_count}")
+
+    if params["ifRemoveDirectPath"]:
+        print("Remove the direct path")
+        try:
+            idx = A_early.index([0, 0, 0, 0, 0, 0])
+            R_sI_r_all_early.pop(idx)
+            R_s_rI_all_early.pop(idx)
+            R_r_sI_all_early.pop(idx)
+            atten_all_early.pop(idx)
+            A_early.pop(idx)
+        except ValueError:
+            print("Direct path not found in early reflections")
+
+    images = {
+        "R_sI_r_all_early": R_sI_r_all_early,
+        "R_s_rI_all_early": R_s_rI_all_early,
+        "R_r_sI_all_early": R_r_sI_all_early,
+        "atten_all_early": atten_all_early,
+        "A_early": A_early,
+        "R_sI_r_all_late": R_sI_r_all_late,
+        "R_s_rI_all_late": R_s_rI_all_late,
+        "R_r_sI_all_late": R_r_sI_all_late,
+        "atten_all_late": atten_all_late,
+        "A_late": A_late,
+    }
+
+    end = time.perf_counter()
+    if not params["silentMode"]:
+        minutes, seconds = divmod(end - start, 60)
+        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
+
+    return images
+
+
 def pre_calc_images_src_rec(params):
     # Choose between different versions of calculating reflection paths of a shoebox room
-    return pre_calc_images_src_rec_original(params)
+    # Decides which version to used based on maxReflectionOrder
+    if params["maxReflOrder"] <= 23:
+        return pre_calc_images_src_rec_optimized(params)
+    else:
+        return pre_calc_images_src_rec_optimized_parallel(params)
 
 
 def merge_images(images):
@@ -1249,7 +1839,7 @@ def calc_DEISM_LC_single_reflection_matrix(
 
 
 def ray_run_DEISM_LC_matrix(params, images):
-    """Complete DEISM LC run with memory optimization"""
+    """Complete DEISM LC in matrix form"""
     import gc
 
     start = time.time()

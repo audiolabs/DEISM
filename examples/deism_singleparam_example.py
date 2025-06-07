@@ -1,4 +1,4 @@
-""" 
+"""
 Testing DEISM with single parameter settings
 """
 
@@ -32,6 +32,8 @@ def main():
     if cmdArgs.run or all(
         value in [None, False] for value in vars(cmdArgs).values()
     ):  # no input in cmd will also run
+        # Detect conflicts between the parameters
+        detect_conflicts(params)
         # Initialize directivities
         params = init_receiver_directivities(params)
         params = init_source_directivities(params)

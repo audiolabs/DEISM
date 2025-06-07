@@ -1,7 +1,7 @@
 """
-Recreating the results of Figure 9 from the following journal paper: 
-Zeyu Xu, Adrian Herzog, Alexander Lodermeyer, Emanuël A. P. Habets, Albert G. Prinn; 
-Simulating room transfer functions between transducers mounted on audio devices using a modified image source method. 
+Recreating the results of Figure 9 from the following journal paper:
+Zeyu Xu, Adrian Herzog, Alexander Lodermeyer, Emanuël A. P. Habets, Albert G. Prinn;
+Simulating room transfer functions between transducers mounted on audio devices using a modified image source method.
 J. Acoust. Soc. Am. 1 January 2024; 155 (1): 343–357. https://doi.org/10.1121/10.0023935
 In figure 9, the following scnenarios are simulated:
 1. The source and the receiver are the same loudspeaker
@@ -11,6 +11,7 @@ For three shapes with the same position configuration 3, the following solutions
 2. DEISM-LC
 3. FEM
 Note that the direct path is simulated using the FEM method.
+Also notice that the frequencies are from 20 Hz to 1000 Hz, you probably need to confirm this range in the configSingleParam.yaml file
 """
 
 # -------------------------------------------------------
@@ -48,8 +49,10 @@ def init_parameters(params):
     # Radius of the spheres in meters
     params["radiusSource"] = 0.4
     params["radiusReceiver"] = 0.5
+    # sph harmonic orders
+    params["nSourceOrder"] = 5
+    params["vReceiverOrder"] = 5
     # Directivity profiles of the source and receiver
-
     return params
 
 
@@ -386,22 +389,33 @@ def plot_shifted_Phases(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
 def main():
     # Load the default parameters from the configSingleParam.yaml file
     params, cmdArgs = cmdArgsToDict()
-    # Initialize the parameters related to fig. 8
+    # Initialize the parameters related to fig. 9
     params = init_parameters(params)
+    # detect conflicts
+    detect_conflicts(params)
+
     if cmdArgs.quiet:
         params["silentMode"] = 1
     printDict(params)
     # -------------------------------------------------------
     # Run for shared calculation among different shapes
     # -------------------------------------------------------
-    Wigner = pre_calc_Wigner(params)
-    params["ifRemoveDirectPath"] = 1
+
     # -------------------------------------------------------
     # Run for Spherical shape
     # -------------------------------------------------------
     # Define the directivity profiles of the source and receiver
     params["sourceType"] = "Speaker_sph_cyldriver_source"
     params["receiverType"] = "Speaker_sph_cyldriver_receiver"
+    # Update the sph harmonic orders
+    params["nSourceOrder"] = 5
+    params["vReceiverOrder"] = 5
+    # Update the rest parameters
+    params["ifReceiverNormalize"] = 1
+    params = compute_rest_params(params)
+    # Precompute Wigner 3J matrices
+    Wigner = pre_calc_Wigner(params)
+    params["ifRemoveDirectPath"] = 1
     # Initialize directivities
     params = init_receiver_directivities(params)
     params = init_source_directivities(params)
@@ -421,7 +435,7 @@ def main():
     # Run DEISM-ORG
     P_DEISM_Sph = ray_run_DEISM(params, images, Wigner)
     # Run DEISM-LC
-    P_DEISM_LC_Sph = ray_run_DEISM_LC(params, images)
+    P_DEISM_LC_Sph = ray_run_DEISM_LC_matrix(params, images)
     # Load direct path
     freqs_FEM, P_direct, mic_pos = load_directpath_pressure(
         params["silentMode"], "Speaker_sph_cyldriver_directpath"
@@ -458,7 +472,7 @@ def main():
     # Run DEISM-ORG
     P_DEISM_Cuboid = ray_run_DEISM(params, images, Wigner)
     # Run DEISM-LC
-    P_DEISM_LC_Cuboid = ray_run_DEISM_LC(params, images)
+    P_DEISM_LC_Cuboid = ray_run_DEISM_LC_matrix(params, images)
     # Load direct path
     freqs_FEM, P_direct, mic_pos = load_directpath_pressure(
         params["silentMode"], "Speaker_cuboid_cyldriver_directpath"
@@ -495,7 +509,7 @@ def main():
     # Run DEISM-ORG
     P_DEISM_Cyl = ray_run_DEISM(params, images, Wigner)
     # Run DEISM-LC
-    P_DEISM_LC_Cyl = ray_run_DEISM_LC(params, images)
+    P_DEISM_LC_Cyl = ray_run_DEISM_LC_matrix(params, images)
     # Shut down Ray
     ray.shutdown()
     # Load direct path

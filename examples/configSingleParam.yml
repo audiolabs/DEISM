@@ -30,8 +30,8 @@ Reflections:
   # 2. AcoustImpendence: [18, 20, 8, 5, 30, 19] # Different values for 6 walls, no frequency-dependency
   # 3. AcoustImpendence: "imp_1" # A name for a impedance profile to load, used for all 6 walls
   # 4. AcoustImpendence: ["imp_1", "imp_1", "imp_2", "imp_3", "imp_5", "imp_6"] # Different loaded profiles for different walls
-  maxReflectionOrder: 50
-  RIRLength: 1.5 # in seconds
+  maxReflectionOrder: 25
+  RIRLength: 0.3 # in seconds
 
 # Simulation parameters # 
 # 4. positions of sound source and receiver in 3-dimensional Cartesian coordinate
@@ -53,10 +53,10 @@ Positions:
 # 5. frequency terms
 Frequencies:
   # unit of frequency(Hz)
-  startFrequency: 2
-  endFrequency: 22050
+  startFrequency: 20
+  endFrequency: 1000
   frequencyStep: 2
-  samplingRate: 44100
+  samplingRate: 2000
 
 # Directivity parameters #
 # 5. maximal spherical harmonic directivity order

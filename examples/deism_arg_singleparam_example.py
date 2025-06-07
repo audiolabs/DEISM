@@ -1,5 +1,5 @@
 """
-An example of running DEISM-ARG with a single parameter set, 
+An example of running DEISM-ARG with a single parameter set,
 the parameters are defined in the configSingleParam_ARG.yaml file.
 You can also set the parameters and run the codes via the command line.
 """
@@ -28,11 +28,12 @@ from deism.core_deism_arg import (
 from deism.data_loader import (
     cmdArgsToDict_ARG,
     printDict,
+    detect_conflicts,
 )
 from deism.utilities import plot_RTFs
 
 
-def init_parameters(params):
+def init_parameters_convex(params):
     """
     Initialize some important additional parameters for DEISM-ARG
     In addition to the ones defined in configSingleParam_ARG.yaml
@@ -61,6 +62,7 @@ def init_parameters(params):
     room_rotation = np.array([90, 90, 90])  # [alpha, beta, gamma] in degrees
     # --- Add the above parameters to the params dictionary ---
     params["vertices"] = vertices
+    params["wallCenters"] = find_wall_centers(vertices)
     params["if_rotate_room"] = if_rotate_room
     params["room_rotation"] = room_rotation
     # Apply room rotation to the room vertices and source/receiver positions
@@ -74,7 +76,9 @@ def main():
     params, cmdArgs = cmdArgsToDict_ARG("configSingleParam_arg.yml")
     # Initialize some additional parameters for DEISM-ARG
     # For example, room vertices, room rotation, etc.
-    params = init_parameters(params)
+    params = init_parameters_convex(params)
+    # detect conflicts
+    detect_conflicts(params)
     # print the parameters or not
     if cmdArgs.quiet:
         params["silentMode"] = 1

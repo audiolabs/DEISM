@@ -1,5 +1,5 @@
 """
-Comparing the image generation process using: 
+Comparing the image generation process using:
 1. pyroomacoustics
 2. deism-arg (c++)
 We compare the two methods by comparing
@@ -31,6 +31,7 @@ from deism.core_deism_arg import (
 from deism.data_loader import (
     cmdArgsToDict_ARG,
     printDict,
+    detect_conflicts,
 )
 
 
@@ -111,6 +112,8 @@ def init_parameters_convex(params):
 def main():
     params, cmdArgs = cmdArgsToDict_ARG("configSingleParam_arg.yml")
     params = init_parameters_convex(params)
+    # detect conflicts
+    detect_conflicts(params)
     # print the parameters or not
     if cmdArgs.quiet:
         params["silentMode"] = 1

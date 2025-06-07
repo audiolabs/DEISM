@@ -28,6 +28,7 @@ from deism.core_deism_arg import (
 from deism.data_loader import (
     cmdArgsToDict_ARG,
     printDict,
+    detect_conflicts,
 )
 from deism.utilities import plot_RTFs
 
@@ -93,6 +94,8 @@ def init_parameters_convex(params):
 def main():
     params, cmdArgs = cmdArgsToDict_ARG("configSingleParam_arg.yml")
     params = init_parameters_convex(params)
+    # detect conflicts
+    detect_conflicts(params)
     # print the parameters or not
     if cmdArgs.quiet:
         params["silentMode"] = 1

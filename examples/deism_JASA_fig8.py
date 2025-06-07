@@ -1,7 +1,7 @@
 """
-Recreating the results of Figure 8 from the following journal paper: 
-Zeyu Xu, Adrian Herzog, Alexander Lodermeyer, Emanuël A. P. Habets, Albert G. Prinn; 
-Simulating room transfer functions between transducers mounted on audio devices using a modified image source method. 
+Recreating the results of Figure 8 from the following journal paper:
+Zeyu Xu, Adrian Herzog, Alexander Lodermeyer, Emanuël A. P. Habets, Albert G. Prinn;
+Simulating room transfer functions between transducers mounted on audio devices using a modified image source method.
 J. Acoust. Soc. Am. 1 January 2024; 155 (1): 343–357. https://doi.org/10.1121/10.0023935
 In figure 8, the Sound pressure levels and phase responses are shown for the following scenarios:
 1. Small spherical loudspeakers
@@ -12,6 +12,7 @@ For three position configurations, the following solutions are shown:
 3. FEM
 Note that in configuration 3, the source and receiver are placed on the same loudspeaker.
 Running this script may take around 5 minutes.
+Also notice that the frequencies are from 20 Hz to 1000 Hz, you probably need to confirm this range in the configSingleParam.yaml file
 """
 
 # -------------------------------------------------------
@@ -75,6 +76,9 @@ def init_parameters(params):
     # Radius of the spheres in meters
     params["radiusSource"] = 0.2
     params["radiusReceiver"] = 0.25
+    # sph harmonic orders
+    params["nSourceOrder"] = 5
+    params["vReceiverOrder"] = 5
     # Directivity profiles of the source and receiver
     params["sourceType"] = "Speaker_small_sph_cyldriver_source"
     params["receiverType"] = "Speaker_small_sph_cyldriver_receiver"
@@ -447,6 +451,8 @@ def main():
     params, cmdArgs = cmdArgsToDict()
     # Initialize the parameters related to fig. 8
     params = init_parameters(params)
+    # detect conflicts
+    detect_conflicts(params)
     if cmdArgs.quiet:
         params["silentMode"] = 1
     printDict(params)
@@ -481,7 +487,7 @@ def main():
     # Run DEISM-ORG
     P_DEISM_config1 = ray_run_DEISM(params, images, Wigner)
     # Run DEISM-LC
-    P_DEISM_LC_config1 = ray_run_DEISM_LC(params, images)
+    P_DEISM_LC_config1 = ray_run_DEISM_LC_matrix(params, images)
     # -------------------------------------
     # Configuration 2: source and receiver closer
     # Define positions, orientations for the source and receiver
@@ -495,7 +501,7 @@ def main():
     # Run DEISM-ORG
     P_DEISM_config2 = ray_run_DEISM(params, images, Wigner)
     # Run DEISM-LC
-    P_DEISM_LC_config2 = ray_run_DEISM_LC(params, images)
+    P_DEISM_LC_config2 = ray_run_DEISM_LC_matrix(params, images)
     # -------------------------------------
     # Configuration 3: source and receiver on the same loudspeaker
     # Define positions, orientations for the source and receiver
@@ -510,7 +516,7 @@ def main():
     # Run DEISM-ORG
     P_DEISM_config3 = ray_run_DEISM(params, images, Wigner)
     # Run DEISM-LC
-    P_DEISM_LC_config3 = ray_run_DEISM_LC(params, images)
+    P_DEISM_LC_config3 = ray_run_DEISM_LC_matrix(params, images)
     # Shut down ray
     ray.shutdown()
     # Load direct path from FEM

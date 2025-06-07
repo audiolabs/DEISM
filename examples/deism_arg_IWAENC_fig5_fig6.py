@@ -50,6 +50,8 @@ def init_parameters_fig5(params):
     # Source and receiver directivity profiles
     params["sourceType"] = "Speaker_small_sph_cyldriver_source"
     params["receiverType"] = "Speaker_small_sph_cyldriver_receiver"
+    # Compute the rest of the parameters
+    params = compute_rest_params(params)
     return params
 
 
@@ -122,7 +124,7 @@ def plot_DEISM_ARG_FEM(P_DEISM_ARG, P_FEM, freqs, save_path, fig_name):
 
 def main():
     # Choose plot figure 5 or 6
-    fig = "fig5"  # "fig5" or "fig6"
+    fig = "fig6"  # "fig5" or "fig6"
     # Load the parameters from the configSingleParam_ARG.yaml file amd command line
     params, cmdArgs = cmdArgsToDict_ARG("configSingleParam_arg.yml")
     # Initialize some additional parameters for DEISM-ARG
@@ -133,6 +135,8 @@ def main():
         params = init_parameters_fig6(
             params
         )  # init_parameters_fig5 or init_parameters_fig6
+    # detect conflicts
+    detect_conflicts(params)
     # print the parameters or not
     if cmdArgs.quiet:
         params["silentMode"] = 1

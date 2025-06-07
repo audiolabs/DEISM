@@ -10,13 +10,6 @@ def compute_rest_params(params):
     """
     Compute the rest of the parameters based on the initialized parameters.
     """
-    # If monopole is used, set spherical harmonic order to 0 for source and receiver
-    if params["sourceType"] == "monopole":
-        params["nSourceOrder"] = 0
-    if params["receiverType"] == "monopole":
-        params["vReceiverOrder"] = 0
-        params["ifReceiverNormalize"] = 0
-
     params["nSamples"] = int(params["sampleRate"] * params["RIRLength"])
     params["freqs"] = np.arange(
         params["startFreq"], params["endFreq"] + params["freqStep"], params["freqStep"]
@@ -57,10 +50,10 @@ def compute_rest_params(params):
             * params["qFlowStrength"]
         )  # point source strength compensation
 
-    cTs = params["soundSpeed"] / params["sampleRate"]
+    params["cTs"] = params["soundSpeed"] / params["sampleRate"]
     try:
         # In case of empty roomSize, use "try" to avoid error !!!
-        L = params["roomSize"] / cTs
+        L = params["roomSize"] / params["cTs"]
         params["n1"], params["n2"], params["n3"] = np.ceil(
             params["nSamples"] / (2 * L)
         ).astype(int)
@@ -68,6 +61,74 @@ def compute_rest_params(params):
         pass
 
     return params
+
+
+def detect_conflicts(params):
+    """
+    This function detects conflicts between the parameters, you don't have to use it
+    But you can place it after you initialize all the parameters before you run the any functional algorithms including:
+    - pre_calc_images_src_rec
+    - run_DEISM
+    - pre_calc_Wigner
+    - init_source_directivity
+    - init_receiver_directivity
+    - And also the other functions used in DEISM-ARG
+    """
+    # If monopole is used, set spherical harmonic order to 0 for source and receiver
+    if params["sourceType"] == "monopole":
+        params["nSourceOrder"] = 0
+    if params["receiverType"] == "monopole":
+        params["vReceiverOrder"] = 0
+        params["ifReceiverNormalize"] = 0
+    # If not monopole, raise a warning if the spherical harmonic order is also 0
+    if params["sourceType"] != "monopole" and params["nSourceOrder"] == 0:
+        print(
+            "[Warning] Spherical harmonic order is set to 0 for source, but source type is not monopole! \n"
+        )
+    if params["receiverType"] != "monopole" and params["vReceiverOrder"] == 0:
+        print(
+            "[Warning] Spherical harmonic order is set to 0 for receiver, but receiver type is not monopole! \n"
+        )
+    if params["receiverType"] != "monopole" and params["ifReceiverNormalize"] == 0:
+        print(
+            "[Warning] Receiver normalization is set to 0 for non-monopole receiver, make sure you know what you are doing! \n"
+        )
+    # If either source or receiver is not monopole, check the distance between source and receiver such that
+    # The distance is larger than the radius of the source or receiver
+    if params["sourceType"] != "monopole":
+        if params["radiusSource"] is None:
+            raise ValueError("Source radius is not set for non-monopole source")
+        # If distance between source and receiver is smaller than the source radius, raise a warning
+        if (
+            np.linalg.norm(params["posSource"] - params["posReceiver"])
+            < params["radiusSource"]
+        ):
+            print(
+                "[Warning] Distance between source and receiver is smaller than the source radius! \n"
+            )
+    if params["receiverType"] != "monopole":
+        if params["radiusReceiver"] is None:
+            raise ValueError("Receiver radius is not set for non-monopole receiver")
+        # If distance between source and receiver is smaller than the receiver radius, raise a warning
+        if (
+            np.linalg.norm(params["posSource"] - params["posReceiver"])
+            < params["radiusReceiver"]
+        ):
+            print(
+                "[Warning] Distance between source and receiver is smaller than the receiver radius! \n"
+            )
+    # If both source and receiver are not monopole, check the distance between source and receiver such that
+    # The distance is larger than the radius of the source and receiver
+    if params["sourceType"] != "monopole" and params["receiverType"] != "monopole":
+        if (
+            np.linalg.norm(params["posSource"] - params["posReceiver"])
+            < params["radiusSource"] + params["radiusReceiver"]
+        ):
+            print(
+                "[Warning] Distance between source and receiver is smaller than the sum of the source and receiver radius! \n"
+            )
+
+    # To be continued...
 
 
 def readYaml(filePath):
@@ -519,7 +580,7 @@ def loadSingleParam(configs, args):
     params["qFlowStrength"] = args.q or configs["DEISM_specs"]["QFlowStrength"]
     params["silentMode"] = args.quiet or configs["SilentMode"]
     # variables computed according to the above parameters
-    params = compute_rest_params(params)
+    # params = compute_rest_params(params)
     return params
 
 
@@ -545,6 +606,7 @@ def printDict(dict):
             "posReceivers",
             "orientSources",
             "orientReceivers",
+            "cTs",
         ]
         # If the source is monopole, remove radiusSource
         if dict["sourceType"] == "monopole":
@@ -650,6 +712,8 @@ def cmdArgsToDict(yamlFilePath="configSingleParam.yml"):
     cmdArgs = parseCmdArgs()
     # replace the corresponding variables in configsInYaml with the values entered from the command line
     params = loadSingleParam(configsInYaml, cmdArgs)
+    # Compute the rest of the parameters
+    params = compute_rest_params(params)
 
     return params, cmdArgs
 
@@ -667,6 +731,8 @@ def cmdArgsToDict_ARG(yamlFilePath="configSingleParam_arg.yml"):
     cmdArgs = parseCmdArgs_ARG()
     # replace the corresponding variables in configsInYaml with the values entered from the command line
     params = loadSingleParam(configsInYaml, cmdArgs)
+    # Compute the rest of the parameters
+    params = compute_rest_params(params)
 
     return params, cmdArgs
 

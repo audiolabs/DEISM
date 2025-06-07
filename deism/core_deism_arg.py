@@ -1108,7 +1108,7 @@ def find_wall_centers(vertices, *choose_wall_centers):
                 if np.linalg.norm(face_points.mean(axis=0) - wall_center) < 0.0001:
                     wall_centers.append(np.mean(face_points, axis=0))
                     print("Selected wall with center {}".format(wall_center))
-    return wall_centers
+    return np.array(wall_centers)
 
 
 def get_R_sI_to_r_from_room(receiver, sources):
