@@ -17,7 +17,7 @@ Reflections:
   # input:
   # 1. AcoustImpendence: 18+0j # A single value for 6 walls, no frequency-dependency
   maxReflectionOrder: 3 # maximal reflection order
-  reverberationTime: 1 # in seconds
+  RIRLength: 1 # in seconds
 
 # Simulation parameters # 
 # 4. positions of sound source and receiver in 3-dimensional Cartesian coordinate

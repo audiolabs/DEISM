@@ -706,7 +706,7 @@ def ref_coef(theta, zeta):
     return (zeta * np.cos(theta) - 1) / (zeta * np.cos(theta) + 1)
 
 
-def pre_calc_images_src_rec(params):
+def pre_calc_images_src_rec_original(params):
     """Calculate images, reflection paths, and attenuation due to reflections"""
     if not params["silentMode"]:
         print("[Calculating] Images and attenuations, ", end="")
@@ -752,6 +752,8 @@ def pre_calc_images_src_rec(params):
     x_r_room_c = x_r - room_c
     # v_src = np.array([x_s_room_c[0], x_s_room_c[1], x_s_room_c[2], 1])
     v_rec = np.array([x_r_room_c[0], x_r_room_c[1], x_r_room_c[2], 1])
+    # count the total time in the loop after the if condition
+    count = 0
     for q_x in range(-n1, n1 + 1):
         for q_y in range(-n2, n2 + 1):
             for q_z in range(-n3, n3 + 1):
@@ -764,6 +766,7 @@ def pre_calc_images_src_rec(params):
                                 + np.abs(2 * q_z - p_z)
                             )
                             if ref_order <= N_o or N_o == -1:
+                                count += 1
                                 R_q = np.array(
                                     [
                                         2 * q_x * LL[0],
@@ -771,17 +774,6 @@ def pre_calc_images_src_rec(params):
                                         2 * q_z * LL[2],
                                     ]
                                 )
-                                # Center point of the room
-                                R_p_c = np.array(
-                                    [
-                                        x_c[0] - 2 * p_x * x_c[0],
-                                        x_c[1] - 2 * p_y * x_c[1],
-                                        x_c[2] - 2 * p_z * x_c[2],
-                                    ]
-                                )
-                                I_c = R_p_c + R_q
-                                # I_c_all.append(I_c)
-
                                 # Source images
                                 R_p_s = np.array(
                                     [
@@ -898,6 +890,7 @@ def pre_calc_images_src_rec(params):
                                         [phi_R_r_sI, theta_R_r_sI, r_R_r_sI]
                                     )
                                     atten_all_late.append(atten)
+    print(f"Total number of reflections: {count}")
     if params["ifRemoveDirectPath"]:
         print("Remove the direct path")
         # find the direct path index, which is the one with q_x=q_y=q_z=p_x=p_y=p_z=0
@@ -927,6 +920,11 @@ def pre_calc_images_src_rec(params):
         minutes, seconds = divmod(end - start, 60)
         print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
     return images
+
+
+def pre_calc_images_src_rec(params):
+    # Choose between different versions of calculating reflection paths of a shoebox room
+    return pre_calc_images_src_rec_original(params)
 
 
 def merge_images(images):
@@ -1053,6 +1051,8 @@ def calc_DEISM_ORG_single_reflection(
 
 def ray_run_DEISM(params, images, Wigner):
     """Complete DEISM run"""
+    import gc
+
     if not params["silentMode"]:
         print("[Calculating] DEISM Original ... ", end="")
     start = time.time()
@@ -1104,6 +1104,12 @@ def ray_run_DEISM(params, images, Wigner):
             )
         results = ray.get(result_refs)
         P_DEISM += sum(results)
+        del result_refs
+        del results
+        gc.collect()
+    # Final cleanup
+    del N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id, k_id
+    gc.collect()
     if not params["silentMode"]:
         minutes, seconds = divmod(time.time() - start, 60)
         print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
@@ -1142,6 +1148,8 @@ def calc_DEISM_LC_single_reflection(
 
 def ray_run_DEISM_LC(params, images):
     """Complete DEISM LC run"""
+    import gc
+
     start = time.time()
     if not params["silentMode"]:
         print("[Calculating] DEISM LC ... ", end="")
@@ -1190,6 +1198,12 @@ def ray_run_DEISM_LC(params, images):
             )
         results = ray.get(result_refs)
         P_DEISM += sum(results)
+        del result_refs
+        del results
+        gc.collect()
+    # Final cleanup
+    del N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id, k_id
+    gc.collect()
     if not params["silentMode"]:
         minutes, seconds = divmod(time.time() - start, 60)
         print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
@@ -1235,10 +1249,13 @@ def calc_DEISM_LC_single_reflection_matrix(
 
 
 def ray_run_DEISM_LC_matrix(params, images):
-    """Complete DEISM LC run"""
+    """Complete DEISM LC run with memory optimization"""
+    import gc
+
     start = time.time()
     if not params["silentMode"]:
         print("[Calculating] DEISM LC vectorized ... ", end="")
+
     k = params["waveNumbers"]
     n_all = params["n_all"]
     m_all = params["m_all"]
@@ -1250,7 +1267,8 @@ def ray_run_DEISM_LC_matrix(params, images):
     atten_all = images["atten_all"]
     R_s_rI_all = images["R_s_rI_all"]
     R_r_sI_all = images["R_r_sI_all"]
-    # S = 1j * params["k"] * params["c"] * params["rho0"] * params["Q"]
+
+    # Ray object store setup
     n_all_id = ray.put(n_all)
     m_all_id = ray.put(m_all)
     v_all_id = ray.put(v_all)
@@ -1258,19 +1276,25 @@ def ray_run_DEISM_LC_matrix(params, images):
     C_nm_s_vec_id = ray.put(C_nm_s_vec)
     C_vu_r_vec_id = ray.put(C_vu_r_vec)
     k_id = ray.put(k)
+
     P_DEISM = np.zeros(k.size, dtype="complex")
-    # You can specify the batch size for better dynamic management of RAM
     n_images = len(A)
     batch_size = params["numParaImages"]
+
     if not params["silentMode"]:
         print("{} images, ".format(n_images), end="")
+
+    # 🟢 MEMORY-OPTIMIZED BATCH PROCESSING
     for n in range(int(n_images / batch_size) + 1):
-        # Run each image in parallel within each batch
         start_ind = n * batch_size
         end_ind = (n + 1) * batch_size
         if end_ind > n_images:
             end_ind = n_images
-        # print(start_ind,end_ind)
+
+        if start_ind >= end_ind:  # Skip empty batches
+            continue
+
+        # Submit batch of tasks
         result_refs = []
         for i in range(start_ind, end_ind):
             result_refs.append(
@@ -1287,11 +1311,30 @@ def ray_run_DEISM_LC_matrix(params, images):
                     k_id,
                 )
             )
+
+        # Get results
         results = ray.get(result_refs)
         P_DEISM += sum(results)
+
+        # 🟢 EXPLICIT MEMORY CLEANUP
+        # Clear Ray task references
+        del result_refs
+        # Clear results from local memory
+        del results
+        # Force garbage collection
+        gc.collect()
+
+    # 🟢 FINAL CLEANUP: Remove Ray objects
+    del n_all_id, m_all_id, v_all_id, u_all_id, C_nm_s_vec_id, C_vu_r_vec_id, k_id
+    gc.collect()
+
     if not params["silentMode"]:
         minutes, seconds = divmod(time.time() - start, 60)
-        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
+        print(
+            f"Done! [{minutes} minutes, {seconds:.1f} seconds]",
+            end="\n\n",
+        )
+
     return P_DEISM
 
 
@@ -1301,6 +1344,8 @@ def ray_run_DEISM_MIX(params, images, Wigner):
     Early reflections are calculation using the original DEISM method
     Higher order reflections are calculated using the LC method in vectorized form
     """
+    import gc
+
     start = time.time()
     if not params["silentMode"]:
         print("[Calculating] DEISM MIX ... ", end="")
@@ -1376,6 +1421,8 @@ def ray_run_DEISM_MIX(params, images, Wigner):
     # Wait for the results and sum them up
     results = ray.get(result_refs)
     P_DEISM += sum(results)
+    del result_refs
+    gc.collect()
     # For late reflections
     for n in range(int(len(A_late) / batch_size) + 1):
         # Run each image in parallel within each batch
@@ -1403,6 +1450,13 @@ def ray_run_DEISM_MIX(params, images, Wigner):
         # Wait for the results and sum them up
         results = ray.get(result_refs)
         P_DEISM += sum(results)
+        del result_refs
+        del results
+        gc.collect()
+    # Final cleanup
+    del W_1_all_id, W_2_all_id, N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id
+    del n_all_id, m_all_id, v_all_id, u_all_id, C_nm_s_vec_id, C_vu_r_vec_id, k_id
+    gc.collect()
 
     if not params["silentMode"]:
         minutes, seconds = divmod(time.time() - start, 60)
@@ -1420,7 +1474,7 @@ def run_DEISM(params):
         P = ray_run_DEISM(params, params["images"], params["Wigner"])
     elif params["DEISM_mode"] == "LC":
         # Run DEISM-LC
-        P = ray_run_DEISM_LC(params, params["images"])
+        P = ray_run_DEISM_LC_matrix(params, params["images"])
     elif params["DEISM_mode"] == "MIX":
         # Run DEISM-MIX
         P = ray_run_DEISM_MIX(params, params["images"], params["Wigner"])
@@ -1506,6 +1560,8 @@ def ray_run_DEISM_ARG_ORG(params, images, Wigner):
     Wigner: Wigner 3J matrices
     """
     # -------------------------------
+    import gc
+
     start = time.time()
     if not params["silentMode"]:
         print("[Calculating] DEISM-ARG Original ... ", end="")
@@ -1565,6 +1621,12 @@ def ray_run_DEISM_ARG_ORG(params, images, Wigner):
             )
         results = ray.get(result_refs)
         P_DEISM_ARG += sum(results)
+        del result_refs
+        del results
+        gc.collect()
+    # Final cleanup
+    del W_1_all_id, W_2_all_id, N_src_dir_id, V_rec_dir_id, C_vu_r_id, k_id
+    gc.collect()
     if not params["silentMode"]:
         minutes, seconds = divmod(time.time() - start, 60)
         print(f"Done! [{minutes} minutes, {seconds:.3f} seconds]", end="\n\n")
@@ -1621,6 +1683,8 @@ def calc_DEISM_ARG_LC_single_reflection_matrix(
 
 def ray_run_DEISM_ARG_LC_matrix(params, images):
     """Complete DEISM LC run"""
+    import gc
+
     start = time.time()
     if not params["silentMode"]:
         print("[Calculating] DEISM-ARG LC vectorized ... ", end="")
@@ -1677,6 +1741,12 @@ def ray_run_DEISM_ARG_LC_matrix(params, images):
             )
         results = ray.get(result_refs)
         P_DEISM_ARG_LC += sum(results)
+        del result_refs
+        del results
+        gc.collect()
+    # Final cleanup
+    del n_all_id, m_all_id, v_all_id, u_all_id, C_vu_r_vec_id, k_id
+    gc.collect()
     # bar.close.remote()  # close progress bar
     if not params["silentMode"]:
         minutes, seconds = divmod(time.time() - start, 60)
@@ -1691,6 +1761,8 @@ def ray_run_DEISM_ARG_MIX(params, images, Wigner):
     Early reflections are calculation using the original DEISM-ARG method
     Higher order reflections are calculated using the LC method in vectorized form
     """
+    import gc
+
     # Start initialization
     start = time.time()
     if not params["silentMode"]:
@@ -1764,6 +1836,9 @@ def ray_run_DEISM_ARG_MIX(params, images, Wigner):
     # Wait for the results and sum them up
     results = ray.get(result_refs)
     P_DEISM_ARG += sum(results)
+    del result_refs
+    del results
+    gc.collect()
     len_late_indices = len(late_indices)
     for n in range(int(len_late_indices / batch_size) + 1):
         # Run each image in parallel within each batch
@@ -1791,6 +1866,12 @@ def ray_run_DEISM_ARG_MIX(params, images, Wigner):
         # Wait for the results and sum them up
         results = ray.get(result_refs)
         P_DEISM_ARG += sum(results)
+        del result_refs
+        del results
+        gc.collect()
+    # Final cleanup
+    del W_1_all_id, W_2_all_id, N_src_dir_id, V_rec_dir_id, C_vu_r_id, k_id
+    gc.collect()
     if not params["silentMode"]:
         # Total time used
         minutes = int((time.time() - start) // 60)

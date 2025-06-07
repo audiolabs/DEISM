@@ -17,7 +17,7 @@ def compute_rest_params(params):
         params["vReceiverOrder"] = 0
         params["ifReceiverNormalize"] = 0
 
-    params["nSamples"] = int(params["sampleRate"] * params["rt60"])
+    params["nSamples"] = int(params["sampleRate"] * params["RIRLength"])
     params["freqs"] = np.arange(
         params["startFreq"], params["endFreq"] + params["freqStep"], params["freqStep"]
     )
@@ -191,7 +191,7 @@ def parseCmdArgs():
     parse.add_argument("-fstep", help="frequence step size(Hz)", type=float)
     parse.add_argument("-fmax", help="stop frequency(Hz)", type=float)
     parse.add_argument("-fs", help="sampling rate", type=int)
-    parse.add_argument("-t60", help="Reverberation time", type=float)
+    parse.add_argument("-rirlen", help="RIR length (sec)", type=float)
     # -------------------Directivity parameters-------------------
     # Source and receiver directivities types
     parse.add_argument("-srctype", help="source type, string", type=str)
@@ -334,7 +334,7 @@ def parseCmdArgs_ARG():
     parse.add_argument("-fstep", help="frequence step size(Hz)", type=float)
     parse.add_argument("-fmax", help="stop frequency(Hz)", type=float)
     parse.add_argument("-fs", help="sampling rate", type=int)
-    parse.add_argument("-t60", help="Reverberation time", type=float)
+    parse.add_argument("-rirlen", help="RIR length (sec)", type=float)
     # -------------------Directivity parameters-------------------
     # Source and receiver directivities types
     parse.add_argument("-srctype", help="source type, string", type=str)
@@ -471,7 +471,7 @@ def loadSingleParam(configs, args):
     #     if args.adrc is not None
     #     else configs["Reflections"]["angleDependentFlag"]
     # )
-    params["rt60"] = args.t60 or configs["Reflections"]["reverberationTime"]
+    params["RIRLength"] = args.rirlen or configs["Reflections"]["RIRLength"]
     # positions of the source and receiver
     params["posSource"] = np.array(
         args.xs or list(configs["Positions"]["source"].values())
@@ -546,6 +546,12 @@ def printDict(dict):
             "orientSources",
             "orientReceivers",
         ]
+        # If the source is monopole, remove radiusSource
+        if dict["sourceType"] == "monopole":
+            excludeKeys.append("radiusSource")
+        # If the receiver is monopole, remove radiusReceiver
+        if dict["receiverType"] == "monopole":
+            excludeKeys.append("radiusReceiver")
         for key in excludeKeys:
             if key in dict1.keys():
                 dict1.pop(key)

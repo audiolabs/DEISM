@@ -74,6 +74,7 @@ def plot_RTFs(
     # Now use a few colors to plot the RTFs, black, gray, lightgray
     colors = ["gray", "black", "lightgray", "red"]
     linestypes = ["-", "-", "-.", "-"]
+    linewidths = [6, 3, 3, 3]
     # Initialize the SPL arrays for each RTF
     plot_mag_all = []
     for i in range(len(P_all)):
@@ -103,7 +104,7 @@ def plot_RTFs(
             label=P_labels[i],
             color=colors[i],
             linestyle=linestypes[i],
-            linewidth=3,
+            linewidth=linewidths[i],
         )
     ax.set_xlim([P_freqs[i][0], P_freqs[i][-1]])
     ax.set_xlabel(r"\bf{Frequency (Hz)}")
@@ -147,7 +148,7 @@ def plot_RTFs(
                 label=P_labels[i],
                 color=colors[i],
                 linestyle=linestypes[i],
-                linewidth=3,
+                linewidth=linewidths[i],
             )
     else:
         for i in range(len(P_all)):
@@ -157,7 +158,7 @@ def plot_RTFs(
                 label=P_labels[i],
                 color=colors[i],
                 linestyle=linestypes[i],
-                linewidth=3,
+                linewidth=linewidths[i],
             )
     ax.set_xlim([P_freqs[i][0], P_freqs[i][-1]])
     ax.set_xlabel(r"\bf{Frequency (Hz)}")

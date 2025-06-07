@@ -28,7 +28,7 @@ def initialize_params():
         "angDepFlag": 1,  # 1: angle-dependent reflection coefficient, 0: angle-independent reflection coefficient
         # ---------- simulation parameter ----------------
         "sampleRate": 2000,  # Sampling rate
-        "rt60": 0.3,  # this value should be calculated based on the room size and absorption coefficients !!!
+        "RIRLength": 0.3,  # this value should be calculated based on the room size and absorption coefficients !!!
         "startFreq": 20,  # start frequency
         "freqStep": 2,  # frequency step size
         "endFreq": 1000,  # stop frequency
