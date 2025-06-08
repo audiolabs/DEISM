@@ -6,20 +6,30 @@ This section describes the typical workflows for using DEISM in different scenar
 DEISM-ARG (Arbitrary Room Geometry)
 ------------------------------------
 
-DEISM-ARG is used for complex room shapes and supports convex geometries beyond simple shoebox rooms.
+DEISM-ARG is used for complex room shapes and supports convex geometries beyond simple shoebox rooms. 
+Related examples with ``deism_arg`` in the names are located in the ``examples/`` directory:
+
+- ``deism_arg_IWAENC_fig5_fig6.py``: Recreating the results of Figure 5 and Figure 6 from the following paper :ref:`iwaenc-paper`.
+- ``deism_arg_singleparam_example.py``: A basic example of DEISM-ARG.
+- ``deism_arg_pra_compare.py``: Comparing DEISM-ARG results with pyroomacoustics regarding generated image sources (the number and positions should be identical).
+- ``deism_args_compare.py``: Comparing different versions of DEISM-ARG algorithms (Original, LC, Mix) to demonstrate trade-offs between computational cost and accuracy.
 
 Basic Workflow
 ~~~~~~~~~~~~~~
 
-1. **Define Room Geometry**
-   
-   Specify the vertices of your room in the ``init_parameters`` function. The room must be convex.
-
-2. **Set Parameters**
+1. **Set Parameters**
    
    Configure simulation parameters in ``configSingleParam_ARG.yml`` or override them via command line.
 
-3. **Run Simulation**
+2. **Define Room Geometry**
+   
+   Specify the vertices of your room in, e.g., the ``init_parameters_convex`` function. The room must be convex.
+
+3. **Parameter conflict check**
+
+   You can check if there is any conflict in the parameters by running the ``detect_conflicts`` function from the ``deism.data_loader`` module.
+
+4. **Run Simulation**
    
    Execute the simulation using one of these methods:
 
@@ -29,24 +39,14 @@ Basic Workflow
        python deism_arg_singleparam_example.py --help  # View available options
        python deism_arg_singleparam_example.py -c 350 -zs 20 --run  # Run with custom parameters
 
-Parameter Configuration
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Key parameters to configure in ``configSingleParam_ARG.yml``:
-
-- **Room vertices**: Define the 3D coordinates of room corners
-- **Source/receiver positions**: Set transducer locations
-- **Directivity data**: Specify directivity patterns
-- **Acoustic properties**: Set impedance, reflection coefficients
-- **Simulation settings**: Frequency range, image source order
 
 Command Line Options
 ~~~~~~~~~~~~~~~~~~~~
 
 Common command line parameters:
 
-- ``-c``: Sound speed (m/s)
-- ``-zs``: Wall impedance
+- ``-xs``: Source position (x, y, z)
+- ``-xr``: Receiver position (x, y, z)
 - ``--quiet``: Suppress output information
 - ``--run``: Execute the simulation
 - ``--help``: Display all available options
@@ -61,28 +61,20 @@ Basic Workflow
 
 1. **Configure Parameters**
    
-   Set simulation parameters in ``configSingleParam.yml``.
+   Set simulation parameters in ``configSingleParam.yml`` or override them via command line.
 
-2. **Run Simulation**::
+2. **Run Simulation**
 
-       python deism_singleparam_example.py
+   Execute the simulation using one of these methods:
 
-3. **Analyze Results**
-   
-   The simulation outputs room transfer functions and related acoustic metrics.
+   - **IDE Method**: Run ``deism_singleparam_example.py`` directly in your IDE
+   - **Command Line Method**: Use command line with optional parameter overrides::
 
-Parameter Configuration
-~~~~~~~~~~~~~~~~~~~~~~~
+       python deism_singleparam_example.py --help  # View available options
+       python deism_singleparam_example.py -c 350 -zs 20 --run  # Run with custom parameters
 
-Key parameters in ``configSingleParam.yml``:
-
-- **Room dimensions**: Length, width, height
-- **Material properties**: Wall absorption coefficients
-- **Transducer setup**: Source and receiver specifications
-- **Computation settings**: Frequency resolution, maximum order
-
-Advanced Workflows
-------------------
+Some tests and comparisons
+--------------------------
 
 Version Comparison
 ~~~~~~~~~~~~~~~~~~
@@ -95,7 +87,7 @@ Compare different DEISM algorithm versions:
 
 This compares:
 - Original version (most computation-costly)
-- LC version (fastest)  
+- LC vectorized version (fastest)  
 - Mix version (trade-off between Original and LC)
 
 **For Shoebox DEISM**::
@@ -128,13 +120,14 @@ Simple Directivities
 
 For basic scenarios, you can use:
 
-- **Monopole sources**: Omnidirectional radiation pattern
-- **Built-in patterns**: Standard directivity models
+- **Monopole sources and receivers**: Omnidirectional source and receiver directivities.
 
 Arbitrary Directivities
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-For complex directivity patterns, provide:
+Simulated directivities from a sphere around the source or receiver using FEM. Please check paper :ref:`directivity-paper` for more details.
+
+For arbitrary directivity patterns, you can provide:
 
 1. **Frequency array**: 1D array of frequencies
 2. **Sampling directions**: 2D array of (azimuth, inclination) angles
@@ -143,12 +136,6 @@ For complex directivity patterns, provide:
 3. **Pressure field data**: 2D array (frequencies × directions)
 4. **Sampling radius**: Radius of measurement sphere
 
-Example directivity setup::
-
-    frequencies = np.linspace(100, 8000, 100)  # Hz
-    directions = generate_sphere_points(N=300)  # (azimuth, inclination) pairs
-    pressure_data = measure_directivity(frequencies, directions)
-    radius = 0.1  # meters
 
 Best Practices
 --------------
@@ -156,20 +143,22 @@ Best Practices
 Distance Recommendations
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Maintain at least 1m distance between transducers and walls
-- This ensures accurate modeling of diffraction effects
+- Maintain at least 1m distance between transducers and walls.
+- The distance between the source and receiver should be no less than the sum of their transparent spheres' radii. 
 
 Same-Speaker Scenarios
 ~~~~~~~~~~~~~~~~~~~~~~
 
 When both source and receiver are on the same speaker:
-- Run DEISM for all reflection paths except the direct path
-- Handle the direct path separately to avoid numerical issues
+
+- Run DEISM for all reflection paths except the direct path, this can be done by setting ``ifRemoveDirect: 0`` in the configuration file.
+- Handle the direct path separately to avoid numerical issues. You can use other tools to calculate the direct path, e.g., FEM.
 
 Silent Mode
 ~~~~~~~~~~~
 
-Suppress output for batch processing:
+Suppress unnecessary output:
+
 - Add ``--quiet`` flag to command line
 - Set ``SilentMode: 1`` in configuration files
 
@@ -177,24 +166,15 @@ Performance Optimization
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Choose appropriate algorithm version:
+
 - **Original**: Most accurate, slowest
 - **LC**: Fastest, good for high-order reflections  
 - **Mix**: Balance of accuracy and speed (recommended)
 
-The Mix version uses Original for early reflections (up to order 2 by default) and LC for higher orders.
+The Mix version uses Original for early reflections (up to order 2 by default) and LC for higher orders. 
+You can change the order of reflections using the ``mixEarlyOrder`` parameter in the configuration file.
 
 Troubleshooting Common Issues
 -----------------------------
 
-**Memory Issues**
-    For large simulations, use the LC or Mix versions to reduce memory usage.
-
-**Slow Computation**
-    - Reduce maximum reflection order
-    - Use Mix or LC algorithm versions
-    - Decrease frequency resolution if appropriate
-
-**Accuracy Concerns**
-    - Use Original version for critical early reflections
-    - Validate against known solutions or measurements
-    - Check room geometry for convexity (DEISM-ARG) 
+to be added...

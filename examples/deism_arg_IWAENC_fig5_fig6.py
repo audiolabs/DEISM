@@ -21,7 +21,7 @@ from deism.data_loader import *
 from deism.utilities import plot_RTFs
 
 
-def init_parameters_fig5(params):
+def init_parameters_convex_fig5(params):
     # reflection order
     params["maxReflOrder"] = 15
     # A simple room with 8 vertices
@@ -55,7 +55,7 @@ def init_parameters_fig5(params):
     return params
 
 
-def init_parameters_fig6(params):
+def init_parameters_convex_fig6(params):
     # reflection order
     params["maxReflOrder"] = 15
     # A simple room with 8 vertices
@@ -130,9 +130,9 @@ def main():
     # Initialize some additional parameters for DEISM-ARG
     # For example, room vertices, room rotation, etc.
     if fig == "fig5":
-        params = init_parameters_fig5(params)
+        params = init_parameters_convex_fig5(params)
     elif fig == "fig6":
-        params = init_parameters_fig6(
+        params = init_parameters_convex_fig6(
             params
         )  # init_parameters_fig5 or init_parameters_fig6
     # detect conflicts

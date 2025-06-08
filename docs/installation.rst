@@ -20,9 +20,13 @@ Prerequisites
 
 Before building from source, ensure you have:
 
-- Python 3.7 or higher
+- Python 3.9 or higher
 - Conda package manager
-- LaTeX installation (for rendering mathematical expressions in plots)
+- Environment specification file: ``deism_env.yml`` or ``deism_env_exact.yml`` (exact versions of all packages)
+
+Optional:
+
+- LaTeX installation (for rendering mathematical expressions in plots). Check `Matplotlib usetex Documentation <https://matplotlib.org/stable/users/explain/text/usetex.html>`_ for more information.
 
 Step-by-Step Installation
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -108,14 +112,4 @@ If these commands execute without errors, your installation is successful.
 Development Installation
 ------------------------
 
-If you plan to modify the source code or contribute to development:
-
-1. Fork the repository on GitHub
-2. Clone your fork locally
-3. Follow the "Building from Source" instructions above
-4. Create a new branch for your changes
-5. Make your modifications
-6. Test your changes with the examples
-7. Submit a pull request
-
-The development installation using ``pip install -e .`` allows you to modify the source code and see changes immediately without reinstalling. 
+Please do not hesitate to contact us if you have any questions or suggestions. And feel free to contribute to the development of DEISM.
