@@ -7,11 +7,9 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "DEISM"
-copyright = (
-    "2024, Zeyu Xu, Songjiang Tan, Hasan Nazım Biçer, Albert Prinn, Emanuël Habets"
-)
-author = "Zeyu Xu, Songjiang Tan, Hasan Nazım Biçer, Albert Prinn, Emanuël Habets"
-release = "2.0"
+copyright = "2025, Audiolabs Erlangen, Germany"
+author = "Zeyu Xu, Songjiang Tan, Emanuël Habets"
+release = "2.1.2"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
