@@ -1,6 +1,8 @@
 # Diffraction Enhanced Image Source Method - Arbitrary Room Geometry (DEISM-ARG)
 
 [![DOI](https://zenodo.org/badge/666336301.svg)](https://doi.org/10.5281/zenodo.14055865)
+[![Documentation Status](https://readthedocs.org/projects/deism/badge/?version=latest)](https://deism.readthedocs.io/en/latest/?badge=latest)
+[![PyPI version](https://badge.fury.io/py/deism.svg)](https://badge.fury.io/py/deism)
 
 The code in this folder is able to solve the following problem: 
 
@@ -13,6 +15,10 @@ In DEISM-ARG, we can model the room transfer function between transducers mounte
 3. Convex room shapes
 
 ![image-20240812131054348](/docs/figures/scenario.png)
+
+## 📚 Documentation
+
+**[📖 Read the full documentation on Read the Docs](https://deism.readthedocs.io/)**
 
 # Preparation and installing
 
