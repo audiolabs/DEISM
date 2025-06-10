@@ -30,8 +30,7 @@ Reflections:
   # 2. AcoustImpendence: [18, 20, 8, 5, 30, 19] # Different values for 6 walls, no frequency-dependency
   # 3. AcoustImpendence: "imp_1" # A name for a impedance profile to load, used for all 6 walls
   # 4. AcoustImpendence: ["imp_1", "imp_1", "imp_2", "imp_3", "imp_5", "imp_6"] # Different loaded profiles for different walls
-  maxReflectionOrder: 25
-  RIRLength: 0.3 # in seconds
+  maxReflectionOrder: 40 
 
 # Simulation parameters # 
 # 4. positions of sound source and receiver in 3-dimensional Cartesian coordinate
@@ -53,18 +52,21 @@ Positions:
 # 5. frequency terms
 Frequencies:
   # unit of frequency(Hz)
-  startFrequency: 20
-  endFrequency: 1000
+  startFrequency: 2
+  endFrequency:  24000
   frequencyStep: 2
-  samplingRate: 2000
+  samplingRate: 48000
+
+# 6. RIR length
+RIRLength: 1.5 # in seconds
 
 # Directivity parameters #
-# 5. maximal spherical harmonic directivity order
+# 7. maximal spherical harmonic directivity order
 MaxSphDirectivityOrder:
   nSourceOrder: 5
   vReceiverOrder: 5
 
-# 6. Facing/Rotation of the directivities
+# 8. Facing/Rotation of the directivities
 # Three angles are need to describe the Z-X-Z convention of rotation;
 # The rotation matrix calculation used in COMSOL, see:
 # https://doc.comsol.com/5.5/doc/com.comsol.help.comsol/comsol_ref_definitions.12.092.html
@@ -78,14 +80,14 @@ Orientations:
     beta: 0 
     gamma: 0 
 
-# 7. parameters of the transparent sphere around the source and receiver
+# 9. parameters of the transparent sphere around the source and receiver
 # The values should be consistent with the loaded directivity files
 # For different max. sph. orders at different frequency ranges, this should allow adjustments
 Radius:
   source: 0.4
   receiver: 0.5
 
-# 8. Directivity data
+# 10. Directivity data
 Directivities:
   # Choices for source: 
   # Analytic: "monopole"

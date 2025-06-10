@@ -37,90 +37,149 @@ DEISM-ARG Core Functions
 Configuration Parameters
 ------------------------
 
+This section describes all configuration parameters used in DEISM, including their types, descriptions, and corresponding YAML configuration keys.
+
+Note that the parameter names in the YAML configuration files may differ from the parameter names in the ``params`` dictionary.
+The mapping is handled automatically by the ``loadSingleParam()`` function in ``data_loader.py``.
+However, we also provide a mapping table below for reference.
+
 Core Parameters
 ~~~~~~~~~~~~~~~
 
 **Environment Parameters:**
 
 .. list-table::
-   :widths: 25 15 60
+   :widths: 30 20 15 35
    :header-rows: 1
 
-   * - Parameter
+   * - YAML Key
+     - Params Key
      - Type
      - Description
-   * - soundSpeed
+   * - Environment.soundSpeed
+     - soundSpeed
      - float
      - Speed of sound in m/s (default: 343)
-   * - airDensity
+   * - Environment.airDensity
+     - airDensity
      - float
      - Air density in kg/m³ (default: 1.2)
 
 **Room Parameters:**
 
 .. list-table::
-   :widths: 25 15 60
+   :widths: 30 20 15 35
    :header-rows: 1
 
-   * - Parameter
+   * - YAML Key
+     - Params Key
      - Type
      - Description
-   * - roomSize
-     - list[float]
+   * - Dimensions.[length, width, height]
+     - roomSize
+     - numpy.ndarray
      - Room dimensions [L, W, H] in meters (shoebox only)
-   * - vertices
+   * - N/A (set explicitly in example files)
+     - vertices
      - numpy.ndarray
      - Room vertices as Nx3 array (DEISM-ARG only)
-   * - maxReflOrder
-     - int
-     - Maximum reflection order (default: 3)
-   * - convexRoom
+   
+   * - DEISM_specs.convexRoom
+     - convexRoom
      - bool
      - Whether room is convex (DEISM-ARG only)
+
+**Wall Properties:**
+
+.. list-table::
+   :widths: 30 20 15 35
+   :header-rows: 1
+
+   * - YAML Key
+     - Params Key
+     - Type
+     - Description
+   * - Reflections.acoustImpendence
+     - acousImpend
+     - float/list/array
+     - Acoustic impedance of walls
+   * - Reflections.angleDependentFlag
+     - angleDependentFlag
+     - bool
+     - Whether reflection coefficients are angle-dependent
+   * - Reflections.maxReflectionOrder
+     - maxReflOrder
+     - int
+     - Maximum reflection order (default: 3)
 
 **Source/Receiver Parameters:**
 
 .. list-table::
-   :widths: 25 15 60
+   :widths: 30 20 15 35
    :header-rows: 1
 
-   * - Parameter
+   * - YAML Key
+     - Params Key
      - Type
      - Description
-   * - posSource
-     - list[float]
+   * - Positions.source.[x, y, z]
+     - posSource
+     - numpy.ndarray
      - Source position [x, y, z] in meters
-   * - posReceiver
-     - list[float] 
+   * - Positions.receiver.[x, y, z]
+     - posReceiver
+     - numpy.ndarray
      - Receiver position [x, y, z] in meters
-   * - orientSource
-     - list[float]
+   * - Orientations.source.[alpha, beta, gamma]
+     - orientSource
+     - numpy.ndarray
      - Source orientation [α, β, γ] in degrees
-   * - orientReceiver
-     - list[float]
+   * - Orientations.receiver.[alpha, beta, gamma]
+     - orientReceiver
+     - numpy.ndarray
      - Receiver orientation [α, β, γ] in degrees
 
 **Frequency Parameters:**
 
 .. list-table::
-   :widths: 25 15 60
+   :widths: 30 20 15 35
    :header-rows: 1
 
-   * - Parameter
+   * - YAML Key
+     - Params Key
      - Type
      - Description
-   * - startFreq
+   * - Frequencies.startFrequency
+     - startFreq
      - float
      - Starting frequency in Hz
-   * - endFreq
+   * - Frequencies.endFrequency
+     - endFreq
      - float
      - Ending frequency in Hz
-   * - freqStep
+   * - Frequencies.frequencyStep
+     - freqStep
      - float
      - Frequency step size in Hz
-   * - sampleRate
+   * - Frequencies.samplingRate
+     - sampleRate
      - int
      - Sampling rate in Hz
+
+**RIR length:**
+
+.. list-table::
+   :widths: 30 20 15 35
+   :header-rows: 1
+
+   * - YAML Key
+     - Params Key
+     - Type
+     - Description
+   * - Reflections.RIRLength
+     - RIRLength
+     - float
+     - Room impulse response length in seconds
 
 Directivity Parameters
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -128,90 +187,99 @@ Directivity Parameters
 **Source Directivity:**
 
 .. list-table::
-   :widths: 25 15 60
+   :widths: 30 20 15 35
    :header-rows: 1
 
-   * - Parameter
+   * - YAML Key
+     - Params Key
      - Type
      - Description
-   * - sourceType
+   * - Directivities.source
+     - sourceType
      - str
      - Source type ("monopole" or custom name)
-   * - nSourceOrder
+   * - MaxSphDirectivityOrder.nSourceOrder
+     - nSourceOrder
      - int
      - Maximum spherical harmonic order for source
-   * - radiusSource
+   * - Radius.source
+     - radiusSource
      - float
      - Radius of source sampling sphere in meters
 
 **Receiver Directivity:**
 
 .. list-table::
-   :widths: 25 15 60
+   :widths: 30 20 15 35
    :header-rows: 1
 
-   * - Parameter
+   * - YAML Key
+     - Params Key
      - Type
      - Description
-   * - receiverType
+   * - Directivities.receiver
+     - receiverType
      - str
      - Receiver type ("monopole" or custom name)
-   * - vReceiverOrder
+   * - MaxSphDirectivityOrder.vReceiverOrder
+     - vReceiverOrder
      - int
      - Maximum spherical harmonic order for receiver
-   * - radiusReceiver
+   * - Radius.receiver
+     - radiusReceiver
      - float
      - Radius of receiver sampling sphere in meters
-   * - ifReceiverNormalize
+   * - DEISM_specs.ifReceiverNormalize
+     - ifReceiverNormalize
      - bool
      - Whether to normalize receiver directivity
 
-Acoustic Parameters
+DEISM Parameters
 ~~~~~~~~~~~~~~~~~~~
 
-**Wall Properties:**
-
-.. list-table::
-   :widths: 25 15 60
-   :header-rows: 1
-
-   * - Parameter
-     - Type
-     - Description
-   * - acousImpend
-     - float/list
-     - Acoustic impedance of walls
-   * - angleDependentFlag
-     - bool
-     - Whether reflection coefficients are angle-dependent (Always 1 in DEISM-ARG)
-   * - RIRLength
-     - float
-     - Room impulse response length in seconds
 
 **Algorithm Parameters:**
 
 .. list-table::
-   :widths: 25 15 60
+   :widths: 30 20 15 35
    :header-rows: 1
 
-   * - Parameter
+   * - YAML Key
+     - Params Key
      - Type
      - Description
-   * - DEISM_mode
+   * - DEISM_specs.Mode
+     - DEISM_mode
      - str
      - Algorithm mode ("ORG", "LC", "MIX")
-   * - mixEarlyOrder
+   * - DEISM_specs.mixEarlyOrder
+     - mixEarlyOrder
      - int
      - Reflection order threshold for MIX mode (default: 2)
-   * - ifRemoveDirectPath
+   * - DEISM_specs.ifRemoveDirect
+     - ifRemoveDirectPath
      - bool
      - Whether to remove direct path from calculation
-   * - numParaImages
+   * - DEISM_specs.numParaImages
+     - numParaImages
      - int
-     - Number of parallel image source calculations (You can adjust based on your RAM)
-   * - silentMode
+     - Number of parallel image source calculations
+   * - DEISM_specs.QFlowStrength
+     - qFlowStrength
+     - float
+     - Point source flow strength for receiver directivity
+   * - SilentMode
+     - silentMode
      - bool
      - Whether to suppress output messages
+
+**Configuration Notes:**
+
+- YAML keys use nested dictionary notation (e.g., ``Environment.soundSpeed``)
+- Array parameters like positions are converted from YAML lists to numpy arrays
+- The ``roomSize`` parameter combines the three dimension values into a single array
+- Some parameters (like ``convexRoom``) are only used in DEISM-ARG mode
+- The mapping is handled automatically by the ``loadSingleParam()`` function in ``data_loader.py``
 
 Directivity Data Format
 -----------------------

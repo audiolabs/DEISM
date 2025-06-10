@@ -127,6 +127,9 @@ def detect_conflicts(params):
             print(
                 "[Warning] Distance between source and receiver is smaller than the sum of the source and receiver radius! \n"
             )
+    # Check if frequency steps is 2, if not, raise a warning
+    if params["freqStep"] != 2:
+        print("[Warning] Frequency step is not 2, which is not recommended! \n")
 
     # To be continued...
 
@@ -532,7 +535,7 @@ def loadSingleParam(configs, args):
     #     if args.adrc is not None
     #     else configs["Reflections"]["angleDependentFlag"]
     # )
-    params["RIRLength"] = args.rirlen or configs["Reflections"]["RIRLength"]
+
     # positions of the source and receiver
     params["posSource"] = np.array(
         args.xs or list(configs["Positions"]["source"].values())
@@ -551,6 +554,7 @@ def loadSingleParam(configs, args):
     params["freqStep"] = args.fstep or configs["Frequencies"]["frequencyStep"]
     params["endFreq"] = args.fmax or configs["Frequencies"]["endFrequency"]
     params["sampleRate"] = args.fs or configs["Frequencies"]["samplingRate"]
+    params["RIRLength"] = args.rirlen or configs["RIRLength"]
 
     # Directivity parameters
     params["nSourceOrder"] = (
