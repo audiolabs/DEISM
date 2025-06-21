@@ -71,6 +71,13 @@ def plot_RTFs(
     # check if the length of P_all and P_labels are the same
     if len(P_all) != len(P_labels):
         raise ValueError("The number of RTFs and labels must match.")
+
+    # Limit input array size to prevent excessive memory usage
+    MAX_ARRAY_SIZE = 10_000_000  # Maximum array size
+    for p, f in zip(P_all, P_freqs):
+        if p.size > MAX_ARRAY_SIZE or f.size > MAX_ARRAY_SIZE:
+            raise ValueError(f"Input array size exceeds limit of {MAX_ARRAY_SIZE} elements.")
+            
     # Now use a few colors to plot the RTFs, black, gray, lightgray
     colors = ["gray", "black", "lightgray", "red"]
     linestypes = ["-", "-", "-.", "-"]
@@ -133,9 +140,9 @@ def plot_RTFs(
         plt.savefig(fig_name, dpi=300, bbox_inches="tight")
         # plt.savefig(fig_name_eps, bbox_inches="tight")
         plt.savefig(fig_name_pdf, dpi=300, bbox_inches="tight")
-        plt.close("all")
     else:
         plt.show()
+    plt.close("all") # Always close figure to prevent memory leak
 
     # Plot phases of the room transfer functions
     fig = plt.figure(figsize=(18, 8))
@@ -181,9 +188,10 @@ def plot_RTFs(
         plt.savefig(fig_name, dpi=300, bbox_inches="tight")
         # plt.savefig(fig_name_eps, bbox_inches="tight")
         plt.savefig(fig_name_pdf, dpi=300, bbox_inches="tight")
-        plt.close("all")
+        
     else:
         plt.show()
+    plt.close("all") # Always close figure to prevent memory leak
 
 
 def plot_results_LCs(
@@ -198,7 +206,11 @@ def plot_results_LCs(
 
     # Set up latex for plotting
     plt.rcParams["text.usetex"] = True
-
+    # Limit input array size to prevent excessive memory usage
+    MAX_ARRAY_SIZE = 10_000_000  # Maximum array size
+    if freqs.size > MAX_ARRAY_SIZE or P_DEISM_LC.size > MAX_ARRAY_SIZE or P_DEISM_LC_matrix.size > MAX_ARRAY_SIZE:
+        raise ValueError(f"Input array size exceeds limit of {MAX_ARRAY_SIZE} elements.")
+    
     # Initialize the SPL arrays
     plot_mag_DEISM_LC = np.zeros_like(P_DEISM_LC, dtype="float")
     plot_mag_DEISM_LC_matrix = np.zeros_like(P_DEISM_LC_matrix, dtype="float")
