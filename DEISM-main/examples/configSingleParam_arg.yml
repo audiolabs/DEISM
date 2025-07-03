@@ -1,0 +1,103 @@
+# here is the configuration file for single set of parameters
+# Note: 
+SilentMode: 0 # 1 means no output in the console, 0 means output in the console
+# Use space instead of tab for indentation at the beginning of each line
+# 1. Environment parameters
+Environment:
+  soundSpeed: 343 # speed of sound
+  airDensity: 1.2 # constant of air
+
+# 2. 3D size of the room
+# (unit: meter)
+
+# 3. Boundary conditions and max. reflection order
+Reflections:
+  # format of reflection coefficient: [Z_x0,Z_x1,Z_y0,Z_y1,Z_z0,Z_z1]
+  acoustImpendence: 18
+  # input:
+  # 1. AcoustImpendence: 18+0j # A single value for 6 walls, no frequency-dependency
+  maxReflectionOrder: 3 # maximal reflection order
+
+# Simulation parameters # 
+# 4. positions of sound source and receiver in 3-dimensional Cartesian coordinate
+# unit(meter)
+# Note:
+# The source and receiver should be at least 1m away from the walls;
+# The distance between the source and receiver should be not less than the sum of the radii of transparent spheres
+Positions:
+  source:
+    x: 1.5
+    y: 1.1
+    z: 1.3
+
+  receiver:
+    x: 2.9
+    y: 1.7
+    z: 1.2
+
+# 5. frequency terms
+Frequencies:
+  # unit of frequency(Hz)
+  startFrequency: 20
+  endFrequency: 1000
+  frequencyStep: 2
+  samplingRate: 2000
+
+# 6. RIR length
+RIRLength: 1 # in seconds
+
+# Directivity parameters #
+# 7. maximal spherical harmonic directivity order
+MaxSphDirectivityOrder:
+  nSourceOrder: 5
+  vReceiverOrder: 5
+
+# 8. Facing/Rotation of the directivities
+# Three angles are need to describe the Z-X-Z convention of rotation;
+# The rotation matrix calculation used in COMSOL, see:
+# https://doc.comsol.com/5.5/doc/com.comsol.help.comsol/comsol_ref_definitions.12.092.html
+Orientations:
+  source:
+    alpha: 0
+    beta: 0 
+    gamma: 0 
+  receiver:
+    alpha: 180
+    beta: 0 
+    gamma: 0 
+
+# 9. parameters of the transparent sphere around the source and receiver
+# The values should be consistent with the loaded directivity files
+# For different max. sph. orders at different frequency ranges, this should allow adjustments
+Radius:
+  source: 0.4
+  receiver: 0.5
+
+# 10. Directivity data
+# !!! Add more directivity data here !!!
+Directivities:
+  # Choices for source: Please see local files in examples/data/sampled_directivity/
+  # Analytic: "monopole"
+  # Simulated or measured: "Speaker_small_sph_cyldriver_source"
+  source: "Speaker_small_sph_cyldriver_source" 
+  # Choices for receiver:
+  # Analytic: "monopole"
+  # Simulated or measured: "Speaker_small_sph_cyldriver_receiver"
+  receiver: "Speaker_small_sph_cyldriver_receiver" 
+
+# Other functional parameters
+# DEISM modes: You can run DEISM using different versions
+# 1. ORG: Original DEISM, which is supposed to be the most accurate, but takes the longest time
+# 2. LC: Low-complexity DEISM with vectorized calculation, which is supposed to be faster than ORG, but less accurate
+# 3. MIX: Early reflections up to order 2 are calculated using ORG, and the rest are calculated using LC
+DEISM_specs: 
+  convexRoom: 1 # If the room is convex
+  ifRemoveDirect: 0 # If remove the direct sound from the image sources
+  Mode: "MIX" # "ORG", "LC", "MIX"
+  mixEarlyOrder: 2 # The order of reflections using DEISM-ORG if choose "MIX"
+  numParaImages: 1500 # Number of images parallel for the calculation, information for users about RAM consumption
+  # If normalize the receiver directivity if the receiver directivity is obtained by placing a point source
+  # with flow strength QFlowStrength at the receiver position and measuring the sound pressure at a sphere around the receiver
+  # You need to specify QFlowStrength after the following flag
+  ifReceiverNormalize: 1 
+  QFlowStrength: 0.001
