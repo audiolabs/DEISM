@@ -32,11 +32,13 @@ This will launch the GUI for visualizing sound source directivity.
 
 
 Workflow
-
+![Alt text](E:\L_通信工程\FAU课程资料\Sem. 5\Hiwi_AudioLab\workflow.png)
 
 Example
 
     Example of a directivity balloon plot at 500 Hz.
+    ![Alt text](E:\L_通信工程\FAU课程资料\Sem. 5\Hiwi_AudioLab\result.png)
+
 
 Notes
 
