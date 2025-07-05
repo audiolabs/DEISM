@@ -52,6 +52,7 @@ This will launch the GUI for visualizing sound source directivity.
 **Contributors**
 
 B. Sc. Muyue Xi
+
 M. Sc. Zeyu Xu
 
 Feel free to open an issue or submit a pull request if you'd like to contribute or report a bug.
