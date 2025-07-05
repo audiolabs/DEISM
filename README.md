@@ -1,4 +1,4 @@
-DEISM Directivity Visualizer
+**DEISM Directivity Visualizer**
 
 This repository is an extension module of DEISM, called "Directivity Visualize", which provides an interactive GUI to reconstruct and visualize the directivity of a sound field from a selected *_source.mat file.
 
@@ -10,16 +10,15 @@ It enables users to:
 
     Generate real-time balloon plots of the reconstructed sound field.
 
-Getting Started
 
-Environment Setup
+**Environment Setup**
 
 Please follow the installation instructions in the DEISM repository: https://github.com/audiolabs/DEISM
     DEISM - Preparation and Installing
 
 We recommend using Python 3.9+.
 
-Run the Program
+**Run the Program**
 
     Download or clone this extension.
 
@@ -31,16 +30,16 @@ python test_check.py
 This will launch the GUI for visualizing sound source directivity.
 
 
-Workflow
+**Workflow**
 ![Alt text](E:\L_通信工程\FAU课程资料\Sem. 5\Hiwi_AudioLab\workflow.png)
 
-Example
+**Example**
 
     Example of a directivity balloon plot at 500 Hz.
     ![Alt text](E:\L_通信工程\FAU课程资料\Sem. 5\Hiwi_AudioLab\result.png)
 
 
-Notes
+**Notes**
 
     This tool requires matplotlib, tkinter, scipy, numpy, and DEISM libraries.
 
@@ -49,7 +48,7 @@ Notes
 
     You can rotate the 3D plot using the mouse. Plots update automatically as parameters are changed.
 
-Contributors
+**Contributors**
 B. Sc. Muyue Xi
 M. Sc. Zeyu Xu
 
