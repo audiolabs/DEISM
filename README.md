@@ -25,11 +25,13 @@ We recommend using Python 3.9+.
     Run the interactive interface via:
 
 cd DEISM/examples
+
 python test_check.py
 
 This will launch the GUI for visualizing sound source directivity.
 
 **Workflow**
+
 ![workflow](images/workflow.png)
 
 **Example**
