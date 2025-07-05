@@ -35,7 +35,7 @@ This will launch the GUI for visualizing sound source directivity.
 **Example**
 
     Example of a directivity balloon plot at 500 Hz.
-    ![workflow](images/result.png)
+![workflow](images/result.png)
 
 
 **Notes**
