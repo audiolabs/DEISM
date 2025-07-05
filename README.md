@@ -13,7 +13,9 @@ It enables users to:
 
 **Environment Setup**
 
-Please follow the installation instructions in the DEISM repository: https://github.com/audiolabs/DEISM
+Please follow the installation instructions in the DEISM repository: 
+    
+    https://github.com/audiolabs/DEISM
     DEISM - Preparation and Installing
 
 We recommend using Python 3.9+.
@@ -48,6 +50,7 @@ This will launch the GUI for visualizing sound source directivity.
     You can rotate the 3D plot using the mouse. Plots update automatically as parameters are changed.
 
 **Contributors**
+
 B. Sc. Muyue Xi
 M. Sc. Zeyu Xu
 
