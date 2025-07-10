@@ -25,8 +25,8 @@ We recommend using Python 3.9+.
     Download or clone this extension.(only test_check.py under ../DEISM-main/examples)
 
     Run the interactive interface via:
-        cd DEISM-main/examples
-        python test_check.py
+        cd DEISM-main
+        python examples/test_check.py
 
 This will launch the GUI for visualizing sound source directivity.
 
