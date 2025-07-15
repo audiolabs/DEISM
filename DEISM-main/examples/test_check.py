@@ -16,6 +16,7 @@ from mpl_toolkits.mplot3d import proj3d
 from matplotlib.patches import FancyArrowPatch
 
 
+<<<<<<< HEAD
 class InitializationWindow:
     def __init__(self, title="Progress"):
         self.root = tk.Tk()
@@ -44,6 +45,8 @@ class InitializationWindow:
         self.root.destroy()
 
 
+=======
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
 class Arrow3D(FancyArrowPatch):
     """Used to create 3D arrows"""
 
@@ -103,7 +106,10 @@ def balloon_plot_with_slider(
     Dir_all = mat["Dir_all"]
     freqs = mat["freqs_mesh"].squeeze()
     r0 = float(mat["r0"].squeeze())
+<<<<<<< HEAD
     max_sh_order = sh_order
+=======
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
     # params, _ = cmdArgsToDict()
     k_all = 2 * np.pi * freqs / 343
 
@@ -119,7 +125,10 @@ def balloon_plot_with_slider(
     ax_freq_left = plt.axes([0.85, 0.2, 0.01, 0.03])
     ax_freq_right = plt.axes([0.86, 0.2, 0.01, 0.03])
     ax_r0 = plt.axes([0.2, 0.15, 0.6, 0.03])
+<<<<<<< HEAD
     ax_sh = plt.axes([0.2, 0.1, 0.6, 0.03])
+=======
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
     ax_file = plt.axes([0.2, 0.25, 0.6, 0.05])
     ax_browse = plt.axes([0.8, 0.25, 0.1, 0.05])
 
@@ -164,19 +173,41 @@ def balloon_plot_with_slider(
         Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
             k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
         )
+<<<<<<< HEAD
 
     # Close initialization window when done
     init_window.update_progress(100, "Initialization complete!")
     init_window.close()
+=======
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
 
     def browse_file(event):
         # Create the Tkinter root window object
         root = Tk()
         root.withdraw()
+<<<<<<< HEAD
         root.attributes("-topmost", True)
         # macOS compatible
         root.lift()
         root.focus_force()
+=======
+        # 计算屏幕中央位置
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        window_width = 600  # 对话框预估宽度
+        window_height = 400  # 对话框预估高度
+
+        position_x = int((screen_width - window_width) / 2)
+        position_y = int((screen_height - window_height) / 2)
+
+        # 设置对话框位置（通过geometry）
+        root.geometry(f"+{position_x}+{position_y}")
+        # Mac-specific adjustments for proper dialog display
+        # root.wm_attributes("-topmost", 1)
+        root.focus_force()
+        root.lift()
+        root.update()
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
 
         try:
             # Open the file selection dialog box and configure the parameters:
@@ -208,6 +239,7 @@ def balloon_plot_with_slider(
             # Destroy Tkinter window object to avoid memory leak
             root.destroy()
 
+<<<<<<< HEAD
     def on_freq_left(event):
         new_val = freq_slider.val - 2
         if new_val >= freq_slider.valmin:
@@ -219,6 +251,9 @@ def balloon_plot_with_slider(
             freq_slider.set_val(new_val)
 
     # Create browse and freq buttons
+=======
+    # Create browse button
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
     browse_button = Button(
         ax=ax_browse, label="Browse...", color="lightblue", hovercolor="skyblue"
     )
@@ -229,6 +264,7 @@ def balloon_plot_with_slider(
         label=f"Current: {os.path.basename(current_file)}",
         color="lightgoldenrodyellow",
     )
+<<<<<<< HEAD
     btn_freq_left = Button(
         ax_freq_left, label="<", color="lightgray", hovercolor="gray"
     )
@@ -237,6 +273,8 @@ def balloon_plot_with_slider(
     )
     btn_freq_left.on_clicked(on_freq_left)
     btn_freq_right.on_clicked(on_freq_right)
+=======
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
 
     # Frequency slider
     freq_slider = Slider(
@@ -256,6 +294,7 @@ def balloon_plot_with_slider(
         valinit=max(r0, initial_r0_rec),
         valstep=0.1,
     )
+<<<<<<< HEAD
     # sh_order slider
     sh_slider = Slider(
         ax=ax_sh,
@@ -265,16 +304,21 @@ def balloon_plot_with_slider(
         valinit=sh_order,
         valstep=1,
     )
+=======
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
 
     def load_file(file_idx):
         nonlocal current_file, current_file_idx, r0, freqs, k_all, Psh, Dir_all, full_Pnm_cache, Cnm_s_cache
 
+<<<<<<< HEAD
         # Create progress window
         progress_win = InitializationWindow("Loading File Progress")
         progress_win.update_progress(
             0, f"Loading new file: {source_files[file_idx]}", "Starting..."
         )
 
+=======
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
         # Clear old cache
         full_Pnm_cache.clear()
         Cnm_s_cache.clear()
@@ -313,9 +357,12 @@ def balloon_plot_with_slider(
         # Update button label
         file_button.label.set_text(f"Current: {os.path.basename(current_file)}")
 
+<<<<<<< HEAD
         progress_win.update_progress(100, "File loading complete!", "Ready")
         progress_win.close()
 
+=======
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
         update(None)  # Refresh plot
 
     # Function to update plot when sliders change
@@ -323,10 +370,16 @@ def balloon_plot_with_slider(
         if current_file is None:
             return
 
+<<<<<<< HEAD
         # get current freq, r0 and sh_order
         freq = freq_slider.val
         r0_rec = r0_slider.val
         current_sh_order = int(sh_slider.val)
+=======
+        # get current freq and r0
+        freq = freq_slider.val
+        r0_rec = r0_slider.val
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
 
         freq_idx = np.argmin(np.abs(freqs - freq))
         actual_freq = freqs[freq_idx]
@@ -335,6 +388,7 @@ def balloon_plot_with_slider(
         ax_recon.cla()
 
         # get Cnm_s from Cnm_s_cache
+<<<<<<< HEAD
         Cnm_s = Cnm_s_cache[
             (freq_idx, sh_order, r0)
         ]  # (1, sh_order + 1, 2 * sh_order + 1)
@@ -345,6 +399,14 @@ def balloon_plot_with_slider(
             (1, current_sh_order + 1, 2 * current_sh_order + 1), dtype=complex
         )
         for n in range(current_sh_order + 1):  # Change to different sh_order
+=======
+        Cnm_s = Cnm_s_cache[(freq_idx, sh_order, r0)]
+
+        # Reconstruct with current r0_rec
+        # Recalculate the new Pnm using r0_rec according to formula: Pnm = Cnm_s * hn_r0
+        Pnm_rec = np.zeros_like(Cnm_s, dtype=complex)
+        for n in range(sh_order + 1):  # Change to different sh_order
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
             hn_r0_rec = hn_cache[(n, round(k * r0_rec, 6))]
             for m in range(-n, n + 1):
                 Pnm_rec[:, n, m + n] = Cnm_s[:, n, m] * hn_r0_rec
@@ -352,7 +414,11 @@ def balloon_plot_with_slider(
         # Plot reconstructed
         plot_balloon_rec(
             ax_recon,
+<<<<<<< HEAD
             current_sh_order,
+=======
+            sh_order,
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
             Pnm_rec[0],
             dirs,
             az_m,
@@ -492,4 +558,8 @@ if __name__ == "__main__":
         sh_order=6,
         initial_freq=500,
         initial_r0_rec=0.6,
+<<<<<<< HEAD
+=======
+        # if_show_info=True,  # If show the running information in a separate window
+>>>>>>> 36610fc9669d22515fb8072811c803ad089bbbb4
     )
