@@ -32,7 +32,7 @@ This will launch the GUI for visualizing sound source directivity.
 
 **Workflow**
 
-![workflow](images/workflow.png)
+![workflow](images/workflow.drawio.png)
 
 **Example**
 
