@@ -9,10 +9,39 @@ from deism.core_deism import *
 from deism.data_loader import *
 import matplotlib as mpl
 from matplotlib.widgets import Slider, Button
-from tkinter import Tk, filedialog
+import tkinter as tk
+from tkinter import Tk, filedialog, ttk
 import os
 from mpl_toolkits.mplot3d import proj3d
 from matplotlib.patches import FancyArrowPatch
+
+
+class InitializationWindow:
+    def __init__(self, title="Progress"):
+        self.root = tk.Tk()
+        self.root.title(title)
+        self.root.geometry("400x150")
+        self.root.attributes("-topmost", True)
+
+        self.label = tk.Label(self.root, text="", font=("Arial", 12))
+        self.label.pack(pady=10)
+
+        self.progress = ttk.Progressbar(
+            self.root, orient="horizontal", length=300, mode="determinate"
+        )
+        self.progress.pack(pady=10)
+
+        self.status_label = tk.Label(self.root, text="", font=("Arial", 10))
+        self.status_label.pack(pady=5)
+
+    def update_progress(self, value, message, status=""):
+        self.progress["value"] = value
+        self.label.config(text=message)
+        self.status_label.config(text=status)
+        self.root.update_idletasks()
+
+    def close(self):
+        self.root.destroy()
 
 
 class Arrow3D(FancyArrowPatch):
@@ -54,12 +83,20 @@ def balloon_plot_with_slider(
         Initial spherical radius during reconstruction
     """
 
+    # Show initialization window
+    init_window = InitializationWindow()
+    init_window.update_progress(0, "Starting initialization...", "Scanning files")
+
     # Find all source files in directory
     source_files = [f for f in os.listdir(data_dir) if f.endswith("_source.mat")]
     if not source_files:
+        init_window.close()
         raise ValueError(f"No source files found in {data_dir}")
 
     # Load first file to initialize data
+    init_window.update_progress(
+        20, "Initializing...", f"Loading initial file: {source_files[0]}"
+    )
     initial_file = os.path.join(data_dir, source_files[0])
     mat = loadmat(initial_file)
     Psh = mat["Psh"]
@@ -71,10 +108,11 @@ def balloon_plot_with_slider(
     k_all = 2 * np.pi * freqs / 343
 
     # Create figure with controls
-    fig = plt.figure(figsize=(12, 7))
+    fig = plt.figure(figsize=(14, 7))
     plt.subplots_adjust(bottom=0.35, right=0.85)  # Make room for controls
     # Create axis for the 3D plot
     ax_recon = fig.add_subplot(111, projection="3d")
+    ax_recon.view_init(elev=30, azim=45) # Set the initial viewing angle
     # Add phase legend to the figure
     add_phase_legend(fig)
     # Create control axes
@@ -83,8 +121,8 @@ def balloon_plot_with_slider(
     ax_freq_right = plt.axes([0.86, 0.2, 0.01, 0.03])
     ax_r0 = plt.axes([0.2, 0.15, 0.6, 0.03])
     ax_sh = plt.axes([0.2, 0.1, 0.6, 0.03])
-    ax_file = plt.axes([0.2, 0.25, 0.6, 0.05])
-    ax_browse = plt.axes([0.8, 0.25, 0.1, 0.05])
+    ax_file = plt.axes([0.2, 0.25, 0.5, 0.05])
+    ax_browse = plt.axes([0.7, 0.25, 0.1, 0.05])
 
     # Initialize variables
     current_file = initial_file
@@ -102,6 +140,7 @@ def balloon_plot_with_slider(
     )  # [phi, theta] each row represents point on the sphere, (res)*(2*res+1) points in total
 
     # precomputation of Ynm, hn, Pnm and Cnm
+    init_window.update_progress(60, "Initializing...", "Precomputing")
     Ynm_cache = {}
     for n in range(sh_order + 1):
         for m in range(-n, n + 1):
@@ -126,6 +165,10 @@ def balloon_plot_with_slider(
         Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
             k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
         )
+
+    # Close initialization window when done
+    init_window.update_progress(100, "Initialization complete!")
+    init_window.close()
 
     def browse_file(event):
         # Create the Tkinter root window object
@@ -167,11 +210,13 @@ def balloon_plot_with_slider(
             root.destroy()
 
     def on_freq_left(event):
+        print("Pressed decrease frequency button, new value:", freq_slider.val - 2)
         new_val = freq_slider.val - 2
         if new_val >= freq_slider.valmin:
             freq_slider.set_val(new_val)
 
     def on_freq_right(event):
+        print("Pressed increase frequency button, new value:", freq_slider.val + 2)
         new_val = freq_slider.val + 2
         if new_val <= freq_slider.valmax:
             freq_slider.set_val(new_val)
@@ -227,6 +272,12 @@ def balloon_plot_with_slider(
     def load_file(file_idx):
         nonlocal current_file, current_file_idx, r0, freqs, k_all, Psh, Dir_all, full_Pnm_cache, Cnm_s_cache
 
+        # Create progress window
+        progress_win = InitializationWindow("Loading File Progress")
+        progress_win.update_progress(
+            0, f"Loading new file: {source_files[file_idx]}", "Starting..."
+        )
+
         # Clear old cache
         full_Pnm_cache.clear()
         Cnm_s_cache.clear()
@@ -242,6 +293,7 @@ def balloon_plot_with_slider(
         k_all = 2 * np.pi * freqs / 343
 
         # precomputation of full_Pnm and Cnm_s
+        progress_win.update_progress(50, "New file loaded", "Precomputing...")
         for freq_idx in range(len(freqs)):
             full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
                 Psh[freq_idx].reshape(1, -1),
@@ -264,12 +316,16 @@ def balloon_plot_with_slider(
         # Update button label
         file_button.label.set_text(f"Current: {os.path.basename(current_file)}")
 
+        progress_win.update_progress(100, "File loading complete!", "Ready")
+        progress_win.close()
+
         update(None)  # Refresh plot
 
     # Function to update plot when sliders change
     def update(val):
         if current_file is None:
             return
+        print("Update to freq: ", freq_slider.val)
 
         # get current freq, r0 and sh_order
         freq = freq_slider.val
@@ -429,7 +485,7 @@ def plot_balloon_rec(ax, order, Pnm, dirs, az_m, el_m, title, Ynm_cache):
         )
 
     ax.set_proj_type("ortho")  # Use orthographic projection
-    ax.view_init(elev=30, azim=45)  # Set the default viewing angle
+    # ax.view_init(elev=30, azim=45)  # Set the default viewing angle
 
 
 if __name__ == "__main__":
@@ -440,5 +496,4 @@ if __name__ == "__main__":
         sh_order=6,
         initial_freq=500,
         initial_r0_rec=0.6,
-        # if_show_info=True,  # If show the running information in a separate window
     )
