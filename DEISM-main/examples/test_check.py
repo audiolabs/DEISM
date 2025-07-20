@@ -27,40 +27,64 @@ AUDIOLABS_WHITE = "#FFFFFF"
 AUDIOLABS_BLACK = "#000000"
 
 
-class InitializationWindow:
-    def __init__(self, title="Progress"):
-        self.root = tk.Tk()
-        self.root.title(title)
-        self.root.geometry("400x150")
-        self.root.attributes("-topmost", True)
-        self.root.configure(bg=AUDIOLABS_WHITE)
-
-        # Apply Audiolabs styling
+def configure_global_styles():
+    if not hasattr(configure_global_styles, "_called"):
         style = ttk.Style()
         style.theme_use("clam")
+
+        # Progressbar style
         style.configure(
-            "TLabel",
-            background=AUDIOLABS_WHITE,
-            foreground=AUDIOLABS_BLACK,  # label text color
-        )
-        style.configure(
-            "TProgressbar",  # config progressbar
+            "Audiolabs.Horizontal.TProgressbar",
             troughcolor=AUDIOLABS_LIGHT_GRAY,
             background=AUDIOLABS_ORANGE,
             bordercolor=AUDIOLABS_GRAY,
-            lightcolor=AUDIOLABS_ORANGE,
-            darkcolor=AUDIOLABS_ORANGE,
         )
 
-        self.label = ttk.Label(self.root, text="", font=("Arial", 12))
+        # label style
+        style.configure(
+            "TLabel",
+            background=AUDIOLABS_WHITE,
+            foreground=AUDIOLABS_BLACK,
+            font=("Arial", 10),
+        )
+
+        configure_global_styles._called = True
+
+
+class InitializationWindow:
+    def __init__(self, title="Progress"):
+        configure_global_styles()
+
+        self.root = tk.Toplevel()
+        self.root.title(title)
+        self.root.geometry("400x150")
+        self.root.configure(bg=AUDIOLABS_WHITE)
+
+        self.label = ttk.Label(
+            self.root,
+            text="",
+            font=("Arial", 12),
+            foreground=AUDIOLABS_BLACK,
+            background=AUDIOLABS_WHITE,
+        )
         self.label.pack(pady=10)
 
         self.progress = ttk.Progressbar(
-            self.root, orient="horizontal", length=300, mode="determinate"
+            self.root,
+            orient="horizontal",
+            length=300,
+            mode="determinate",
+            style="Audiolabs.Horizontal.TProgressbar",
         )
         self.progress.pack(pady=10)
 
-        self.status_label = ttk.Label(self.root, text="", font=("Arial", 10))
+        self.status_label = ttk.Label(
+            self.root,
+            text="",
+            font=("Arial", 10),
+            foreground=AUDIOLABS_DARK_GRAY,
+            background=AUDIOLABS_WHITE,
+        )
         self.status_label.pack(pady=5)
 
     def update_progress(self, value, message, status=""):
@@ -224,9 +248,8 @@ def balloon_plot_with_slider(
 
     def browse_file(event):
         # Create the Tkinter root window object
-        root = Tk()
+        root = tk.Tk()
         root.withdraw()
-        root.attributes("-topmost", True)
         # macOS compatible
         root.lift()
         root.focus_force()
@@ -234,7 +257,7 @@ def balloon_plot_with_slider(
         try:
             # Open the file selection dialog box and configure the parameters:
             file_path = filedialog.askopenfilename(
-                parent=root,
+                # parent=root,
                 initialdir=os.path.abspath(data_dir),
                 title="Select MAT file",
                 filetypes=[("MAT files", "*.mat")],
@@ -414,8 +437,8 @@ def balloon_plot_with_slider(
         ax_recon.cla()
 
         # get Cnm_s from Cnm_s_cache
-        Cnm_s = Cnm_s_cache[
-            (freq_idx, sh_order, r0)
+        Cnm_s = Cnm_s_cache[(freq_idx, sh_order, r0)][
+            :, : current_sh_order + 1, :
         ]  # (1, sh_order + 1, 2 * sh_order + 1)
 
         # Reconstruct with current r0_rec
@@ -575,6 +598,11 @@ def plot_balloon_rec(ax, order, Pnm, dirs, az_m, el_m, title, Ynm_cache):
 
 
 if __name__ == "__main__":
+    # Initialize Tkinter in advance
+    root = tk.Tk()
+    root.withdraw()
+    configure_global_styles()
+
     balloon_plot_with_slider(
         data_dir=os.path.join("examples", "data", "sampled_directivity", "source"),
         sh_order=6,
