@@ -17,6 +17,7 @@ from matplotlib.patches import FancyArrowPatch
 from PIL import Image, ImageTk
 import io
 import urllib.request
+from scipy.interpolate import interp1d
 
 # Audiolabs color scheme
 AUDIOLABS_ORANGE = "#F15A24"
@@ -142,6 +143,20 @@ def load_audiolabs_logo():
         return Image.new("RGB", (100, 40), color=AUDIOLABS_WHITE)
 
 
+def interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, target_freq):
+    freq_array = np.array(freqs)
+    Cnm_array = np.array(
+        [Cnm_s_cache[(i, sh_order, r0)] for i in range(len(freqs))]
+    )  # shape: (n_freq, N+1, 2N+1)
+
+    # Cnm is complex, so interpolate real and imag separately; linear interpolation
+    interp_real = interp1d(freq_array, Cnm_array.real, axis=0, kind="linear")
+    interp_imag = interp1d(freq_array, Cnm_array.imag, axis=0, kind="linear")
+
+    Cnm_interp = interp_real(target_freq) + 1j * interp_imag(target_freq)
+    return Cnm_interp
+
+
 def balloon_plot_with_slider(
     data_dir, sh_order=4, initial_freq=500, initial_r0_rec=0.5
 ):
@@ -184,7 +199,7 @@ def balloon_plot_with_slider(
 
     # Create figure with Audiolabs styling
     plt.style.use("seaborn-v0_8")  # Start with a clean style
-    fig = plt.figure(figsize=(14, 7), facecolor=AUDIOLABS_WHITE)
+    fig = plt.figure(figsize=(6.5, 8), facecolor=AUDIOLABS_WHITE)
     plt.subplots_adjust(bottom=0.35, right=0.85)
     # Create axis for the 3D plot
     ax_recon = fig.add_subplot(111, projection="3d")
@@ -194,12 +209,29 @@ def balloon_plot_with_slider(
     # Create control axes with Audiolabs styling
     control_bg_color = AUDIOLABS_LIGHT_GRAY
     ax_freq = plt.axes([0.2, 0.2, 0.6, 0.03], facecolor=control_bg_color)
-    ax_freq_left = plt.axes([0.85, 0.2, 0.01, 0.03], facecolor=control_bg_color)
-    ax_freq_right = plt.axes([0.86, 0.2, 0.01, 0.03], facecolor=control_bg_color)
+    ax_freq_left = plt.axes([0.85, 0.2, 0.02, 0.03], facecolor=control_bg_color)
+    ax_freq_right = plt.axes([0.87, 0.2, 0.02, 0.03], facecolor=control_bg_color)
     ax_r0 = plt.axes([0.2, 0.15, 0.6, 0.03], facecolor=control_bg_color)
     ax_sh = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
     ax_file = plt.axes([0.2, 0.25, 0.5, 0.05], facecolor=control_bg_color)
     ax_browse = plt.axes([0.7, 0.25, 0.1, 0.05], facecolor=control_bg_color)
+
+    ax_freq_input = plt.axes([0.82, 0.25, 0.06, 0.04])
+    text_box_freq = mpl.widgets.TextBox(ax_freq_input, initial=str(initial_freq))
+    fig.text(0.9, 0.25, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
+
+    # When enter a number in the input box and press Enter, this callback function is called
+    def on_text_submit(text):
+        try:
+            val = float(text)
+            if freqs.min() <= val <= freqs.max():
+                freq_slider.set_val(val)  # trigger update()
+            else:
+                print("Input frequency out of range")
+        except:
+            print("Please input a valid frequency")
+
+    text_box_freq.on_submit(on_text_submit)
 
     # Initialize variables
     current_file = initial_file
@@ -437,9 +469,13 @@ def balloon_plot_with_slider(
         ax_recon.cla()
 
         # get Cnm_s from Cnm_s_cache
-        Cnm_s = Cnm_s_cache[(freq_idx, sh_order, r0)][
-            :, : current_sh_order + 1, :
-        ]  # (1, sh_order + 1, 2 * sh_order + 1)
+        # Cnm_s = Cnm_s_cache[(freq_idx, sh_order, r0)][
+        #    :, : current_sh_order + 1, :
+        # ]
+
+        # get Cnm_s with interpolation, (1, sh_order + 1, 2 * sh_order + 1)
+        Cnm_s = interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, freq)
+        Cnm_s = Cnm_s[:, : current_sh_order + 1, :]
 
         # Reconstruct with current r0_rec
         # Recalculate the new Pnm using r0_rec according to formula: Pnm = Cnm_s * hn_r0
@@ -465,6 +501,8 @@ def balloon_plot_with_slider(
 
         # Request to refresh the images when the GUI is idle to improve interaction efficiency
         fig.canvas.draw_idle()
+        # Synchronize text box value
+        text_box_freq.set_val(str(freq))
 
     # Connect events
     freq_slider.on_changed(update)
@@ -483,7 +521,7 @@ def add_phase_legend(fig):
     cmap = plt.get_cmap("twilight")
 
     # Create a new axis to display the color bar
-    cbar_ax = fig.add_axes([0.9, 0.15, 0.02, 0.7])
+    cbar_ax = fig.add_axes([0.9, 0.3, 0.02, 0.6])
     norm = mpl.colors.Normalize(vmin=-np.pi, vmax=np.pi)
     cb = mpl.colorbar.ColorbarBase(
         cbar_ax, cmap=cmap, norm=norm, orientation="vertical"
