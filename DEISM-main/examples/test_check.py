@@ -206,18 +206,18 @@ def balloon_plot_with_slider(
     ax_recon.view_init(elev=30, azim=45)  # Set the initial viewing angle
     # Add phase legend
     add_phase_legend(fig)
-    # Create control axes with Audiolabs styling
+    # Create control axes with Audiolabs styling ([left, bottom, width, height])
     control_bg_color = AUDIOLABS_LIGHT_GRAY
     ax_freq = plt.axes([0.2, 0.2, 0.6, 0.03], facecolor=control_bg_color)
-    ax_freq_left = plt.axes([0.85, 0.2, 0.02, 0.03], facecolor=control_bg_color)
-    ax_freq_right = plt.axes([0.87, 0.2, 0.02, 0.03], facecolor=control_bg_color)
+    ax_freq_left = plt.axes([0.88, 0.2, 0.02, 0.03], facecolor=control_bg_color)
+    ax_freq_right = plt.axes([0.90, 0.2, 0.02, 0.03], facecolor=control_bg_color)
     ax_r0 = plt.axes([0.2, 0.15, 0.6, 0.03], facecolor=control_bg_color)
     ax_sh = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
     ax_file = plt.axes([0.2, 0.25, 0.5, 0.05], facecolor=control_bg_color)
     ax_browse = plt.axes([0.7, 0.25, 0.1, 0.05], facecolor=control_bg_color)
 
     ax_freq_input = plt.axes([0.82, 0.25, 0.06, 0.04])
-    text_box_freq = mpl.widgets.TextBox(ax_freq_input, initial=str(initial_freq))
+    text_box_freq = mpl.widgets.TextBox(ax_freq_input, "", initial=str(initial_freq))
     fig.text(0.9, 0.25, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
 
     # When enter a number in the input box and press Enter, this callback function is called
