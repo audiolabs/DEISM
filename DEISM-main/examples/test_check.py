@@ -123,7 +123,7 @@ class Arrow3D(FancyArrowPatch):
 def load_audiolabs_logo():
     """Load Audiolabs logo while preserving aspect ratio"""
     try:
-        logo_path = os.path.join("examples", "audiolabs_logo.png")
+        logo_path = os.path.join("audiolabs_logo.png")  # "examples",
         logo_image = Image.open(logo_path)
 
         # calculate original ratio of width and height
@@ -149,9 +149,9 @@ def interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, target_freq):
         [Cnm_s_cache[(i, sh_order, r0)] for i in range(len(freqs))]
     )  # shape: (n_freq, N+1, 2N+1)
 
-    # Cnm is complex, so interpolate real and imag separately; linear interpolation
-    interp_real = interp1d(freq_array, Cnm_array.real, axis=0, kind="linear")
-    interp_imag = interp1d(freq_array, Cnm_array.imag, axis=0, kind="linear")
+    # Cubic spline interpolation; Cnm is complex, so interpolate real and imag separately
+    interp_real = interp1d(freq_array, Cnm_array.real, axis=0, kind="cubic")
+    interp_imag = interp1d(freq_array, Cnm_array.imag, axis=0, kind="cubic")
 
     Cnm_interp = interp_real(target_freq) + 1j * interp_imag(target_freq)
     return Cnm_interp
@@ -173,6 +173,7 @@ def balloon_plot_with_slider(
     initial_r0_rec: float
         Initial spherical radius during reconstruction
     """
+    is_initial_draw = True
 
     # Show initialization window
     init_window = InitializationWindow()
@@ -199,7 +200,7 @@ def balloon_plot_with_slider(
 
     # Create figure with Audiolabs styling
     plt.style.use("seaborn-v0_8")  # Start with a clean style
-    fig = plt.figure(figsize=(6.5, 8), facecolor=AUDIOLABS_WHITE)
+    fig = plt.figure(figsize=(6, 8), facecolor=AUDIOLABS_WHITE)
     plt.subplots_adjust(bottom=0.35, right=0.85)
     # Create axis for the 3D plot
     ax_recon = fig.add_subplot(111, projection="3d")
@@ -209,16 +210,15 @@ def balloon_plot_with_slider(
     # Create control axes with Audiolabs styling ([left, bottom, width, height])
     control_bg_color = AUDIOLABS_LIGHT_GRAY
     ax_freq = plt.axes([0.2, 0.2, 0.6, 0.03], facecolor=control_bg_color)
-    ax_freq_left = plt.axes([0.88, 0.2, 0.02, 0.03], facecolor=control_bg_color)
-    ax_freq_right = plt.axes([0.90, 0.2, 0.02, 0.03], facecolor=control_bg_color)
+    ax_freq_left = plt.axes([0.812, 0.182, 0.02, 0.02], facecolor=control_bg_color)
+    ax_freq_right = plt.axes([0.832, 0.182, 0.02, 0.02], facecolor=control_bg_color)
     ax_r0 = plt.axes([0.2, 0.15, 0.6, 0.03], facecolor=control_bg_color)
     ax_sh = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
-    ax_file = plt.axes([0.2, 0.25, 0.5, 0.05], facecolor=control_bg_color)
-    ax_browse = plt.axes([0.7, 0.25, 0.1, 0.05], facecolor=control_bg_color)
+    ax_browse = plt.axes([0.2, 0.25, 0.6, 0.05], facecolor=control_bg_color)
 
-    ax_freq_input = plt.axes([0.82, 0.25, 0.06, 0.04])
+    ax_freq_input = plt.axes([0.81, 0.25, 0.06, 0.03])
     text_box_freq = mpl.widgets.TextBox(ax_freq_input, "", initial=str(initial_freq))
-    fig.text(0.9, 0.25, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
+    fig.text(0.87, 0.26, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
 
     # When enter a number in the input box and press Enter, this callback function is called
     def on_text_submit(text):
@@ -327,20 +327,26 @@ def balloon_plot_with_slider(
             freq_slider.set_val(new_val)
 
     # Create buttons with Audiolabs styling
-    browse_button = Button(
+    btn_browse = Button(
         ax=ax_browse,
-        label="Browse...",
-        color=AUDIOLABS_ORANGE,
-        hovercolor=AUDIOLABS_GRAY,
-    )
-    browse_button.on_clicked(browse_file)
-
-    file_button = Button(
-        ax=ax_file,
         label=f"Current: {os.path.basename(current_file)}",
         color=AUDIOLABS_LIGHT_GRAY,
         hovercolor=AUDIOLABS_ORANGE,
     )
+    btn_browse.on_clicked(browse_file)
+
+    # update displayed text (on mouse hover)
+    def on_hover(event):
+        if ax_browse.contains(event)[0]:
+            ax_browse.patch.set_facecolor(AUDIOLABS_ORANGE)
+            btn_browse.label.set_text("Browse...")
+        else:
+            ax_browse.patch.set_facecolor(AUDIOLABS_LIGHT_GRAY)
+            btn_browse.label.set_text(f"Current: {os.path.basename(current_file)}")
+        ax_browse.figure.canvas.draw_idle()
+
+    # Listening for mouse movement events
+    btn_browse.ax.figure.canvas.mpl_connect("motion_notify_event", on_hover)
 
     btn_freq_left = Button(
         ax_freq_left, label="<", color=AUDIOLABS_GRAY, hovercolor=AUDIOLABS_ORANGE
@@ -361,32 +367,59 @@ def balloon_plot_with_slider(
 
     freq_slider = Slider(
         ax=ax_freq,
-        label="Frequency (Hz)",
+        label="",
         valmin=freqs.min(),
         valmax=freqs.max(),
         valinit=initial_freq,
         valstep=2,
         **slider_params,
     )
+    fig.text(
+        0.2,
+        0.197,
+        "Frequency (Hz)",
+        ha="left",
+        va="top",
+        fontsize=10,
+        color=AUDIOLABS_BLACK,
+    )
 
     r0_slider = Slider(
         ax=ax_r0,
-        label="Reconstruction Radius (r0_rec)",
+        label="",
         valmin=r0,
         valmax=2.0,
         valinit=max(r0, initial_r0_rec),
         valstep=0.1,
         **slider_params,
     )
+    fig.text(
+        0.2,
+        0.147,
+        "Reconstruction Radius (r0_rec)",
+        ha="left",
+        va="top",
+        fontsize=10,
+        color=AUDIOLABS_BLACK,
+    )
 
     sh_slider = Slider(
         ax=ax_sh,
-        label="Spherical Harmonics Order (sh_order)",
+        label="",
         valmin=0,
         valmax=max_sh_order,
         valinit=sh_order,
         valstep=1,
         **slider_params,
+    )
+    fig.text(
+        0.2,
+        0.097,
+        "Spherical Harmonics Order (sh_order)",
+        ha="left",
+        va="top",
+        fontsize=10,
+        color=AUDIOLABS_BLACK,
     )
 
     # Add Audiolabs logo to the figure
@@ -446,7 +479,7 @@ def balloon_plot_with_slider(
         # Update r0 slider
         r0_slider.set_val(max(r0, initial_r0_rec))
         # Update button label
-        file_button.label.set_text(f"Current: {os.path.basename(current_file)}")
+        btn_browse.label.set_text(f"Current: {os.path.basename(current_file)}")
 
         progress_win.update_progress(100, "File loading complete!", "Ready")
         progress_win.close()
@@ -454,6 +487,8 @@ def balloon_plot_with_slider(
         update(None)
 
     def update(val):
+        nonlocal is_initial_draw
+
         if current_file is None:
             return
 
@@ -468,14 +503,13 @@ def balloon_plot_with_slider(
         # Clear previous plot
         ax_recon.cla()
 
-        # get Cnm_s from Cnm_s_cache
-        # Cnm_s = Cnm_s_cache[(freq_idx, sh_order, r0)][
-        #    :, : current_sh_order + 1, :
-        # ]
-
-        # get Cnm_s with interpolation, (1, sh_order + 1, 2 * sh_order + 1)
-        Cnm_s = interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, freq)
-        Cnm_s = Cnm_s[:, : current_sh_order + 1, :]
+        if is_initial_draw:
+            # get Cnm_s from Cnm_s_cache
+            Cnm_s = Cnm_s_cache[(freq_idx, sh_order, r0)][:, : current_sh_order + 1, :]
+        else:
+            # get Cnm_s with interpolation, (1, sh_order + 1, 2 * sh_order + 1)
+            Cnm_s = interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, freq)
+            Cnm_s = Cnm_s[:, : current_sh_order + 1, :]
 
         # Reconstruct with current r0_rec
         # Recalculate the new Pnm using r0_rec according to formula: Pnm = Cnm_s * hn_r0
@@ -504,6 +538,8 @@ def balloon_plot_with_slider(
         # Synchronize text box value
         text_box_freq.set_val(str(freq))
 
+        is_initial_draw = False
+
     # Connect events
     freq_slider.on_changed(update)
     r0_slider.on_changed(update)
@@ -521,7 +557,7 @@ def add_phase_legend(fig):
     cmap = plt.get_cmap("twilight")
 
     # Create a new axis to display the color bar
-    cbar_ax = fig.add_axes([0.9, 0.3, 0.02, 0.6])
+    cbar_ax = fig.add_axes([0.85, 0.3, 0.02, 0.6])
     norm = mpl.colors.Normalize(vmin=-np.pi, vmax=np.pi)
     cb = mpl.colorbar.ColorbarBase(
         cbar_ax, cmap=cmap, norm=norm, orientation="vertical"
@@ -642,7 +678,7 @@ if __name__ == "__main__":
     configure_global_styles()
 
     balloon_plot_with_slider(
-        data_dir=os.path.join("examples", "data", "sampled_directivity", "source"),
+        data_dir=os.path.join("data", "sampled_directivity", "source"),
         sh_order=6,
         initial_freq=500,
         initial_r0_rec=0.6,
