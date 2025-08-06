@@ -29,6 +29,8 @@ AUDIOLABS_BLACK = "#000000"
 
 
 def configure_global_styles():
+    """Used to unify interface style"""
+
     if not hasattr(configure_global_styles, "_called"):
         style = ttk.Style()
         style.theme_use("clam")
@@ -52,7 +54,32 @@ def configure_global_styles():
         configure_global_styles._called = True
 
 
+def load_audiolabs_logo():
+    """Load Audiolabs logo while preserving aspect ratio"""
+    try:
+        logo_path = os.path.join("audiolabs_logo.png")  # "examples",
+        logo_image = Image.open(logo_path)
+
+        # calculate original ratio of width and height
+        original_width, original_height = logo_image.size
+        aspect_ratio = original_width / original_height
+
+        # Scale by height, keeping proportions
+        new_height = 40
+        new_width = int(new_height * aspect_ratio)
+        logo_image = logo_image.resize(
+            (new_width, new_height), Image.Resampling.LANCZOS
+        )
+
+        return logo_image
+    except Exception as e:
+        print(f"Logo loading failed: {e}")
+        return Image.new("RGB", (100, 40), color=AUDIOLABS_WHITE)
+
+
 class InitializationWindow:
+    """Used to display the Progress-Window"""
+
     def __init__(self, title="Progress"):
         configure_global_styles()
 
@@ -120,30 +147,9 @@ class Arrow3D(FancyArrowPatch):
         return zs[0]  # Returns the z value for depth ordering
 
 
-def load_audiolabs_logo():
-    """Load Audiolabs logo while preserving aspect ratio"""
-    try:
-        logo_path = os.path.join("audiolabs_logo.png")  # "examples",
-        logo_image = Image.open(logo_path)
-
-        # calculate original ratio of width and height
-        original_width, original_height = logo_image.size
-        aspect_ratio = original_width / original_height
-
-        # Scale by height, keeping proportions
-        new_height = 40
-        new_width = int(new_height * aspect_ratio)
-        logo_image = logo_image.resize(
-            (new_width, new_height), Image.Resampling.LANCZOS
-        )
-
-        return logo_image
-    except Exception as e:
-        print(f"Logo loading failed: {e}")
-        return Image.new("RGB", (100, 40), color=AUDIOLABS_WHITE)
-
-
 def interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, target_freq):
+    """Used to interpolate for Cnm"""
+
     freq_array = np.array(freqs)
     Cnm_array = np.array(
         [Cnm_s_cache[(i, sh_order, r0)] for i in range(len(freqs))]
@@ -216,9 +222,9 @@ def balloon_plot_with_slider(
     ax_sh = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
     ax_browse = plt.axes([0.2, 0.25, 0.6, 0.05], facecolor=control_bg_color)
 
-    ax_freq_input = plt.axes([0.81, 0.25, 0.06, 0.03])
+    ax_freq_input = plt.axes([0.81, 0.25, 0.08, 0.03])
     text_box_freq = mpl.widgets.TextBox(ax_freq_input, "", initial=str(initial_freq))
-    fig.text(0.87, 0.26, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
+    fig.text(0.89, 0.257, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
 
     # When enter a number in the input box and press Enter, this callback function is called
     def on_text_submit(text):
@@ -577,7 +583,7 @@ def add_phase_legend(fig):
 
 
 def plot_balloon_rec(ax, order, Pnm, dirs, az_m, el_m, title, Ynm_cache):
-    """plot a reconstructed balloon plot with Audio Labs styling"""
+    """plot a reconstructed balloon plot with Audiolabs styling"""
     # Initialize the direction response vector D
     D = np.zeros(dirs.shape[0], dtype=complex)
 
@@ -608,10 +614,8 @@ def plot_balloon_rec(ax, order, Pnm, dirs, az_m, el_m, title, Ynm_cache):
     cmap = plt.get_cmap("twilight")
     colors = cmap(norm_phase)
 
-    # Plot
-    # ax.set_axis_on()
+    # Plot; Set the tick range and labels
     lim = 1
-    # Set the tick range and labels
     ax.set_xlim([-lim, lim])
     ax.set_ylim([-lim, lim])
     ax.set_zlim([-lim, lim])
