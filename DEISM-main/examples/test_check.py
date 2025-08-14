@@ -18,6 +18,7 @@ from PIL import Image, ImageTk
 import io
 import urllib.request
 from scipy.interpolate import interp1d
+import time
 
 # Audiolabs color scheme
 AUDIOLABS_ORANGE = "#F15A24"
@@ -57,7 +58,7 @@ def configure_global_styles():
 def load_audiolabs_logo():
     """Load Audiolabs logo while preserving aspect ratio"""
     try:
-        logo_path = os.path.join("audiolabs_logo.png")  # "examples",
+        logo_path = os.path.join("examples", "audiolabs_logo.png")
         logo_image = Image.open(logo_path)
 
         # calculate original ratio of width and height
@@ -117,9 +118,10 @@ class InitializationWindow:
 
     def update_progress(self, value, message, status=""):
         self.progress["value"] = value
-        self.label.config(text=message)
-        self.status_label.config(text=status)
+        self.label.config(width=60, anchor="center", text=message)
+        self.status_label.config(width=60, anchor="center", text=status)
         self.root.update_idletasks()
+        self.root.update()
 
     def close(self):
         self.root.destroy()
@@ -164,7 +166,7 @@ def interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, target_freq):
 
 
 def balloon_plot_with_slider(
-    data_dir, sh_order=4, initial_freq=500, initial_r0_rec=0.5
+    data_dir, sh_order=4, initial_freq=500, initial_r0_rec=0.5, progress_window=None
 ):
     """
     Interactive balloon plot with sliders to change frequency and r0_rec.
@@ -182,19 +184,20 @@ def balloon_plot_with_slider(
     is_initial_draw = True
 
     # Show initialization window
-    init_window = InitializationWindow()
-    init_window.update_progress(0, "Starting initialization...", "Scanning files")
+    progress_window.update_progress(25, "Initializing...", "Scanning files")
+    time.sleep(0.5)
 
     # Find all source files in directory
     source_files = [f for f in os.listdir(data_dir) if f.endswith("_source.mat")]
     if not source_files:
-        init_window.close()
+        progress_window.close()
         raise ValueError(f"No source files found in {data_dir}")
 
     # Load first file to initialize data
-    init_window.update_progress(
-        20, "Initializing...", f"Loading initial file: {source_files[0]}"
+    progress_window.update_progress(
+        35, "Initializing...", f"Loading initial file: {source_files[0]}"
     )
+    time.sleep(0.5)
     initial_file = os.path.join(data_dir, source_files[0])
     mat = loadmat(initial_file)
     Psh = mat["Psh"]
@@ -254,12 +257,16 @@ def balloon_plot_with_slider(
     dirs = np.stack([az_m.ravel(), el_m.ravel()], axis=1)
 
     # precomputation of Ynm, hn, Pnm and Cnm
-    init_window.update_progress(60, "Initializing...", "Precomputing")
+    start_step = time.perf_counter()
     Ynm_cache = {}
     for n in range(sh_order + 1):
         for m in range(-n, n + 1):
             Ynm_cache[(n, m)] = sph_harm(m, n, dirs[:, 0], dirs[:, 1])
+    elapsed_step = time.perf_counter() - start_step
+    progress_window.update_progress(45, "Precomputing Ynm...", f"{elapsed_step:.3f} s")
+    time.sleep(0.5)
 
+    start_step = time.perf_counter()
     hn_cache = {}
     kr_values = [
         k_all[i] * r for i in range(len(freqs)) for r in np.arange(r0, 2.0 + 0.001, 0.1)
@@ -268,10 +275,14 @@ def balloon_plot_with_slider(
     for n in range(sh_order + 1):
         for kr in kr_values:
             hn_cache[(n, kr)] = sphankel2(n, kr)
+    elapsed_step = time.perf_counter() - start_step
+    progress_window.update_progress(55, "Precomputing hn...", f"{elapsed_step:.3f} s")
+    time.sleep(0.5)
 
     full_Pnm_cache = {}  # {(freq_idx, sh_order): full_Pnm}
     Cnm_s_cache = {}  # {(freq_idx, sh_order, r0): Cnm_s}
     for freq_idx in range(len(freqs)):
+        start_step = time.perf_counter()
         full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
             Psh[freq_idx].reshape(1, -1), Dir_all, sh_order, np.array([freqs[freq_idx]])
         )
@@ -279,10 +290,19 @@ def balloon_plot_with_slider(
         Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
             k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
         )
+        elapsed_step = time.perf_counter() - start_step
+        progress_window.update_progress(
+            65 + freq_idx / len(freqs) * 30,
+            f"Precomputing Pnm & Cnm: freq {freqs[freq_idx]:.1f} Hz...",
+            f"{elapsed_step:.3f} s",
+        )
 
     # Close initialization window when done
-    init_window.update_progress(100, "Initialization complete!")
-    init_window.close()
+    progress_window.update_progress(
+        100, "Precomputation complete!", "Initialization complete!"
+    )
+    time.sleep(0.5)
+    progress_window.close()
 
     def browse_file(event):
         # Create the Tkinter root window object
@@ -402,7 +422,7 @@ def balloon_plot_with_slider(
     fig.text(
         0.2,
         0.147,
-        "Reconstruction Radius (r0_rec)",
+        "Reconstruction Radius (m)",
         ha="left",
         va="top",
         fontsize=10,
@@ -421,7 +441,7 @@ def balloon_plot_with_slider(
     fig.text(
         0.2,
         0.097,
-        "Spherical Harmonics Order (sh_order)",
+        "Spherical Harmonics Order",
         ha="left",
         va="top",
         fontsize=10,
@@ -447,8 +467,9 @@ def balloon_plot_with_slider(
         # Create progress window
         progress_win = InitializationWindow("Loading File Progress")
         progress_win.update_progress(
-            0, f"Loading new file: {source_files[file_idx]}", "Starting..."
+            0, "Starting...", f"Loading new file: {source_files[file_idx]}"
         )
+        time.sleep(0.5)
 
         # Clear old cache
         full_Pnm_cache.clear()
@@ -464,8 +485,8 @@ def balloon_plot_with_slider(
         k_all = 2 * np.pi * freqs / 343
 
         # precomputation of full_Pnm and Cnm_s
-        progress_win.update_progress(50, "New file loaded", "Precomputing...")
         for freq_idx in range(len(freqs)):
+            start_step = time.perf_counter()
             full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
                 Psh[freq_idx].reshape(1, -1),
                 Dir_all,
@@ -476,7 +497,18 @@ def balloon_plot_with_slider(
             Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
                 k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
             )
+            elapsed_step = time.perf_counter() - start_step
+            progress_win.update_progress(
+                35 + freq_idx / len(freqs) * 60,
+                f"Precomputing Pnm & Cnm: freq {freqs[freq_idx]:.1f} Hz...",
+                f"{elapsed_step:.3f} s",
+            )
 
+        progress_win.update_progress(
+            95,
+            "Updating parameters on the interface...",
+            "updating sliders and buttons",
+        )
         # Update frequency slider
         freq_slider.valmin = freqs.min()
         freq_slider.valmax = freqs.max()
@@ -486,8 +518,10 @@ def balloon_plot_with_slider(
         r0_slider.set_val(max(r0, initial_r0_rec))
         # Update button label
         btn_browse.label.set_text(f"Current: {os.path.basename(current_file)}")
+        time.sleep(0.5)
 
-        progress_win.update_progress(100, "File loading complete!", "Ready")
+        progress_win.update_progress(100, "Ready!", "File loading complete!")
+        time.sleep(0.5)
         progress_win.close()
 
         update(None)
@@ -535,7 +569,7 @@ def balloon_plot_with_slider(
             dirs,
             az_m,
             el_m,
-            f"Reconstructed {int(actual_freq)} Hz, r0_rec={r0_rec:.1f}",
+            f"Reconstructed {int(actual_freq)} Hz, r0_rec={r0_rec:.1f} m",
             Ynm_cache,
         )
 
@@ -676,14 +710,23 @@ def plot_balloon_rec(ax, order, Pnm, dirs, az_m, el_m, title, Ynm_cache):
 
 
 if __name__ == "__main__":
-    # Initialize Tkinter in advance
+    # Create the main Tk window and hide it
     root = tk.Tk()
     root.withdraw()
+
+    # Create progress window
+    init_window = InitializationWindow("Initialization Progress")
+    init_window.update_progress(
+        0, "Starting initialization...", "configure global styles"
+    )
+    time.sleep(0.5)
+
     configure_global_styles()
 
     balloon_plot_with_slider(
-        data_dir=os.path.join("data", "sampled_directivity", "source"),
+        data_dir=os.path.join("examples", "data", "sampled_directivity", "source"),
         sh_order=6,
         initial_freq=500,
         initial_r0_rec=0.6,
+        progress_window=init_window,
     )
