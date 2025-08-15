@@ -18,6 +18,7 @@ from PIL import Image, ImageTk
 import io
 import urllib.request
 from scipy.interpolate import interp1d
+import time
 
 # Audiolabs color scheme
 AUDIOLABS_ORANGE = "#F15A24"
@@ -29,6 +30,8 @@ AUDIOLABS_BLACK = "#000000"
 
 
 def configure_global_styles():
+    """Used to unify interface style"""
+
     if not hasattr(configure_global_styles, "_called"):
         style = ttk.Style()
         style.theme_use("clam")
@@ -52,7 +55,32 @@ def configure_global_styles():
         configure_global_styles._called = True
 
 
+def load_audiolabs_logo():
+    """Load Audiolabs logo while preserving aspect ratio"""
+    try:
+        logo_path = os.path.join("examples", "audiolabs_logo.png")
+        logo_image = Image.open(logo_path)
+
+        # calculate original ratio of width and height
+        original_width, original_height = logo_image.size
+        aspect_ratio = original_width / original_height
+
+        # Scale by height, keeping proportions
+        new_height = 40
+        new_width = int(new_height * aspect_ratio)
+        logo_image = logo_image.resize(
+            (new_width, new_height), Image.Resampling.LANCZOS
+        )
+
+        return logo_image
+    except Exception as e:
+        print(f"Logo loading failed: {e}")
+        return Image.new("RGB", (100, 40), color=AUDIOLABS_WHITE)
+
+
 class InitializationWindow:
+    """Used to display the Progress-Window"""
+
     def __init__(self, title="Progress"):
         configure_global_styles()
 
@@ -90,9 +118,10 @@ class InitializationWindow:
 
     def update_progress(self, value, message, status=""):
         self.progress["value"] = value
-        self.label.config(text=message)
-        self.status_label.config(text=status)
+        self.label.config(width=60, anchor="center", text=message)
+        self.status_label.config(width=60, anchor="center", text=status)
         self.root.update_idletasks()
+        self.root.update()
 
     def close(self):
         self.root.destroy()
@@ -120,44 +149,24 @@ class Arrow3D(FancyArrowPatch):
         return zs[0]  # Returns the z value for depth ordering
 
 
-def load_audiolabs_logo():
-    """Load Audiolabs logo while preserving aspect ratio"""
-    try:
-        logo_path = os.path.join("examples", "audiolabs_logo.png")
-        logo_image = Image.open(logo_path)
-
-        # calculate original ratio of width and height
-        original_width, original_height = logo_image.size
-        aspect_ratio = original_width / original_height
-
-        # Scale by height, keeping proportions
-        new_height = 40
-        new_width = int(new_height * aspect_ratio)
-        logo_image = logo_image.resize(
-            (new_width, new_height), Image.Resampling.LANCZOS
-        )
-
-        return logo_image
-    except Exception as e:
-        print(f"Logo loading failed: {e}")
-        return Image.new("RGB", (100, 40), color=AUDIOLABS_WHITE)
-
-
 def interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, target_freq):
+    """Used to interpolate for Cnm"""
+
     freq_array = np.array(freqs)
     Cnm_array = np.array(
         [Cnm_s_cache[(i, sh_order, r0)] for i in range(len(freqs))]
     )  # shape: (n_freq, N+1, 2N+1)
 
-    # linear interpolation; Cnm is complex, direct complex interpolation
-    interp_cmp = interp1d(freq_array, Cnm_array, axis=0, kind="linear")
+    # Cubic spline interpolation; Cnm is complex, so interpolate real and imag separately
+    interp_real = interp1d(freq_array, Cnm_array.real, axis=0, kind="cubic")
+    interp_imag = interp1d(freq_array, Cnm_array.imag, axis=0, kind="cubic")
 
-    Cnm_interp = interp_cmp(target_freq)
+    Cnm_interp = interp_real(target_freq) + 1j * interp_imag(target_freq)
     return Cnm_interp
 
 
 def balloon_plot_with_slider(
-    data_dir, sh_order=4, initial_freq=500, initial_r0_rec=0.5
+    data_dir, sh_order=4, initial_freq=500, initial_r0_rec=0.5, progress_window=None
 ):
     """
     Interactive balloon plot with sliders to change frequency and r0_rec.
@@ -172,21 +181,23 @@ def balloon_plot_with_slider(
     initial_r0_rec: float
         Initial spherical radius during reconstruction
     """
+    is_initial_draw = True
 
     # Show initialization window
-    init_window = InitializationWindow()
-    init_window.update_progress(0, "Starting initialization...", "Scanning files")
+    progress_window.update_progress(25, "Initializing...", "Scanning files")
+    time.sleep(0.5)
 
     # Find all source files in directory
     source_files = [f for f in os.listdir(data_dir) if f.endswith("_source.mat")]
     if not source_files:
-        init_window.close()
+        progress_window.close()
         raise ValueError(f"No source files found in {data_dir}")
 
     # Load first file to initialize data
-    init_window.update_progress(
-        20, "Initializing...", f"Loading initial file: {source_files[0]}"
+    progress_window.update_progress(
+        35, "Initializing...", f"Loading initial file: {source_files[0]}"
     )
+    time.sleep(0.5)
     initial_file = os.path.join(data_dir, source_files[0])
     mat = loadmat(initial_file)
     Psh = mat["Psh"]
@@ -198,7 +209,7 @@ def balloon_plot_with_slider(
 
     # Create figure with Audiolabs styling
     plt.style.use("seaborn-v0_8")  # Start with a clean style
-    fig = plt.figure(figsize=(6.5, 8), facecolor=AUDIOLABS_WHITE)
+    fig = plt.figure(figsize=(6, 8), facecolor=AUDIOLABS_WHITE)
     plt.subplots_adjust(bottom=0.35, right=0.85)
     # Create axis for the 3D plot
     ax_recon = fig.add_subplot(111, projection="3d")
@@ -208,16 +219,15 @@ def balloon_plot_with_slider(
     # Create control axes with Audiolabs styling ([left, bottom, width, height])
     control_bg_color = AUDIOLABS_LIGHT_GRAY
     ax_freq = plt.axes([0.2, 0.2, 0.6, 0.03], facecolor=control_bg_color)
-    ax_freq_left = plt.axes([0.88, 0.2, 0.02, 0.03], facecolor=control_bg_color)
-    ax_freq_right = plt.axes([0.90, 0.2, 0.02, 0.03], facecolor=control_bg_color)
+    ax_freq_left = plt.axes([0.812, 0.182, 0.02, 0.02], facecolor=control_bg_color)
+    ax_freq_right = plt.axes([0.832, 0.182, 0.02, 0.02], facecolor=control_bg_color)
     ax_r0 = plt.axes([0.2, 0.15, 0.6, 0.03], facecolor=control_bg_color)
     ax_sh = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
-    ax_file = plt.axes([0.2, 0.25, 0.5, 0.05], facecolor=control_bg_color)
-    ax_browse = plt.axes([0.7, 0.25, 0.1, 0.05], facecolor=control_bg_color)
+    ax_browse = plt.axes([0.2, 0.25, 0.6, 0.05], facecolor=control_bg_color)
 
-    ax_freq_input = plt.axes([0.8, 0.175, 0.06, 0.03])
+    ax_freq_input = plt.axes([0.81, 0.25, 0.08, 0.03])
     text_box_freq = mpl.widgets.TextBox(ax_freq_input, "", initial=str(initial_freq))
-    fig.text(0.87, 0.178, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
+    fig.text(0.89, 0.257, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
 
     # When enter a number in the input box and press Enter, this callback function is called
     def on_text_submit(text):
@@ -247,12 +257,16 @@ def balloon_plot_with_slider(
     dirs = np.stack([az_m.ravel(), el_m.ravel()], axis=1)
 
     # precomputation of Ynm, hn, Pnm and Cnm
-    init_window.update_progress(60, "Initializing...", "Precomputing")
+    start_step = time.perf_counter()
     Ynm_cache = {}
     for n in range(sh_order + 1):
         for m in range(-n, n + 1):
             Ynm_cache[(n, m)] = sph_harm(m, n, dirs[:, 0], dirs[:, 1])
+    elapsed_step = time.perf_counter() - start_step
+    progress_window.update_progress(45, "Precomputing Ynm...", f"{elapsed_step:.3f} s")
+    time.sleep(0.5)
 
+    start_step = time.perf_counter()
     hn_cache = {}
     kr_values = [
         k_all[i] * r for i in range(len(freqs)) for r in np.arange(r0, 2.0 + 0.001, 0.1)
@@ -261,10 +275,14 @@ def balloon_plot_with_slider(
     for n in range(sh_order + 1):
         for kr in kr_values:
             hn_cache[(n, kr)] = sphankel2(n, kr)
+    elapsed_step = time.perf_counter() - start_step
+    progress_window.update_progress(55, "Precomputing hn...", f"{elapsed_step:.3f} s")
+    time.sleep(0.5)
 
     full_Pnm_cache = {}  # {(freq_idx, sh_order): full_Pnm}
     Cnm_s_cache = {}  # {(freq_idx, sh_order, r0): Cnm_s}
     for freq_idx in range(len(freqs)):
+        start_step = time.perf_counter()
         full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
             Psh[freq_idx].reshape(1, -1), Dir_all, sh_order, np.array([freqs[freq_idx]])
         )
@@ -272,10 +290,19 @@ def balloon_plot_with_slider(
         Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
             k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
         )
+        elapsed_step = time.perf_counter() - start_step
+        progress_window.update_progress(
+            65 + freq_idx / len(freqs) * 30,
+            f"Precomputing Pnm & Cnm: freq {freqs[freq_idx]:.1f} Hz...",
+            f"{elapsed_step:.3f} s",
+        )
 
     # Close initialization window when done
-    init_window.update_progress(100, "Initialization complete!")
-    init_window.close()
+    progress_window.update_progress(
+        100, "Precomputation complete!", "Initialization complete!"
+    )
+    time.sleep(0.5)
+    progress_window.close()
 
     def browse_file(event):
         # Create the Tkinter root window object
@@ -326,20 +353,26 @@ def balloon_plot_with_slider(
             freq_slider.set_val(new_val)
 
     # Create buttons with Audiolabs styling
-    browse_button = Button(
+    btn_browse = Button(
         ax=ax_browse,
-        label="Browse...",
-        color=AUDIOLABS_ORANGE,
-        hovercolor=AUDIOLABS_GRAY,
-    )
-    browse_button.on_clicked(browse_file)
-
-    file_button = Button(
-        ax=ax_file,
         label=f"Current: {os.path.basename(current_file)}",
         color=AUDIOLABS_LIGHT_GRAY,
         hovercolor=AUDIOLABS_ORANGE,
     )
+    btn_browse.on_clicked(browse_file)
+
+    # update displayed text (on mouse hover)
+    def on_hover(event):
+        if ax_browse.contains(event)[0]:
+            ax_browse.patch.set_facecolor(AUDIOLABS_ORANGE)
+            btn_browse.label.set_text("Browse...")
+        else:
+            ax_browse.patch.set_facecolor(AUDIOLABS_LIGHT_GRAY)
+            btn_browse.label.set_text(f"Current: {os.path.basename(current_file)}")
+        ax_browse.figure.canvas.draw_idle()
+
+    # Listening for mouse movement events
+    btn_browse.ax.figure.canvas.mpl_connect("motion_notify_event", on_hover)
 
     btn_freq_left = Button(
         ax_freq_left, label="<", color=AUDIOLABS_GRAY, hovercolor=AUDIOLABS_ORANGE
@@ -369,7 +402,7 @@ def balloon_plot_with_slider(
     )
     fig.text(
         0.2,
-        0.195,
+        0.197,
         "Frequency (Hz)",
         ha="left",
         va="top",
@@ -388,8 +421,8 @@ def balloon_plot_with_slider(
     )
     fig.text(
         0.2,
-        0.145,
-        "Reconstruction Radius (r0_rec)",
+        0.147,
+        "Reconstruction Radius (m)",
         ha="left",
         va="top",
         fontsize=10,
@@ -407,8 +440,8 @@ def balloon_plot_with_slider(
     )
     fig.text(
         0.2,
-        0.095,
-        "Spherical Harmonics Order (sh_order)",
+        0.097,
+        "Spherical Harmonics Order",
         ha="left",
         va="top",
         fontsize=10,
@@ -434,8 +467,9 @@ def balloon_plot_with_slider(
         # Create progress window
         progress_win = InitializationWindow("Loading File Progress")
         progress_win.update_progress(
-            0, f"Loading new file: {source_files[file_idx]}", "Starting..."
+            0, "Starting...", f"Loading new file: {source_files[file_idx]}"
         )
+        time.sleep(0.5)
 
         # Clear old cache
         full_Pnm_cache.clear()
@@ -451,8 +485,8 @@ def balloon_plot_with_slider(
         k_all = 2 * np.pi * freqs / 343
 
         # precomputation of full_Pnm and Cnm_s
-        progress_win.update_progress(50, "New file loaded", "Precomputing...")
         for freq_idx in range(len(freqs)):
+            start_step = time.perf_counter()
             full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
                 Psh[freq_idx].reshape(1, -1),
                 Dir_all,
@@ -463,7 +497,18 @@ def balloon_plot_with_slider(
             Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
                 k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
             )
+            elapsed_step = time.perf_counter() - start_step
+            progress_win.update_progress(
+                35 + freq_idx / len(freqs) * 60,
+                f"Precomputing Pnm & Cnm: freq {freqs[freq_idx]:.1f} Hz...",
+                f"{elapsed_step:.3f} s",
+            )
 
+        progress_win.update_progress(
+            95,
+            "Updating parameters on the interface...",
+            "updating sliders and buttons",
+        )
         # Update frequency slider
         freq_slider.valmin = freqs.min()
         freq_slider.valmax = freqs.max()
@@ -472,14 +517,18 @@ def balloon_plot_with_slider(
         # Update r0 slider
         r0_slider.set_val(max(r0, initial_r0_rec))
         # Update button label
-        file_button.label.set_text(f"Current: {os.path.basename(current_file)}")
+        btn_browse.label.set_text(f"Current: {os.path.basename(current_file)}")
+        time.sleep(0.5)
 
-        progress_win.update_progress(100, "File loading complete!", "Ready")
+        progress_win.update_progress(100, "Ready!", "File loading complete!")
+        time.sleep(0.5)
         progress_win.close()
 
         update(None)
 
     def update(val):
+        nonlocal is_initial_draw
+
         if current_file is None:
             return
 
@@ -494,14 +543,13 @@ def balloon_plot_with_slider(
         # Clear previous plot
         ax_recon.cla()
 
-        # get Cnm_s from Cnm_s_cache
-        # Cnm_s = Cnm_s_cache[(freq_idx, sh_order, r0)][
-        #    :, : current_sh_order + 1, :
-        # ]
-
-        # get Cnm_s with interpolation, (1, sh_order + 1, 2 * sh_order + 1)
-        Cnm_s = interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, freq)
-        Cnm_s = Cnm_s[:, : current_sh_order + 1, :]
+        if is_initial_draw:
+            # get Cnm_s from Cnm_s_cache
+            Cnm_s = Cnm_s_cache[(freq_idx, sh_order, r0)][:, : current_sh_order + 1, :]
+        else:
+            # get Cnm_s with interpolation, (1, sh_order + 1, 2 * sh_order + 1)
+            Cnm_s = interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, freq)
+            Cnm_s = Cnm_s[:, : current_sh_order + 1, :]
 
         # Reconstruct with current r0_rec
         # Recalculate the new Pnm using r0_rec according to formula: Pnm = Cnm_s * hn_r0
@@ -521,7 +569,7 @@ def balloon_plot_with_slider(
             dirs,
             az_m,
             el_m,
-            f"Reconstructed {int(actual_freq)} Hz, r0_rec={r0_rec:.1f}",
+            f"Reconstructed {int(actual_freq)} Hz, r0_rec={r0_rec:.1f} m",
             Ynm_cache,
         )
 
@@ -529,6 +577,8 @@ def balloon_plot_with_slider(
         fig.canvas.draw_idle()
         # Synchronize text box value
         text_box_freq.set_val(str(freq))
+
+        is_initial_draw = False
 
     # Connect events
     freq_slider.on_changed(update)
@@ -567,7 +617,7 @@ def add_phase_legend(fig):
 
 
 def plot_balloon_rec(ax, order, Pnm, dirs, az_m, el_m, title, Ynm_cache):
-    """plot a reconstructed balloon plot with Audio Labs styling"""
+    """plot a reconstructed balloon plot with Audiolabs styling"""
     # Initialize the direction response vector D
     D = np.zeros(dirs.shape[0], dtype=complex)
 
@@ -598,10 +648,8 @@ def plot_balloon_rec(ax, order, Pnm, dirs, az_m, el_m, title, Ynm_cache):
     cmap = plt.get_cmap("twilight")
     colors = cmap(norm_phase)
 
-    # Plot
-    # ax.set_axis_on()
+    # Plot; Set the tick range and labels
     lim = 1
-    # Set the tick range and labels
     ax.set_xlim([-lim, lim])
     ax.set_ylim([-lim, lim])
     ax.set_zlim([-lim, lim])
@@ -662,14 +710,23 @@ def plot_balloon_rec(ax, order, Pnm, dirs, az_m, el_m, title, Ynm_cache):
 
 
 if __name__ == "__main__":
-    # Initialize Tkinter in advance
+    # Create the main Tk window and hide it
     root = tk.Tk()
     root.withdraw()
+
+    # Create progress window
+    init_window = InitializationWindow("Initialization Progress")
+    init_window.update_progress(
+        0, "Starting initialization...", "configure global styles"
+    )
+    time.sleep(0.5)
+
     configure_global_styles()
 
     balloon_plot_with_slider(
-        data_dir=os.path.join("data", "sampled_directivity", "source"),
+        data_dir=os.path.join("examples", "data", "sampled_directivity", "source"),
         sh_order=6,
         initial_freq=500,
         initial_r0_rec=0.6,
+        progress_window=init_window,
     )

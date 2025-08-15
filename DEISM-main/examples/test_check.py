@@ -165,8 +165,18 @@ def interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, target_freq):
     return Cnm_interp
 
 
+def is_receiver_file(name: str) -> bool:
+    return name.endswith("_receiver.mat")
+
+
 def balloon_plot_with_slider(
-    data_dir, sh_order=4, initial_freq=500, initial_r0_rec=0.5, progress_window=None
+    source_dir,
+    receiver_dir,
+    sh_order=4,
+    initial_freq=500,
+    initial_r0_rec=0.5,
+    progress_window=None,
+    params=None,
 ):
     """
     Interactive balloon plot with sliders to change frequency and r0_rec.
@@ -187,18 +197,40 @@ def balloon_plot_with_slider(
     progress_window.update_progress(25, "Initializing...", "Scanning files")
     time.sleep(0.5)
 
-    # Find all source files in directory
-    source_files = [f for f in os.listdir(data_dir) if f.endswith("_source.mat")]
-    if not source_files:
+    # Find all source and receiver files in directory
+    abs_source_dir = os.path.abspath(source_dir)
+    abs_receiver_dir = os.path.abspath(receiver_dir)
+    ALLOWED_DIRS = {abs_source_dir, abs_receiver_dir}
+    BASE_DIR = os.path.commonpath(list(ALLOWED_DIRS))
+
+    def list_mats(d):
+        return [f for f in os.listdir(d) if f.endswith(".mat")]
+
+    source_files = [f for f in list_mats(abs_source_dir) if f.endswith("_source.mat")]
+    receiver_files = [
+        f for f in list_mats(abs_receiver_dir) if f.endswith("_receiver.mat")
+    ]
+    allowed_files = source_files + receiver_files
+
+    # basename -> full path
+    file_lookup = {}
+    for f in source_files:
+        file_lookup[f] = os.path.join(abs_source_dir, f)
+    for f in receiver_files:
+        file_lookup[f] = os.path.join(abs_receiver_dir, f)
+
+    if not allowed_files:
         progress_window.close()
-        raise ValueError(f"No source files found in {data_dir}")
+        raise ValueError(f"No source/receiver files found.")
 
     # Load first file to initialize data
+    first_name = source_files[0] if source_files else allowed_files[0]
+    initial_file = file_lookup[first_name]
     progress_window.update_progress(
-        35, "Initializing...", f"Loading initial file: {source_files[0]}"
+        35, "Initializing...", f"Loading initial file: {first_name}"
     )
     time.sleep(0.5)
-    initial_file = os.path.join(data_dir, source_files[0])
+
     mat = loadmat(initial_file)
     Psh = mat["Psh"]
     Dir_all = mat["Dir_all"]
@@ -206,6 +238,11 @@ def balloon_plot_with_slider(
     r0 = float(mat["r0"].squeeze())
     max_sh_order = sh_order
     k_all = 2 * np.pi * freqs / 343
+
+    current_file = initial_file
+    current_file_idx = allowed_files.index(first_name)
+    current_is_receiver = is_receiver_file(first_name)
+    S = params["pointSrcStrength"] if current_is_receiver else None
 
     # Create figure with Audiolabs styling
     plt.style.use("seaborn-v0_8")  # Start with a clean style
@@ -242,10 +279,6 @@ def balloon_plot_with_slider(
 
     text_box_freq.on_submit(on_text_submit)
 
-    # Initialize variables
-    current_file = initial_file
-    current_file_idx = 0
-
     # Resolution for the plots
     res = 50
     # Construct a spherical angle grid (azimuth and elevation) to prepare sampling points for drawing
@@ -281,8 +314,13 @@ def balloon_plot_with_slider(
 
     full_Pnm_cache = {}  # {(freq_idx, sh_order): full_Pnm}
     Cnm_s_cache = {}  # {(freq_idx, sh_order, r0): Cnm_s}
+    S = None
     for freq_idx in range(len(freqs)):
         start_step = time.perf_counter()
+
+        if current_is_receiver:  # for receiver
+            Psh[freq_idx] = Psh[freq_idx] / S[..., None]
+
         full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
             Psh[freq_idx].reshape(1, -1), Dir_all, sh_order, np.array([freqs[freq_idx]])
         )
@@ -316,25 +354,26 @@ def balloon_plot_with_slider(
             # Open the file selection dialog box and configure the parameters:
             file_path = filedialog.askopenfilename(
                 # parent=root,
-                initialdir=os.path.abspath(data_dir),
+                initialdir=BASE_DIR,
                 title="Select MAT file",
                 filetypes=[("MAT files", "*.mat")],
             )
             if file_path:
                 # Normalized path format
                 selected_dir = os.path.normpath(os.path.dirname(file_path))
-                target_dir = os.path.normpath(os.path.abspath(data_dir))
 
                 # Verify that the selected file is in the specified directory
-                if selected_dir != target_dir:
-                    print(f"Please select a file in the {target_dir} directory.")
+                if selected_dir not in ALLOWED_DIRS:
+                    print("Please select a file under one of these directories:")
+                    print(" -", abs_source_dir)
+                    print(" -", abs_receiver_dir)
                     return
 
                 # Extract the pure file name (without path)
                 filename = os.path.basename(file_path)
-                # Check if the file is in the list of allowed source files
-                if filename in source_files:
-                    file_idx = source_files.index(filename)
+                # Check if the file is in the list of allowed files
+                if filename in allowed_files:
+                    file_idx = allowed_files.index(filename)
                     load_file(file_idx)
                 else:
                     print(f"Invalid file: {filename}")
@@ -462,12 +501,12 @@ def balloon_plot_with_slider(
         print(f"Could not load logo: {e}")
 
     def load_file(file_idx):
-        nonlocal current_file, current_file_idx, r0, freqs, k_all, Psh, Dir_all, full_Pnm_cache, Cnm_s_cache
+        nonlocal current_file, current_file_idx, r0, freqs, k_all, Psh, Dir_all, full_Pnm_cache, Cnm_s_cache, current_is_receiver, S
 
         # Create progress window
         progress_win = InitializationWindow("Loading File Progress")
         progress_win.update_progress(
-            0, "Starting...", f"Loading new file: {source_files[file_idx]}"
+            0, "Starting...", f"Loading new file: {allowed_files[file_idx]}"
         )
         time.sleep(0.5)
 
@@ -476,7 +515,7 @@ def balloon_plot_with_slider(
         Cnm_s_cache.clear()
 
         # load new datas
-        current_file = os.path.join(data_dir, source_files[file_idx])
+        current_file = file_lookup[allowed_files[file_idx]]
         mat = loadmat(current_file)
         Psh = mat["Psh"]
         Dir_all = mat["Dir_all"]
@@ -484,9 +523,13 @@ def balloon_plot_with_slider(
         r0 = float(mat["r0"].squeeze())
         k_all = 2 * np.pi * freqs / 343
 
+        S = params["pointSrcStrength"] if current_is_receiver else None
+
         # precomputation of full_Pnm and Cnm_s
         for freq_idx in range(len(freqs)):
             start_step = time.perf_counter()
+            if current_is_receiver:  # for receiver
+                Psh[freq_idx] = Psh[freq_idx] / S[..., None]
             full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
                 Psh[freq_idx].reshape(1, -1),
                 Dir_all,
@@ -714,6 +757,8 @@ if __name__ == "__main__":
     root = tk.Tk()
     root.withdraw()
 
+    params, cmdArgs = cmdArgsToDict()
+
     # Create progress window
     init_window = InitializationWindow("Initialization Progress")
     init_window.update_progress(
@@ -724,9 +769,13 @@ if __name__ == "__main__":
     configure_global_styles()
 
     balloon_plot_with_slider(
-        data_dir=os.path.join("examples", "data", "sampled_directivity", "source"),
+        source_dir=os.path.join("examples", "data", "sampled_directivity", "source"),
+        receiver_dir=os.path.join(
+            "examples", "data", "sampled_directivity", "receiver"
+        ),
         sh_order=6,
         initial_freq=500,
         initial_r0_rec=0.6,
         progress_window=init_window,
+        params=params,
     )
