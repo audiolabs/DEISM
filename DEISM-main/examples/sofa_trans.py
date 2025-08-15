@@ -1,60 +1,60 @@
 from netCDF4 import Dataset
 import numpy as np
 
-# ==== 1. 打开 SOFA 文件 ====
+# ==== 1. Open the SOFA file ====
 sofa_file = r"D:\Conda\DEISM-main\DEISM-main\examples\MIT_KEMAR_normal_pinna.sofa"
 ds = Dataset(sofa_file, "r")
 
-# ==== 2. 看看文件里有哪些变量 ====
+# ==== 2. Check which variables are available in the file ====
 print("Variables:", list(ds.variables.keys()))
 
-# 常见关键变量：
-#   Data.IR           -> HRIR（时域脉冲响应）
-#   SourcePosition    -> 声源方位 (az[deg], el[deg], r[m])
-#   Data.SamplingRate -> 采样率
-#   ListenerPosition  -> 听者位置（可选）
-#   ListenerView/Up   -> 方向基（可选）
+# Common key variables:
+#   Data.IR           -> HRIR (time-domain impulse response)
+#   SourcePosition    -> Source position (az[deg], el[deg], r[m])
+#   Data.SamplingRate -> Sampling rate
+#   ListenerPosition  -> Listener position (optional)
+#   ListenerView/Up   -> Orientation basis (optional)
 
-# ==== 3. 读取声源方向（单位是度、米） ====
+# ==== 3. Read source directions (units: degrees, meters) ====
 src_pos = np.array(ds.variables["SourcePosition"])  # shape (M,3)
 az_deg = src_pos[:, 0]
 el_deg = src_pos[:, 1]
 r_m = src_pos[:, 2]
 
-# 转成弧度，inclination = 90° - elevation
+# Convert to radians, inclination = 90° - elevation
 az_rad = np.deg2rad(az_deg)
 inc_rad = np.deg2rad(90.0 - el_deg)
-r0 = float(np.median(r_m))  # 半径常常是固定的
+r0 = float(np.median(r_m))  # Radius is usually constant
 
-print(f"共有 {len(az_rad)} 个方向，半径 r0 = {r0} m")
+print(f"Total {len(az_rad)} directions, radius r0 = {r0} m")
 
-# ==== 4. 读取 HRIR（时域） ====
-# HRIR 的形状可能是 (M, R, N) 或 (R, M, N)，不同数据集略有差异
-ir = np.array(ds.variables["Data.IR"])  # 单位通常是 Pa/Pa_ref
+# ==== 4. Read HRIR (time domain) ====
+# HRIR shape may be (M, R, N) or (R, M, N), depending on the dataset
+ir = np.array(ds.variables["Data.IR"])  # Usually in Pa/Pa_ref
 print("HRIR shape:", ir.shape)
 
-# 这里 MIT-KEMAR 是 (M, 2, N)： M=方向数，R=双耳，N=采样点数
-ear_idx = 0  # 0=左耳, 1=右耳
+# For MIT-KEMAR: (M, 2, N) where M=number of directions, R=ears, N=samples
+ear_idx = 0  # 0 = left ear, 1 = right ear
 ir_ear = ir[:, ear_idx, :]  # shape (M, N)
 
-# ==== 5. 读取采样率 ====
+# ==== 5. Read sampling rate ====
 fs = float(ds.variables["Data.SamplingRate"][0])
-print(f"采样率: {fs} Hz")
+print(f"Sampling rate: {fs} Hz")
 
-# ==== 6. FFT 得频域响应 H(f) ====
+# ==== 6. FFT to obtain frequency response H(f) ====
 n_samples = ir_ear.shape[1]
 H = np.fft.rfft(ir_ear, axis=1)  # shape (M, F)
-H = H.T  # 转成 (F, M)
+H = H.T  # Transpose to (F, M)
 freqs = np.fft.rfftfreq(n_samples, 1 / fs)
 
-print("频率分辨率:", freqs[1] - freqs[0], "Hz")
+print("Frequency resolution:", freqs[1] - freqs[0], "Hz")
 print("H(f) shape:", H.shape)
 
 ds.close()
 
-# ==== 7. 输出几个检查值 ====
-print("前5个方向 (az[deg], el[deg]):")
+# ==== 7. Print some values for checking ====
+print("First 5 directions (az[deg], el[deg]):")
 for i in range(5):
     print(f"{az_deg[i]:7.2f}, {el_deg[i]:7.2f}")
 
-print("前5个频率幅值(dB):", 20 * np.log10(np.abs(H[:5, 0])))
+print("First 5 frequency magnitudes (dB):", 20 * np.log10(np.abs(H[:5, 0])))
