@@ -166,6 +166,7 @@ def interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, target_freq):
 
 
 def is_receiver_file(name: str) -> bool:
+    """Used to judge if the data file is receiver file"""
     return name.endswith("_receiver.mat")
 
 
@@ -190,8 +191,10 @@ def balloon_plot_with_slider(
         Initial frequency to display (Hz)
     initial_r0_rec: float
         Initial spherical radius during reconstruction
+
     """
     is_initial_draw = True
+    Psh_raw = None
 
     # Show initialization window
     progress_window.update_progress(25, "Initializing...", "Scanning files")
@@ -233,6 +236,7 @@ def balloon_plot_with_slider(
 
     mat = loadmat(initial_file)
     Psh = mat["Psh"]
+    Psh_raw = Psh.copy()  # keep pristine copy
     Dir_all = mat["Dir_all"]
     freqs = mat["freqs_mesh"].squeeze()
     r0 = float(mat["r0"].squeeze())
@@ -265,6 +269,54 @@ def balloon_plot_with_slider(
     ax_freq_input = plt.axes([0.81, 0.25, 0.08, 0.03])
     text_box_freq = mpl.widgets.TextBox(ax_freq_input, "", initial=str(initial_freq))
     fig.text(0.89, 0.257, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
+
+    # Add checkbox for receiver directivity normalization
+    ax_norm = plt.axes([0.2, 0.04, 0.3, 0.03], facecolor=AUDIOLABS_LIGHT_GRAY)
+    norm_checkbox = mpl.widgets.CheckButtons(
+        ax_norm, ["Normalize Receiver"], [bool(params.get("ifReceiverNormalize", 0))]
+    )
+
+    def toggle_normalize(label):
+        """Used to judge if Psh should be normalized"""
+        nonlocal Psh, full_Pnm_cache, Cnm_s_cache
+        params["ifReceiverNormalize"] = 1 - params.get("ifReceiverNormalize", 0)
+
+        # Only meaningful for receiver files
+        if not current_is_receiver:
+            fig.canvas.draw_idle()
+            return
+
+        # Rebuild caches from pristine Psh_raw to avoid double-dividing
+        Psh = Psh_raw.copy()
+
+        # Handle S as scalar or per-frequency array
+        S_val = params.get("pointSrcStrength", 1.0)
+        S_arr = np.array(S_val).squeeze()
+
+        full_Pnm_cache.clear()
+        Cnm_s_cache.clear()
+
+        for freq_idx in range(len(freqs)):
+            # Apply normalization only if flag is ON
+            if params.get("ifReceiverNormalize", 0):
+                if S_arr.ndim == 0:
+                    Psh_use = Psh[freq_idx] / S_arr
+                else:
+                    Psh_use = Psh[freq_idx] / S_arr[freq_idx]
+            else:
+                Psh_use = Psh[freq_idx]
+
+            full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
+                Psh_use.reshape(1, -1), Dir_all, sh_order, np.array([freqs[freq_idx]])
+            )
+            k = k_all[freq_idx]
+            Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
+                k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
+            )
+
+        update(None)  # now the redraw uses the rebuilt caches
+
+    norm_checkbox.on_clicked(toggle_normalize)
 
     # When enter a number in the input box and press Enter, this callback function is called
     def on_text_submit(text):
@@ -314,15 +366,21 @@ def balloon_plot_with_slider(
 
     full_Pnm_cache = {}  # {(freq_idx, sh_order): full_Pnm}
     Cnm_s_cache = {}  # {(freq_idx, sh_order, r0): Cnm_s}
-    S = None
     for freq_idx in range(len(freqs)):
         start_step = time.perf_counter()
 
-        if current_is_receiver:  # for receiver
-            Psh[freq_idx] = Psh[freq_idx] / S[..., None]
+        if current_is_receiver and params.get("ifReceiverNormalize", 0):
+            S_val = params.get("pointSrcStrength", 1.0)
+            S_arr = np.array(S_val).squeeze()
+            if S_arr.ndim == 0:
+                Psh_use = Psh_raw[freq_idx] / S_arr
+            else:
+                Psh_use = Psh_raw[freq_idx] / S_arr[freq_idx]
+        else:
+            Psh_use = Psh_raw[freq_idx]
 
         full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
-            Psh[freq_idx].reshape(1, -1), Dir_all, sh_order, np.array([freqs[freq_idx]])
+            Psh_use.reshape(1, -1), Dir_all, sh_order, np.array([freqs[freq_idx]])
         )
         k = k_all[freq_idx]
         Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
@@ -501,7 +559,7 @@ def balloon_plot_with_slider(
         print(f"Could not load logo: {e}")
 
     def load_file(file_idx):
-        nonlocal current_file, current_file_idx, r0, freqs, k_all, Psh, Dir_all, full_Pnm_cache, Cnm_s_cache, current_is_receiver, S
+        nonlocal current_file, current_file_idx, r0, freqs, k_all, Psh, Dir_all, full_Pnm_cache, Cnm_s_cache, current_is_receiver, S, Psh_raw
 
         # Create progress window
         progress_win = InitializationWindow("Loading File Progress")
@@ -516,8 +574,10 @@ def balloon_plot_with_slider(
 
         # load new datas
         current_file = file_lookup[allowed_files[file_idx]]
+        current_is_receiver = is_receiver_file(allowed_files[file_idx])
         mat = loadmat(current_file)
         Psh = mat["Psh"]
+        Psh_raw = Psh.copy()
         Dir_all = mat["Dir_all"]
         freqs = mat["freqs_mesh"].squeeze()
         r0 = float(mat["r0"].squeeze())
@@ -528,10 +588,18 @@ def balloon_plot_with_slider(
         # precomputation of full_Pnm and Cnm_s
         for freq_idx in range(len(freqs)):
             start_step = time.perf_counter()
-            if current_is_receiver:  # for receiver
-                Psh[freq_idx] = Psh[freq_idx] / S[..., None]
+            if current_is_receiver and params.get("ifReceiverNormalize", 0):
+                S_val = params.get("pointSrcStrength", 1.0)
+                S_arr = np.array(S_val).squeeze()
+                if S_arr.ndim == 0:
+                    Psh_use = Psh_raw[freq_idx] / S_arr
+                else:
+                    Psh_use = Psh_raw[freq_idx] / S_arr[freq_idx]
+            else:
+                Psh_use = Psh_raw[freq_idx]
+
             full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
-                Psh[freq_idx].reshape(1, -1),
+                Psh_use.reshape(1, -1),
                 Dir_all,
                 sh_order,
                 np.array([freqs[freq_idx]]),
@@ -581,7 +649,6 @@ def balloon_plot_with_slider(
         current_sh_order = int(sh_slider.val)
 
         freq_idx = np.argmin(np.abs(freqs - freq))
-        actual_freq = freqs[freq_idx]
 
         # Clear previous plot
         ax_recon.cla()
@@ -599,6 +666,8 @@ def balloon_plot_with_slider(
         Pnm_rec = np.zeros(
             (1, current_sh_order + 1, 2 * current_sh_order + 1), dtype=complex
         )
+        k = k_all[freq_idx]
+
         for n in range(current_sh_order + 1):
             hn_r0_rec = hn_cache[(n, round(k * r0_rec, 6))]
             for m in range(-n, n + 1):

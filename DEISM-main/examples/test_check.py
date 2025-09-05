@@ -19,6 +19,73 @@ import io
 import urllib.request
 from scipy.interpolate import interp1d
 import time
+from netCDF4 import Dataset
+
+
+def sofa_to_internal(sofa_path, target_freqs=None, ear="L"):
+    """
+    Convert a SOFA HRTF/HRIR file to the internal (Psh, Dir_all, freqs, r0) format
+
+    Returns:
+      Psh     : (F, J) complex    # frequency x directions(= J = # of sampling points)
+      Dir_all : (J, 2) float rad  # columns: [az, inc], with inc = pi/2 - el
+      freqs   : (F,) float        # frequency axis (Hz) after optional interpolation
+      r0      : float             # reference radius (m)
+    """
+    ds = Dataset(sofa_path, "r")
+
+    # 1) directions (deg) → radians, and convert elevation→inclination
+    src = np.array(ds.variables["SourcePosition"])  # (J,3) [az_deg, el_deg, r_m]
+    az_deg, el_deg, r_m = src[:, 0], src[:, 1], src[:, 2]
+    az = np.deg2rad(az_deg)
+    inc = np.deg2rad(90.0 - el_deg)  # inc = 90° - el
+    Dir_all = np.c_[az, inc].astype(float)
+
+    # radius: often constant in SOFA; take median as r0
+    r0 = float(np.median(r_m))
+
+    # 2) time-domain HRIR → frequency response H(f)
+    ir = np.array(ds.variables["Data.IR"])  # typical shape (J, R, N)
+    fs = float(np.array(ds.variables["Data.SamplingRate"]).squeeze())
+    ds.close()
+
+    # choose ear (0=left, 1=right)
+    ear_idx = 0 if str(ear).upper().startswith("L") else 1
+    if ir.ndim != 3 or ir.shape[1] < 2:
+        # fallback: if dataset is mono or layout differs, just take channel 0
+        ear_idx = 0
+    J, _, N = ir.shape if ir.ndim == 3 else (ir.shape[0], 1, ir.shape[-1])
+    ir_ear = ir[:, ear_idx, :] if ir.ndim == 3 else ir
+
+    # rFFT per direction → shape (J, F)
+    H_dirF = np.fft.rfft(ir_ear, axis=-1)  # (J, F_sofa)
+    f_sofa = np.fft.rfftfreq(N, 1 / fs)  # (F_sofa,)
+
+    # 3) arrange to (F, J)
+    H_FJ = H_dirF.T.astype(complex)  # (F_sofa, J)
+
+    # --- drop DC (0 Hz), which makes k=0 and h_n^(2)(0) singular ---
+    if f_sofa[0] == 0.0:
+        H_FJ = H_FJ[1:, :]
+        f_sofa = f_sofa[1:]
+
+    # 4) interpolate complex response to target_freqs
+    if target_freqs is not None:
+        tf = np.asarray(target_freqs, float).ravel()
+        # separate real/imag for safe interpolation
+        Hr = np.empty((tf.size, H_FJ.shape[1]), dtype=float)
+        Hi = np.empty_like(Hr)
+        for j in range(H_FJ.shape[1]):
+            Hr[:, j] = np.interp(tf, f_sofa, H_FJ.real[:, j])
+            Hi[:, j] = np.interp(tf, f_sofa, H_FJ.imag[:, j])
+        H_FJ = Hr + 1j * Hi
+        freqs = tf
+    else:
+        freqs = f_sofa
+
+    Psh = H_FJ  # naming aligned
+    return Psh, Dir_all, freqs, r0
+
 
 # Audiolabs color scheme
 AUDIOLABS_ORANGE = "#F15A24"
@@ -203,17 +270,26 @@ def balloon_plot_with_slider(
     # Find all source and receiver files in directory
     abs_source_dir = os.path.abspath(source_dir)
     abs_receiver_dir = os.path.abspath(receiver_dir)
-    ALLOWED_DIRS = {abs_source_dir, abs_receiver_dir}
+    abs_sofa_dir = os.path.abspath(
+        os.path.join("examples", "data", "sampled_directivity", "sofa")
+    )
+    ALLOWED_DIRS = {abs_source_dir, abs_receiver_dir, abs_sofa_dir}
     BASE_DIR = os.path.commonpath(list(ALLOWED_DIRS))
 
-    def list_mats(d):
-        return [f for f in os.listdir(d) if f.endswith(".mat")]
+    def list_files(d, exts):
+        return [f for f in os.listdir(d) if f.lower().endswith(exts)]
 
-    source_files = [f for f in list_mats(abs_source_dir) if f.endswith("_source.mat")]
-    receiver_files = [
-        f for f in list_mats(abs_receiver_dir) if f.endswith("_receiver.mat")
+    source_files = [
+        f for f in list_files(abs_source_dir, (".mat",)) if f.endswith("_source.mat")
     ]
-    allowed_files = source_files + receiver_files
+    receiver_files = [
+        f
+        for f in list_files(abs_receiver_dir, (".mat",))
+        if f.endswith("_receiver.mat")
+    ]
+    sofa_files = [f for f in list_files(abs_sofa_dir, (".sofa",))]
+
+    allowed_files = source_files + receiver_files + sofa_files
 
     # basename -> full path
     file_lookup = {}
@@ -221,6 +297,8 @@ def balloon_plot_with_slider(
         file_lookup[f] = os.path.join(abs_source_dir, f)
     for f in receiver_files:
         file_lookup[f] = os.path.join(abs_receiver_dir, f)
+    for f in sofa_files:
+        file_lookup[f] = os.path.join(abs_sofa_dir, f)
 
     if not allowed_files:
         progress_window.close()
@@ -347,6 +425,7 @@ def balloon_plot_with_slider(
     for n in range(sh_order + 1):
         for m in range(-n, n + 1):
             Ynm_cache[(n, m)] = sph_harm(m, n, dirs[:, 0], dirs[:, 1])
+    ynm_max_order = sh_order
     elapsed_step = time.perf_counter() - start_step
     progress_window.update_progress(45, "Precomputing Ynm...", f"{elapsed_step:.3f} s")
     time.sleep(0.5)
@@ -413,8 +492,12 @@ def balloon_plot_with_slider(
             file_path = filedialog.askopenfilename(
                 # parent=root,
                 initialdir=BASE_DIR,
-                title="Select MAT file",
-                filetypes=[("MAT files", "*.mat")],
+                title="Select MAT/SOFA file",
+                filetypes=[
+                    ("MAT/SOFA files", "*.mat *.sofa"),
+                    ("MAT files", "*.mat"),
+                    ("SOFA files", "*.sofa"),
+                ],
             )
             if file_path:
                 # Normalized path format
@@ -559,7 +642,12 @@ def balloon_plot_with_slider(
         print(f"Could not load logo: {e}")
 
     def load_file(file_idx):
-        nonlocal current_file, current_file_idx, r0, freqs, k_all, Psh, Dir_all, full_Pnm_cache, Cnm_s_cache, current_is_receiver, S, Psh_raw
+        nonlocal current_file, current_file_idx, r0, freqs, k_all, Psh, Dir_all, hn_cache, Ynm_cache, full_Pnm_cache, Cnm_s_cache, current_is_receiver, S, Psh_raw, is_initial_draw, max_sh_order, ynm_max_order
+
+        current_file = file_lookup[allowed_files[file_idx]]
+        current_file_idx = file_idx
+
+        is_initial_draw = True
 
         # Create progress window
         progress_win = InitializationWindow("Loading File Progress")
@@ -573,17 +661,58 @@ def balloon_plot_with_slider(
         Cnm_s_cache.clear()
 
         # load new datas
-        current_file = file_lookup[allowed_files[file_idx]]
-        current_is_receiver = is_receiver_file(allowed_files[file_idx])
-        mat = loadmat(current_file)
-        Psh = mat["Psh"]
-        Psh_raw = Psh.copy()
-        Dir_all = mat["Dir_all"]
-        freqs = mat["freqs_mesh"].squeeze()
-        r0 = float(mat["r0"].squeeze())
-        k_all = 2 * np.pi * freqs / 343
+        ext = os.path.splitext(current_file)[1].lower()
+        if ext == ".sofa":
+            # SOFA branch
+            target_f = None  # using freq range of SOFA file
+            Psh, Dir_all, freqs, r0 = sofa_to_internal(
+                current_file, target_freqs=target_f, ear="L"
+            )
+            Psh_raw = Psh.copy()
+            k_all = 2 * np.pi * freqs / 343.0
+            current_is_receiver = True
+            params["ifReceiverNormalize"] = 0
 
-        S = params["pointSrcStrength"] if current_is_receiver else None
+            # after loading the new file, limit max order based on J
+            J = Dir_all.shape[0]
+            max_by_J = int(np.floor(np.sqrt(J)) - 1)  # make sure (N+1)^2 <= J
+            max_by_kr = int(np.floor((k_all.max() * r0)) + 2)  # experience cap of kr
+            max_sh_order = max(0, min(max_by_J, max_by_kr))
+            # update cap of sh_slider
+            sh_slider.valmax = max_sh_order
+            sh_slider.ax.set_xlim(0, max_sh_order)
+            if sh_slider.val > max_sh_order:
+                sh_slider.set_val(max_sh_order)
+
+            # recalculate hn function
+            hn_cache.clear()
+            kr_values = [
+                (k_all[i]) * r
+                for i in range(len(freqs))
+                for r in np.arange(r0, 2.0 + 1e-6, 0.1)
+            ]
+            kr_values = list(set([round(v, 6) for v in kr_values]))
+            for n in range(max_sh_order + 1):
+                for kr in kr_values:
+                    hn_cache[(n, kr)] = sphankel2(n, kr)
+
+            if max_sh_order > ynm_max_order:
+                # Only fill in the new order to avoid repeated calculations
+                for n in range(ynm_max_order + 1, max_sh_order + 1):
+                    for m in range(-n, n + 1):
+                        Ynm_cache[(n, m)] = sph_harm(m, n, dirs[:, 0], dirs[:, 1])
+                ynm_max_order = max_sh_order
+        else:
+            # MAT branch
+            mat = loadmat(current_file)
+            Psh = mat["Psh"]
+            Psh_raw = Psh.copy()
+            Dir_all = mat["Dir_all"]
+            freqs = mat["freqs_mesh"].squeeze()
+            r0 = float(mat["r0"].squeeze())
+            k_all = 2 * np.pi * freqs / 343.0
+            current_is_receiver = is_receiver_file(allowed_files[file_idx])
+            S = params["pointSrcStrength"] if current_is_receiver else None
 
         # precomputation of full_Pnm and Cnm_s
         for freq_idx in range(len(freqs)):
@@ -598,15 +727,15 @@ def balloon_plot_with_slider(
             else:
                 Psh_use = Psh_raw[freq_idx]
 
-            full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
+            full_Pnm_cache[(freq_idx, max_sh_order)] = SHCs_from_pressure_LS(
                 Psh_use.reshape(1, -1),
                 Dir_all,
-                sh_order,
+                max_sh_order,
                 np.array([freqs[freq_idx]]),
             )
             k = k_all[freq_idx]
-            Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
-                k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
+            Cnm_s_cache[(freq_idx, max_sh_order, r0)] = get_directivity_coefs(
+                k, max_sh_order, full_Pnm_cache[(freq_idx, max_sh_order)], r0
             )
             elapsed_step = time.perf_counter() - start_step
             progress_win.update_progress(
@@ -623,6 +752,7 @@ def balloon_plot_with_slider(
         # Update frequency slider
         freq_slider.valmin = freqs.min()
         freq_slider.valmax = freqs.max()
+        freq_slider.ax.set_xlim(freqs.min(), freqs.max())
         # Set to middle frequency
         freq_slider.set_val(freqs[len(freqs) // 2])
         # Update r0 slider
@@ -655,10 +785,12 @@ def balloon_plot_with_slider(
 
         if is_initial_draw:
             # get Cnm_s from Cnm_s_cache
-            Cnm_s = Cnm_s_cache[(freq_idx, sh_order, r0)][:, : current_sh_order + 1, :]
+            Cnm_s = Cnm_s_cache[(freq_idx, max_sh_order, r0)][
+                :, : current_sh_order + 1, :
+            ]
         else:
             # get Cnm_s with interpolation, (1, sh_order + 1, 2 * sh_order + 1)
-            Cnm_s = interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, freq)
+            Cnm_s = interpolate_Cnm(freqs, Cnm_s_cache, max_sh_order, r0, freq)
             Cnm_s = Cnm_s[:, : current_sh_order + 1, :]
 
         # Reconstruct with current r0_rec
@@ -748,7 +880,10 @@ def plot_balloon_rec(ax, order, Pnm, dirs, az_m, el_m, title, Ynm_cache):
     D_phase_plot = D_phase.reshape(el_m.shape)
 
     # Amplitude and phase normalized to [0,1]
-    norm_amp = D_plot / D_plot.max()
+    maxval = D_plot.max()
+    if maxval < 1e-12:  # zero guard to avoid 0/0 → NaN
+        maxval = 1.0
+    norm_amp = D_plot / maxval
     norm_phase = (D_phase_plot + np.pi) / (2 * np.pi)
 
     # Spherical coordinates -> Cartesian coordinates
