@@ -27,7 +27,7 @@ def sofa_to_internal(sofa_path, target_freqs=None, ear="L"):
     Convert a SOFA HRTF/HRIR file to the internal (Psh, Dir_all, freqs, r0) format
 
     Returns:
-      Psh     : (F, J) complex    # frequency x directions(= J = # of sampling points)
+      Psh     : (F, J) complex    # frequency x directions(F = # of frequency point, J = # of sampling points)
       Dir_all : (J, 2) float rad  # columns: [az, inc], with inc = pi/2 - el
       freqs   : (F,) float        # frequency axis (Hz) after optional interpolation
       r0      : float             # reference radius (m)
@@ -261,6 +261,7 @@ def balloon_plot_with_slider(
 
     """
     is_initial_draw = True
+    is_sofa_file = False
     Psh_raw = None
 
     # Show initialization window
@@ -344,9 +345,10 @@ def balloon_plot_with_slider(
     ax_sh = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
     ax_browse = plt.axes([0.2, 0.25, 0.6, 0.05], facecolor=control_bg_color)
 
-    ax_freq_input = plt.axes([0.81, 0.25, 0.08, 0.03])
-    text_box_freq = mpl.widgets.TextBox(ax_freq_input, "", initial=str(initial_freq))
-    fig.text(0.89, 0.257, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
+    ax_freq_input = plt.axes([0.81, 0.25, 0.085, 0.03])
+    fmt = lambda f: f"{f:.1f}"
+    text_box_freq = mpl.widgets.TextBox(ax_freq_input, "", initial=fmt(initial_freq))
+    fig.text(0.895, 0.257, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
 
     # Add checkbox for receiver directivity normalization
     ax_norm = plt.axes([0.2, 0.04, 0.3, 0.03], facecolor=AUDIOLABS_LIGHT_GRAY)
@@ -356,7 +358,13 @@ def balloon_plot_with_slider(
 
     def toggle_normalize(label):
         """Used to judge if Psh should be normalized"""
-        nonlocal Psh, full_Pnm_cache, Cnm_s_cache
+        nonlocal Psh, full_Pnm_cache, Cnm_s_cache, is_sofa_file
+
+        if is_sofa_file:
+            fig.canvas.draw_idle()
+            return
+
+        # Flip flag
         params["ifReceiverNormalize"] = 1 - params.get("ifReceiverNormalize", 0)
 
         # Only meaningful for receiver files
@@ -642,10 +650,13 @@ def balloon_plot_with_slider(
         print(f"Could not load logo: {e}")
 
     def load_file(file_idx):
-        nonlocal current_file, current_file_idx, r0, freqs, k_all, Psh, Dir_all, hn_cache, Ynm_cache, full_Pnm_cache, Cnm_s_cache, current_is_receiver, S, Psh_raw, is_initial_draw, max_sh_order, ynm_max_order
+        nonlocal current_file, current_file_idx, r0, freqs, k_all, Psh, Dir_all, hn_cache, Ynm_cache, full_Pnm_cache
+        nonlocal Cnm_s_cache, current_is_receiver, S, Psh_raw, is_initial_draw, max_sh_order, ynm_max_order, is_sofa_file
 
         current_file = file_lookup[allowed_files[file_idx]]
         current_file_idx = file_idx
+
+        is_sofa_file = os.path.splitext(current_file)[1].lower() == ".sofa"
 
         is_initial_draw = True
 
@@ -820,7 +831,7 @@ def balloon_plot_with_slider(
         # Request to refresh the images when the GUI is idle to improve interaction efficiency
         fig.canvas.draw_idle()
         # Synchronize text box value
-        text_box_freq.set_val(str(freq))
+        text_box_freq.set_val(fmt(freq))
 
         is_initial_draw = False
 
