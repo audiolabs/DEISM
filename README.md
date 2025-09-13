@@ -49,6 +49,45 @@ This will launch the GUI for visualizing sound source directivity.
 
     You can rotate the 3D plot using the mouse. Plots update automatically as parameters are changed.
 
+**Interpreter for SOFA data format**
+
+    What SOFA gives
+
+        Data.IR (M,R,N) HRIRs (time-domain), Data.SamplingRate, SourcePosition (M,3) as [az°, el°, r].
+
+    What we need
+
+        Psh (F,J) complex with F freqs, J directions,
+        Dir_all (J,2) in radians as [az, inc] with inc=π/2−el,
+        freqs (F,), r0.
+
+    Pseudocode for sofa_to_internal
+
+        function [Psh, Dir_all, freqs, r0] = sofa_to_internal(path, ear, target_freqs=None):
+            ds = open_SOFA(path)
+            fs = ds.Data.SamplingRate
+            SP = ds.SourcePosition  # (M,3)
+
+            az = deg2rad(SP[:,0])
+            el = deg2rad(SP[:,1])
+            inc = π/2 - el
+            r0  = median(SP[:,2])
+
+            IR  = ds.Data.IR[:, ear_index(ear), :]  # (M,N)
+            H   = rfft(IR, axis=1)                   # (M,F)
+            freqs = rfftfreq(N, 1/fs)                # (F,)
+            drop DC: freqs = freqs[1:], H = H[:,1:]
+
+            if target_freqs is not None:
+                interpolate H along frequency → H_interp at target_freqs
+                freqs = target_freqs
+                H = H_interp
+
+            Psh = H.T        # (F,J)
+            Dir_all = stack([az, inc])
+            return Psh, Dir_all, freqs, r0
+
+
 **Contributors**
 
     B. Sc. Muyue Xi
