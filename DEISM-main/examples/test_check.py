@@ -351,10 +351,45 @@ def balloon_plot_with_slider(
     fig.text(0.895, 0.257, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
 
     # Add checkbox for receiver directivity normalization
-    ax_norm = plt.axes([0.2, 0.04, 0.3, 0.03], facecolor=AUDIOLABS_LIGHT_GRAY)
+    ax_norm = plt.axes([0.2, 0.04, 0.34, 0.035], facecolor=AUDIOLABS_LIGHT_GRAY)
     norm_checkbox = mpl.widgets.CheckButtons(
         ax_norm, ["Normalize Receiver"], [bool(params.get("ifReceiverNormalize", 0))]
     )
+    ax_help = plt.axes([0.51, 0.054, 0.01, 0.01])
+    ax_help.axis("off")  # makes the axes just a blank container
+    t = ax_help.text(
+        0.5,
+        0.5,
+        "?",
+        ha="center",
+        va="center",
+        fontsize=10,
+        bbox=dict(boxstyle="circle", facecolor=AUDIOLABS_DARK_GRAY, alpha=0.8),
+        color="white",
+    )
+    tooltip = ax_help.annotate(
+        "Normalize Receiver:\nDivide receiver Psh by point-source strength S(f)\n"
+        "Only for FEM-based receiver data; ignored for SOFA.\n"
+        "'x' means normalization",
+        xy=(0.5, 0.5),  # center of the ? symbol
+        xycoords="axes fraction",  # important: relative to ax_help
+        xytext=(20, 20),
+        textcoords="offset points",
+        ha="left",
+        va="bottom",
+        bbox=dict(boxstyle="round", fc="w", ec=AUDIOLABS_GRAY, alpha=0.95),
+        arrowprops=dict(arrowstyle="->", color=AUDIOLABS_GRAY),
+        visible=False,
+    )
+
+    def on_move(event):
+        if event.inaxes is ax_help:
+            tooltip.set_visible(True)
+        else:
+            tooltip.set_visible(False)
+        event.canvas.draw_idle()
+
+    cid = fig.canvas.mpl_connect("motion_notify_event", on_move)
 
     def toggle_normalize(label):
         """Used to judge if Psh should be normalized"""
@@ -371,6 +406,13 @@ def balloon_plot_with_slider(
         if not current_is_receiver:
             fig.canvas.draw_idle()
             return
+
+        # Progress Bar
+        if params["ifReceiverNormalize"]:
+            win = InitializationWindow("Normalizing receiver…")
+        else:
+            win = InitializationWindow("Denormalizing receiver…")
+        win.update_progress(0, "Starting...", "")
 
         # Rebuild caches from pristine Psh_raw to avoid double-dividing
         Psh = Psh_raw.copy()
@@ -399,6 +441,16 @@ def balloon_plot_with_slider(
             Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
                 k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
             )
+
+            win.update_progress(
+                5 + 90 * (freq_idx + 1) / len(freqs),
+                f"Rebuilding at {freqs[freq_idx]:.0f} Hz",
+                "computing Psh, Pnm & Cnm",
+            )
+
+        win.update_progress(100, "Recomputation Complete!", "")
+        time.sleep(0.3)
+        win.close()
 
         update(None)  # now the redraw uses the rebuilt caches
 
