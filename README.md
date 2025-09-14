@@ -60,6 +60,14 @@ This will launch the GUI for visualizing sound source directivity.
         Psh (F,J) complex with F freqs, J=M directions,
         Dir_all (J,2) in radians as [az, inc] with inc=π/2−el,
         freqs (F,), r0.
+    
+    how sofa format works?
+    
+        for calculating Pnm: max_order changes, so recalculate hn, Pnm obtained from SHCs_from_pressure_LS(), Cnm = Pnm/hn
+        Psh: Data.IR-->FFT-->freq response 
+        Dir_all: 'ReceiverPosition', 'SourcePosition'(=[az(deg), el(deg), r(m)])
+        Sh_order: given
+        r0: SourcePosition[:,2]
 
     Pseudocode for sofa_to_internal
 
