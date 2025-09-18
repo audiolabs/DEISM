@@ -1,0 +1,112 @@
+# This workflow will upload a Python Package using Twine when a release is created
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: deism
+
+on:
+  release:
+    types: [published, prereleased]
+
+jobs:
+  build-and-publish:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-13, macos-latest, windows-latest]
+        python-version: ['3.9', '3.10', '3.11']
+        exclude:
+          - os: macos-latest
+            python-version: 3.9
+    permissions:
+      id-token: write  # OIDC token required for authentication
+    #   contents: read
+
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v3
+
+      # Step 2: Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Step 3: Install dependencies using pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip  # Ensure pip is up-to-date
+          pip install -r requirements.txt  # Install dependencies from requirements.txt
+
+      - name: Build package
+        run: |
+          # Add ARCHFLAGS for macOS to build universal binary
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            export ARCHFLAGS="-arch x86_64 -arch arm64"
+          fi
+          python -m pip install -e .
+        shell: bash
+
+      - name: Test with pytest
+        run: |
+          pip install -U pytest setuptools build wheel twine
+          ls -l deism/tests
+          pytest
+
+      # # Check the built package
+      # - name: Build package and check
+      #   run: |
+      #     python setup.py sdist bdist_wheel 
+      #     twine check dist/*  # Check the integrity of the package
+
+      # # Publish to PyPI (using OIDC and trusted publisher setup)
+      # - name: Publish to PyPI
+      #   uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     repository_url: https://upload.pypi.org/legacy/  # The repository URL for PyPI
+      #   env:
+      #     TWINE_USERNAME: __token__  # OIDC-based authentication
+      #     TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}  # Fallback in case OIDC is not available
+      # Test the universal wheels (sdist) on Ubuntu only
+      - name: Test the universal wheels
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python -m build --sdist
+          twine check dist/*
+
+      # Test the binary wheels (bdist) on non-Ubuntu systems (macOS and Windows)
+      - name: Test the binary wheels
+        if: matrix.os != 'ubuntu-latest'
+        run: |
+          python -m build --wheel
+          twine check dist/*
+
+      # Publish the source distribution (sdist) to PyPI from Ubuntu
+      - name: Publish sdist to PyPI
+        if: github.event_name == 'release' && github.event.action == 'published' && matrix.os == 'ubuntu-latest'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://upload.pypi.org/legacy/
+          skip-existing: true 
+        env:
+          TWINE_USERNAME: __token__  # OIDC uses __token__ for authentication
+          TWINE_PASSWORD: ${{ secrets.API_TOKEN }}  # OIDC token automatically provided
+
+      # Publish to PyPI on macOS and Windows using Twine directly
+      - name: Publish to PyPI on macOS/Windows
+        if: github.event_name == 'release' && github.event.action == 'published' && matrix.os != 'ubuntu-latest'
+        run: |
+          python -m pip install --upgrade twine  # Ensure Twine is installed
+          twine upload --skip-existing dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.API_TOKEN }}
+
+      # - name: Clean up build artifacts
+      #   run: |
+      #     rm -rf dist build *.egg-info
