@@ -1,0 +1,39 @@
+[build-system]
+# Minimum requirements for the build system to execute.
+requires = ["setuptools", "wheel", "numpy>=1.13.0", "Cython", "pybind11>=2.2", "setuptools-scm"]  # PEP 508 specifications.
+
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = [
+  "deism/tests"  # Path to your test directory
+]
+
+[project]
+name = "deism"
+dynamic = ["version"]
+description = "An image source-based method used to simulate room transfer functions for arbitrary room shapes."
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    { name = "Zeyu Xu", email = "zeyu.xu@audiolabs-erlangen.de" },
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "numpy==1.26",
+    "scipy",
+    "sympy",
+    "psutil",
+    "matplotlib",
+    "cython",
+    "pybind11>=2.2",
+    "ray",
+    "sound-field-analysis"
+]
+[project.urls]
+Homepage = "https://github.com/audiolabs/DEISM"
