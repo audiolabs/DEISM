@@ -1,0 +1,116 @@
+# here is the configuration file for single set of parameters
+# Note: 
+SilentMode: 0 # 1 means no output in the console, 0 means output in the console
+# Use space instead of tab for indentation at the beginning of each line
+# 1. Environment parameters
+Environment:
+  soundSpeed: 343 # speed of sound
+  airDensity: 1.2 # constant of air
+
+# 2. 3D size of the room
+# (unit: meter)
+Dimensions:
+  length: 4
+  width: 3
+  height: 2.5
+
+# 3. Boundary conditions and max. reflection order
+Reflections:
+  angleDependentFlag: 1 # 1 means angle-dependent reflection coefficients, 0 means angle-independent reflection coefficients
+  # format of reflection coefficient: [Z_x1,Z_x2,Z_y1,Z_y2,Z_z1,Z_z2]
+  # x1, x2 means the walls perpendicular to the x-axis, x = 0 or x = length
+  # y1, y2 means the walls perpendicular to the y-axis, y = 0 or y = width
+  # z1, z2 means the walls perpendicular to the z-axis, z = 0 or z = height
+  impedance: [18, 18, 18, 18, 18, 18]
+  # Input format for impedance
+  # 1. AcoustImpedance: 18+0j # A single value for 6 walls, no frequency-dependency
+  # 2. AcoustImpedance: [18, 20, 8, 5, 30, 19] # Different values for 6 walls, no frequency-dependency
+  # ------------------------------------------------------------
+  # absorpCoefficient: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1] # Absorption coefficients
+  # Notes, the format of the absorption coefficients are the same as the acoustImpedance
+  # ------------------------------------------------------------
+  # reverberationTime: 0.5 # Reverberation time
+  # You can only define one of the three parameters, a warning will be shown in the console if more than one is defined
+  # The relationship between the three parameters is:
+  # 1. When you define impedance, T60 will be calculated and used in the following calculations
+  # 2. When you define absorption coefficient, impedance will be calculated, followed by T60
+  # 3. When you define reverberation time, impedance will be calculated
+  maxReflectionOrder: 25 
+
+# Simulation parameters # 
+# 4. positions of sound source and receiver in 3-dimensional Cartesian coordinate
+# unit(meter)
+# Note:
+# The source and receiver should be at least 1m away from the walls;
+# The distance between the source and receiver should be not less than the sum of the radii of transparent spheres
+Positions:
+  source:
+    x: 1.1
+    y: 1.1
+    z: 1.3
+
+  receiver:
+    x: 2.9
+    y: 1.9
+    z: 1.3
+
+# 5. About the result signal terms
+Signal:
+  # unit of frequency(Hz)
+  samplingRate: 44100
+  overSamplingFactor: 1 # 1 means no over sampling, 2 means 2x over sampling, etc.
+  RIRLength: 1 # in seconds
+
+# Directivity parameters #
+# 7. maximal spherical harmonic directivity order
+MaxSphDirectivityOrder:
+  sourceOrder: 5
+  receiverOrder: 5
+
+# 8. Facing/Rotation of the directivities
+# Three angles are need to describe the Z-X-Z convention of rotation;
+# The rotation matrix calculation used in COMSOL, see:
+# https://doc.comsol.com/5.5/doc/com.comsol.help.comsol/comsol_ref_definitions.12.092.html
+Orientations:
+  source:
+    alpha: 0
+    beta: 0 
+    gamma: 0 
+  receiver:
+    alpha: 180
+    beta: 0 
+    gamma: 0 
+
+# 9. parameters of the transparent sphere around the source and receiver
+# The values should be consistent with the loaded directivity files
+# For different max. sph. orders at different frequency ranges, this should allow adjustments
+Radius:
+  source: 0.4
+  receiver: 0.5
+
+# 10. Directivity data
+Directivities:
+  # Choices for source: 
+  # Analytic: "monopole"
+  # Simulated or measured: "speaker_cuboid_cyldriver_1"
+  source: "monopole"
+  # Choices for receiver:
+  # Analytic: "monopole"
+  # Simulated or measured: "speaker_cuboid_cyldriver_1"
+  receiver: "monopole" # A frequency-domain interpolation should also be possible
+
+# Other functional parameters
+# DEISM modes: You can run DEISM using different versions
+# 1. ORG: Original DEISM, which is supposed to be the most accurate, but takes the longest time
+# 2. LC: Low-complexity DEISM with vectorized calculation, which is supposed to be faster than ORG, but less accurate
+# 3. MIX: Early reflections up to order 2 are calculated using ORG, and the rest are calculated using LC
+DEISM_specs: 
+  ifRemoveDirect: 0 # If remove the direct sound from the image sources
+  Method: "MIX" # "ORG", "LC", "MIX"
+  mixEarlyOrder: 2 # The order of reflections using DEISM-ORG if choose "MIX"
+  numParaImages: 50000 # Number of images parallel for the calculation, information for users about RAM consumption
+  # If normalize the receiver directivity if the receiver directivity is obtained by placing a point source
+  # with flow strength QFlowStrength at the receiver position and measuring the sound pressure at a sphere around the receiver
+  # You need to specify QFlowStrength after the following flag
+  ifReceiverNormalize: 1 
+  QFlowStrength: 0.001

@@ -1,0 +1,49 @@
+{
+    "absorption_coefficients": {
+        "floor": "0.6, 0.69, 0.71, 0.7, 0.63",
+        "wall1": "0.6, 0.69, 0.71, 0.7, 0.63",
+        "ceiling": "0.6, 0.69, 0.71, 0.7, 0.63",
+        "wall2": "0.6, 0.69, 0.71, 0.7, 0.63",
+        "wall3": "0.6, 0.69, 0.71, 0.7, 0.63",
+        "wall4": "0.6, 0.69, 0.71, 0.7, 0.63"
+    },
+    "msh_path": "MeasurementRoom.msh",
+    "geo_path": "MeasurementRoom.geo",
+    "simulationSettings": {
+        "mnm_1": 0.5,
+        "mnm_2": 50.0
+    },
+    "results": [
+        {
+            "percentage": 100,
+            "sourceX": 2,
+            "sourceY": 2,
+            "sourceZ": 1.5,
+            "resultType": "Deism",
+            "frequencies": [
+                125,
+                250,
+                500,
+                1000,
+                2000
+            ],
+            "responses": [
+                {
+                    "x": 1,
+                    "y": 1,
+                    "z": 1.5,
+                    "parameters": {
+                        "edt": [],
+                        "t20": [],
+                        "t30": [],
+                        "c80": [],
+                        "d50": [],
+                        "ts": [],
+                        "spl_t0_freq": []
+                    },
+                    "receiverResults": []
+                }
+            ]
+        }
+    ]
+}
