@@ -4,6 +4,7 @@ from scipy import special as scy
 from scipy.integrate import trapz
 from scipy.optimize import least_squares
 from scipy.interpolate import PchipInterpolator
+from scipy.fft import ifft
 from sympy.physics.wigner import wigner_3j
 import ray
 import psutil
@@ -12,6 +13,8 @@ import psutil
 from sound_field_analysis.sph import sphankel2
 from deism.utilities import *
 from deism.data_loader import *
+
+# from deism.core_deism_arg import Room_deism_cpp  # Moved to avoid circular import
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
 
@@ -22,17 +25,19 @@ from multiprocessing import cpu_count
 # Create a class of DEISM for running every thing
 class DEISM:
     # Initialize the DEISM class
-    def __init__(self, mode, room):
+    def __init__(self, mode, roomtype):
         self.mode = mode
-        self.room = room
-        self.auto_update = True
+        self.roomtype = roomtype
+        self.auto_update = True  # TODO, keep it or not?
         self.init_params()
         self.update_room()
 
     # Initialization of parameters
     def init_params(self):
         # Load yml file and cmd args
-        params, cmdArgs = cmdArgsToDict(self.mode)
+        params, cmdArgs = cmdArgsToDict(self.mode, self.roomtype)
+        params["roomType"] = self.roomtype
+        params["mode"] = self.mode
         # print the parameters or not
         if cmdArgs.quiet:
             params["silentMode"] = 1
@@ -59,46 +64,87 @@ class DEISM:
         self.params["posReceiver"] = receiver
         # -----------------------------------------------------------
         # Check conflicts before updating images
-        ConflictChecks.distance_checks(self.params)
-        images = pre_calc_images_src_rec_optimized_nofs(self.params)
+        ConflictChecks.distance_spheres_checks(self.params)
+        ConflictChecks.distance_boundaries_checks(self.params)
+        # -----------------------------------------------------------
+        # Calculate images
+        if self.roomtype == "shoebox":
+            self.params["images"] = pre_calc_images_src_rec_optimized_nofs(self.params)
+        elif self.roomtype == "convex":
+            # TODO: Better writing here?
+            from deism.core_deism_arg import get_ref_paths_ARG
+
+            self.room_convex.update_images(source, receiver)
+            self.params = get_ref_paths_ARG(self.params, self.room_convex)
+        # -----------------------------------------------------------
         # If use DEISM-ORG or DEISM-LC, merge images
         if self.params["DEISM_method"] == "ORG" or self.params["DEISM_method"] == "LC":
-            images = merge_images(images)
-        self.params["images"] = images
+            self.params["images"] = merge_images(self.params["images"])
         # -----------------------------------------------------------
 
-    def update_room(self, room_dimensions=None):
+    def update_room(
+        self, roomDimensions=None, wallCenters=None, roomVolumn=None, roomAreas=None
+    ):
         """
         Update the room dimensions
         Inputs:
         For shoebox room:
-        - room_dimensions: numpy array of size 3, the room dimensions [length, width, height]
+        - roomDimensions: numpy array of size 3, the room dimensions [length, width, height]
+        For convex room:
+        - roomDimensions: numpy array of size (N, 3), N is the number of vertices of the room
+        - wallCenters: numpy array of size (M, 3), M is the number of wall centers, used for more accurate impedance definition
+        - roomVolumn: float, the room volumn
+        - roomAreas: numpy array of size (M,), M is the number of walls, the areas of the walls
         """
         # For shoebox room, calculate the room volumn
-        if self.room == "shoebox":
-            if room_dimensions is not None:
-                length = room_dimensions[0]
-                width = room_dimensions[1]
-                height = room_dimensions[2]
+        if self.roomtype == "shoebox":
+            if roomDimensions is not None:
+                # roomDimensions Can only be a size-3 1D array
+                if roomDimensions.ndim != 1 or roomDimensions.shape[0] != 3:
+                    raise ValueError("roomDimensions must be a size-3 1D array")
+                length = roomDimensions[0]
+                width = roomDimensions[1]
+                height = roomDimensions[2]
             else:
                 length = self.params["roomSize"][0]
                 width = self.params["roomSize"][1]
                 height = self.params["roomSize"][2]
-            self.params["roomVolumn"] = length * width * height
-            # all the areas of the walls
-            # Order from walls x1, x2, y1, y2, z1, z2
-            self.params["roomAreas"] = np.array(
-                [
-                    width * height,
-                    width * height,
-                    length * height,
-                    length * height,
-                    length * width,
-                    length * width,
-                ]
-            )
-        # elif self.room == "convex":
-        # self.params["roomVolumn"] = self.params["roomSize"][0] * self.params["roomSize"][1] * self.params["roomSize"][2]
+            if roomVolumn is not None:
+                self.params["roomVolumn"] = roomVolumn
+            else:
+                self.params["roomVolumn"] = length * width * height
+            if roomAreas is not None:
+                self.params["roomAreas"] = roomAreas
+            else:
+                # all the areas of the walls
+                # Order from walls x1, x2, y1, y2, z1, z2
+                # For six walls, wall1, wall3, wall2, wall4, floor, ceiling
+                self.params["roomAreas"] = np.array(
+                    [
+                        width * height,
+                        width * height,
+                        length * height,
+                        length * height,
+                        length * width,
+                        length * width,
+                    ]
+                )
+        elif self.roomtype == "convex":
+            # Input update
+            if roomDimensions is not None:
+                self.params["vertices"] = roomDimensions
+            if wallCenters is not None:
+                self.params["wallCenters"] = wallCenters
+            else:
+                pass
+            # TODO: Calculate volumn or areas for convex room?
+            # Input known volumn and areas
+            if roomVolumn is not None:
+                self.params["roomVolumn"] = roomVolumn
+            if roomAreas is not None:
+                self.params["roomAreas"] = roomAreas
+            else:
+                pass
         # For other rooms, raise an error
         else:
             raise ValueError("The room type is not supported")
@@ -126,20 +172,38 @@ class DEISM:
             elif datatype == "absorpCoefficient":
                 self.params["absorpCoefficient"] = datain
             elif datatype == "reverberationTime":
-                self.params["reverberationTime"] = datain
+                # For convex room, T60 input is not supported
+                if self.roomtype == "convex":
+                    # TODO: Support T60 input for convex room
+                    raise ValueError("T60 input is not supported for convex room")
+                else:
+                    self.params["reverberationTime"] = datain
             ConflictChecks.wall_material_checks(self.params)
             # -----------------------------------------------------------
             # Convert the input data to impedance, absorption coefficients, and reverberation time
-            imp, abs_coeff, t60 = convert_imp_abs_t60(
-                self.params["roomVolumn"],
-                self.params["roomAreas"],
-                self.params["soundSpeed"],
-                datain,
-                datatype,
-            )
-            self.params["impedance"] = imp
-            self.params["absorpCoefficient"] = abs_coeff
-            self.params["reverberationTime"] = t60
+            if self.roomtype == "shoebox":
+                imp, abs_coeff, t60 = convert_imp_abs_t60_shoebox(
+                    self.params["roomVolumn"],
+                    self.params["roomAreas"],
+                    self.params["soundSpeed"],
+                    datain,
+                    datatype,
+                )
+                self.params["impedance"] = imp
+                self.params["absorpCoefficient"] = abs_coeff
+                self.params["reverberationTime"] = t60
+            elif self.roomtype == "convex":
+                # Use the forward conversion used in shoebox room
+                imp, abs_coeff, t60 = convert_imp_abs_t60_shoebox(
+                    self.params["roomVolumn"],
+                    self.params["roomAreas"],
+                    self.params["soundSpeed"],
+                    datain,
+                    datatype,
+                )
+                self.params["impedance"] = imp
+                self.params["absorpCoefficient"] = abs_coeff
+                self.params["reverberationTime"] = t60
             # -----------------------------------------------------------
             if not self.params["silentMode"]:
                 print(f"[Data] Updated {datatype} parameters:")
@@ -148,20 +212,48 @@ class DEISM:
             datatype = self.params["givenMaterials"][0]
             freqs_bands = np.array([1000])
             # TODO: add other cases
-            self.params["impedance"] = load_format_materials_checks(
-                self.params["impedance"], "impedance"
-            )
-            imp, abs_coeff, t60 = convert_imp_abs_t60(
-                self.params["roomVolumn"],
-                self.params["roomAreas"],
-                self.params["soundSpeed"],
-                self.params["impedance"],
-                datatype,
-            )
-            self.params["impedance"] = imp
-            self.params["absorpCoefficient"] = abs_coeff
-            self.params["reverberationTime"] = t60
-
+            if datatype == "impedance":
+                datain = load_format_materials_checks(
+                    self.params["impedance"], "impedance"
+                )
+            elif datatype == "absorpCoefficient":
+                datain = load_format_materials_checks(
+                    self.params["absorpCoefficient"], "absorpCoefficient"
+                )
+            elif datatype == "reverberationTime":
+                if self.roomtype == "convex":
+                    # TODO: Support T60 input for convex room
+                    raise ValueError("T60 input is not supported for convex room")
+                else:
+                    datain = load_format_materials_checks(
+                        self.params["reverberationTime"], "reverberationTime"
+                    )
+            else:
+                raise ValueError("The parameter type is not supported")
+            if self.roomtype == "shoebox":
+                imp, abs_coeff, t60 = convert_imp_abs_t60_shoebox(
+                    self.params["roomVolumn"],
+                    self.params["roomAreas"],
+                    self.params["soundSpeed"],
+                    datain,
+                    datatype,
+                )
+                self.params["impedance"] = imp
+                self.params["absorpCoefficient"] = abs_coeff
+                self.params["reverberationTime"] = t60
+            elif self.roomtype == "convex":
+                # Use the forward conversion used in shoebox room
+                # TODO: Support T60 input for convex room
+                imp, abs_coeff, t60 = convert_imp_abs_t60_shoebox(
+                    self.params["roomVolumn"],
+                    self.params["roomAreas"],
+                    self.params["soundSpeed"],
+                    datain,
+                    datatype,
+                )
+                self.params["impedance"] = imp
+                self.params["absorpCoefficient"] = abs_coeff
+                self.params["reverberationTime"] = t60
             # TODO: add other cases
             # Check conflicts before updating impedance
             if not self.params["silentMode"]:
@@ -171,21 +263,21 @@ class DEISM:
         self.params["freqs_bands"] = freqs_bands
         # -----------------------------------------------------------
         # Update the n1, n2, n3 based on the reverberation time and room size and sound speed
-        if self.room == "shoebox":
+        if self.roomtype == "shoebox":
             self.params = update_n1_n2_n3(self.params)
         # Print information of conversions
         if not self.params["silentMode"]:
             if datatype == "impedance":
                 print(
-                    f" converted to absorption coefficients {abs_coeff} and reverberation time {t60}, Done! \n"
+                    f" Impedanceconverted to absorption coefficients {abs_coeff} and reverberation time {t60}, Done! \n"
                 )
             elif datatype == "absorpCoefficient":
                 print(
-                    f" converted to impedance {imp} and reverberation time {t60}, Done! \n"
+                    f" Absorption coefficients converted to impedance {imp} and reverberation time {t60}, Done! \n"
                 )
             elif datatype == "reverberationTime":
                 print(
-                    f" converted to impedance {imp} and absorption coefficients {abs_coeff}, Done! \n"
+                    f" Reverberation time converted to impedance {imp} and absorption coefficients {abs_coeff}, Done! \n"
                 )
             else:
                 raise ValueError("The parameter type is not supported")
@@ -232,18 +324,35 @@ class DEISM:
         # Interpolate the materials to all frequencies
         # By default, interpolate the impedance only
         self.interpolate_materials(self.params["freqs_bands"], "impedance")
+        # -----------------------------------------------------------
+        # If the room type is convex, initialize the room
+        if self.roomtype == "convex":
+            from deism.core_deism_arg import (
+                Room_deism_cpp,
+            )  # Lazy import to avoid circular import
+
+            self.room_convex = Room_deism_cpp(self.params)
 
     def update_directivities(self):
         """
         Update the directivities
         """
         # Initialize directivities
-        self.params = init_receiver_directivities(self.params)
-        self.params = init_source_directivities(self.params)
+        if self.roomtype == "shoebox":
+            self.params = init_receiver_directivities(self.params)
+            self.params = init_source_directivities(self.params)
+        elif self.roomtype == "convex":
+            self.params = init_receiver_directivities_ARG(
+                self.params,
+            )
+            self.params = init_source_directivities_ARG(self.params)
         # If use DEISM-LC or DEISM-MIX, vectorize the directivity coefficients
         if self.params["DEISM_method"] == "LC" or self.params["DEISM_method"] == "MIX":
             # Vectorize the directivity data, used for DEISM-LC
-            self.params = vectorize_C_nm_s(self.params)
+            if self.roomtype == "shoebox":
+                self.params = vectorize_C_nm_s(self.params)
+            elif self.roomtype == "convex":
+                self.params = vectorize_C_nm_s_ARG(self.params)
             self.params = vectorize_C_vu_r(self.params)
         # If use DEISM-ORG or DEISM-MIX, precompute Wigner 3J matrices
         if self.params["DEISM_method"] == "ORG" or self.params["DEISM_method"] == "MIX":
@@ -286,28 +395,81 @@ class DEISM:
         if not ray.is_initialized():
             ray.init(num_cpus=num_cpus)
             print("\n")
-        P = run_DEISM(self.params)
+        if self.roomtype == "shoebox":
+            pressure = run_DEISM(self.params)
+        elif self.roomtype == "convex":
+            pressure = run_DEISM_ARG(self.params)
         # Shutdown Ray
         ray.shutdown()
         # -------------------------------------------------------
-        # Convert to RIR
-        # -------------------------------------------------------
-        # P_RIR = convert_RTF_to_RIR(P, self.params)
-        # -------------------------------------------------------
         # Save the results to local directory with .npz format
-        save_path = "./outputs/RTFs"
+        save_path = f"./outputs/{self.mode}s"
         # check if the save path exists
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         # Save the results along with all the parameters to a .npz file with file name as the current time
-        np.savez(
-            f"{save_path}/DEISM_shoebox_RTFs_{time.strftime('%Y%m%d_%H%M%S')}",
-            P_DEISM=P,
-            params=self.params,
-        )
+        if self.mode == "RIR":
+            data = convert_RTF_to_RIR(pressure, self.params)
+        elif self.mode == "RTF":
+            data = pressure
+        return data
 
 
-def convert_imp_abs_t60(Volumn, Areas, c, datain, params_type):
+def convert_RTF_to_RIR(P, params):
+    """
+    Convert RTF to RIR
+    """
+    dt = 1 / params["sampleRate"]
+    t = np.arange(0, params["reverberationTime"] + dt, dt)
+    full_P = np.concatenate([[0], P])
+    p = np.real(ifft(full_P, n=len(t)))
+    p = p / np.max(np.abs(p))
+    # Adjust rir length using the RIRLength parameter
+    nSamples = params["RIRLength"] * params["sampleRate"]
+    if len(p) < nSamples:
+        p = np.concatenate([p, np.zeros(nSamples - len(p))])
+    elif len(p) > nSamples:
+        p = p[:nSamples]
+
+    return p
+
+
+def convert_imp_abs_t60_convex(room=None, datain=None, params_type=None):
+    """
+    Conversions between impedance, absorption coefficients and reverberation time
+    Inputs:
+    - room: A room inherits from Room_deism_cpp
+    - datain:
+    1. impedance: numpy array of size 6 * len(frequency bands)
+    2. absorption coefficients: numpy array of size 6 * len(frequency bands)
+    3. reverberation time: float output, take the max value
+    - params_type: str, the type of the parameters to be converted
+    1. "impedance": impedance
+    2. "absorpCoefficient": absorption coefficients
+    3. "reverberationTime": reverberation time
+    Outputs:
+    - impedance: numpy array of size 6 * len(frequency bands)
+    - absorption coefficients: numpy array of size 6 * len(frequency bands)
+    - reverberation time: float or numpy array of size len(frequency bands)
+    """
+    if params_type == "impedance":
+        imp = datain
+        # TODO: calculate the reverberation time
+        # Use a test value for now
+        t60 = np.array([1])
+        abs_coeff = convert_imp_to_abs(imp)
+    elif params_type == "absorpCoefficient":
+        abs_coeff = datain
+        imp = convert_abs_to_imp(abs_coeff)
+        # TODO: calculate the reverberation time
+        # Use a test value for now
+        t60 = np.array([1000])
+    else:
+        raise ValueError("The parameter type is not supported")
+    return imp, abs_coeff, np.max(t60)
+
+
+def convert_imp_abs_t60_shoebox(Volumn, Areas, c, datain, params_type):
     """
     Conversions between impedance, absorption coefficients and reverberation time
     Inputs:
@@ -336,7 +498,7 @@ def convert_imp_abs_t60(Volumn, Areas, c, datain, params_type):
         abs_coeff = datain
         imp = convert_abs_to_imp(abs_coeff)
         t60 = convert_imp_to_t60(Volumn, Areas, c, imp)
-
+    # TODO: add other cases
     # elif params_type == "reverberationTime":
     #     t60 = datain
     #     imp = convert_t60_to_imp(Volumn, Areas, c, t60)
@@ -959,17 +1121,19 @@ def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
     return C_nm_s_new_all
 
 
-def init_source_directivities_ARG(params, if_rotate_room, reflection_matrix, **kwargs):
+def init_source_directivities_ARG(params):
     """
     Initialize the source directivities
     Input:
     1. params: parameters
-    2. if_rotate_room: 0 or 1, if rotate the room
-    3. kwargs: other parameters, e.g., room_rotation if rotate the room
     """
     # Print source type
     if not params["silentMode"]:
         print(f"[Data] Source type: {params['sourceType']}. ", end="")
+    ifRotateRoom = params["ifRotateRoom"]
+    reflection_matrix = params["reflection_matrix"]
+    room_rotation = params["roomRotation"]
+
     # First check if simple source directivities are used, e.g., momopole, dipole, etc.
     # If monopole source is used, the directivity coefficients are calculated analytically
     if params["sourceType"] == "monopole":
@@ -1012,25 +1176,25 @@ def init_source_directivities_ARG(params, if_rotate_room, reflection_matrix, **k
             params["orientSource"][1],
             params["orientSource"][2],
         )
-        if if_rotate_room == 1:
-            # Check if room_rotation is in kwargs
-            if "room_rotation" in kwargs:
-                room_rotation = kwargs["room_rotation"]
+        if ifRotateRoom == 1:
+            # Check if room_rotation is in params
+            if "roomRotation" in params:
+                roomRotation = params["roomRotation"]
                 # Print orientation information, e.g., facing direction from +x axis to the orientation angles and room rotation angles
                 if not params["silentMode"]:
                     print(
-                        f"Orientation rotated from +x axis to the facing direction: {params['orientSource']} + room rotation angles: {room_rotation}, ",
+                        f"Orientation rotated from +x axis to the facing direction: {params['orientSource']} + room rotation angles: {roomRotation}, ",
                         end="",
                     )
-                room_rotation = (
-                    kwargs["room_rotation"] * np.pi / 180
+                roomRotation = (
+                    params["roomRotation"] * np.pi / 180
                 )  # convert to radians
             else:
-                # raise an error if room_rotation is not in kwargs
-                raise ValueError("room_rotation is not in kwargs")
+                # raise an error if room_rotation is not in params
+                raise ValueError("roomRotation is not in params")
             # Get the rotation matrix for the room
             room_R = rotation_matrix_ZXZ(
-                room_rotation[0], room_rotation[1], room_rotation[2]
+                roomRotation[0], roomRotation[1], roomRotation[2]
             )
             # Original sampling points' coordinates of directivities
             rotated_coords_src = room_R @ source_R @ np.vstack((x_src, y_src, z_src))
@@ -1055,7 +1219,7 @@ def init_source_directivities_ARG(params, if_rotate_room, reflection_matrix, **k
     return params
 
 
-def init_receiver_directivities_ARG(params, if_rotate_room, **kwargs):
+def init_receiver_directivities_ARG(params):
     """
     Initialize the receiver directivities
     Input:
@@ -1066,6 +1230,8 @@ def init_receiver_directivities_ARG(params, if_rotate_room, **kwargs):
     # Print reciever type
     if not params["silentMode"]:
         print(f"[Data] Receiver type: {params['receiverType']}. ", end="")
+    ifRotateRoom = params["ifRotateRoom"]
+    roomRotation = params["roomRotation"]
     if params["receiverType"] == "monopole":
         # First check if simple source directivities are used, e.g., momopole, dipole, etc.
         # If monopole source is used, the directivity coefficients are calculated analytically
@@ -1107,25 +1273,25 @@ def init_receiver_directivities_ARG(params, if_rotate_room, **kwargs):
             params["orientReceiver"][1],
             params["orientReceiver"][2],
         )
-        if if_rotate_room == 1:
+        if ifRotateRoom == 1:
             # Check if room_rotation is in kwargs
-            if "room_rotation" in kwargs:
-                room_rotation = kwargs["room_rotation"]
+            if "room_rotation" in params:
+                room_rotation = params["room_rotation"]
                 # Print orientation information, e.g., facing direction from +x axis to the orientation angles and room rotation angles
                 if not params["silentMode"]:
                     print(
-                        f"Orientation rotated from +x axis to the facing direction: {params['orientReceiver']} + room rotation angles: {room_rotation}, ",
+                        f"Orientation rotated from +x axis to the facing direction: {params['orientReceiver']} + room rotation angles: {roomRotation}, ",
                         end="",
                     )
-                room_rotation = (
-                    kwargs["room_rotation"] * np.pi / 180
+                roomRotation = (
+                    params["room_rotation"] * np.pi / 180
                 )  # convert to radians
             else:
-                # raise an error if room_rotation is not in kwargs
-                raise ValueError("room_rotation is not in kwargs")
+                # raise an error if roomRotation is not in kwargs
+                raise ValueError("roomRotation is not in params")
             # Get the rotation matrix for the room
             room_R = rotation_matrix_ZXZ(
-                room_rotation[0], room_rotation[1], room_rotation[2]
+                roomRotation[0], roomRotation[1], roomRotation[2]
             )
             # If rotate the room, rotate the receiver sampling points
             # Rotate the receiver directivities

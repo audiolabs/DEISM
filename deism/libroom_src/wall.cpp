@@ -251,6 +251,24 @@ Wall_deism<2>::Wall_deism(
 {
   impedence_bands=_impedence_bands;
 }
+
+// New constructor with complex impedance for 2D
+template<>
+Wall_deism<2>::Wall_deism(
+    const Eigen::Matrix<float,2,Eigen::Dynamic> &_corners,
+    const Eigen::Matrix<float,2,1>& _centroid,
+    const Eigen::ArrayXcf &_impedence_bands_complex,
+    const Eigen::ArrayXf &_absorption,
+    const Eigen::ArrayXf &_scatter,
+    const std::string &_name
+  )
+  
+  : Wall_deism<2>::Wall_deism(_corners,_centroid,_absorption,_scatter,_name) 
+{
+  impedence_bands_complex = _impedence_bands_complex;
+  // Also store real part for backward compatibility
+  impedence_bands = _impedence_bands_complex.real();
+}
 /******************************************************************************/
 
 
@@ -392,6 +410,22 @@ Wall_deism<3>::Wall_deism(
   ):Wall_deism<3>::Wall_deism(_corners,_centroid,_absorption,_scatter,_name)
 {
     impedence_bands=_impedence_bands;
+}
+
+// New constructor with complex impedance for 3D
+template<>
+Wall_deism<3>::Wall_deism(
+    const Eigen::Matrix<float,3,Eigen::Dynamic> &_corners,
+    const Eigen::Matrix<float,3,1>& _centroid,
+    const Eigen::ArrayXcf &_impedence_bands_complex,
+    const Eigen::ArrayXf &_absorption,
+    const Eigen::ArrayXf &_scatter,
+    const std::string &_name
+  ):Wall_deism<3>::Wall_deism(_corners,_centroid,_absorption,_scatter,_name)
+{
+    impedence_bands_complex = _impedence_bands_complex;
+    // Also store real part for backward compatibility
+    impedence_bands = _impedence_bands_complex.real();
 }
 /******************************************************************************/
 

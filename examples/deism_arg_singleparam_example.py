@@ -26,7 +26,7 @@ from deism.core_deism_arg import (
     find_wall_centers,
 )
 from deism.data_loader import (
-    cmdArgsToDict_ARG,
+    cmdArgsToDict,
     printDict,
     detect_conflicts,
 )
@@ -73,7 +73,7 @@ def init_parameters_convex(params):
 
 def main():
     # Load the parameters from the configSingleParam_ARG.yaml file amd command line
-    params, cmdArgs = cmdArgsToDict_ARG("configSingleParam_arg.yml")
+    params, cmdArgs = cmdArgsToDict(mode="RTF", roomtype="convex")
     # Initialize some additional parameters for DEISM-ARG
     # For example, room vertices, room rotation, etc.
     params = init_parameters_convex(params)
@@ -95,9 +95,9 @@ def main():
         # -------------------------------------------------------
         # Shared parameters for all modes, ORG, LC, MIX
         # -------------------------------------------------------
-        params = init_receiver_directivities_ARG(
-            params, params["if_rotate_room"], room_rotation=params["room_rotation"]
-        )
+        # params = init_receiver_directivities_ARG(
+        #     params, params["if_rotate_room"], room_rotation=params["room_rotation"]
+        # )
         # Using DESIM-ARG with c++ libroom_deism to find the visible images and reflection matrices, attenuations
         # initialize Room_deism
         room_pra_deism = Room_deism_cpp(params)

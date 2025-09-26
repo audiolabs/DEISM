@@ -34,7 +34,7 @@ class ConflictChecks:
             )
 
     @staticmethod
-    def distance_checks(params):
+    def distance_spheres_checks(params):
         """Check distance-related parameter conflicts"""
         # If either source or receiver is not monopole, check the distance between source and receiver
         if params["sourceType"] != "monopole":
@@ -115,10 +115,47 @@ class ConflictChecks:
                     )
 
     @staticmethod
+    def distance_boundaries_checks(params):
+        """Check distance from source and receiver to the boundaries of the room"""
+        # The source and receiver should be inside the room, not touching the boundaries
+        # If they are on the boundaries, raise a warning and stop the program
+        # If they are too close to the boundaries, raise a message and continue the program
+        # TODO
+        if params["roomType"] == "shoebox":
+            src_x = params["posSource"][0]
+            src_y = params["posSource"][1]
+            src_z = params["posSource"][2]
+            rec_x = params["posReceiver"][0]
+            rec_y = params["posReceiver"][1]
+            rec_z = params["posReceiver"][2]
+            room_x = params["roomSize"][0]
+            room_y = params["roomSize"][1]
+            room_z = params["roomSize"][2]
+            if (
+                src_x <= 0
+                or src_x >= room_x
+                or src_y <= 0
+                or src_y >= room_y
+                or src_z <= 0
+                or src_z >= room_z
+            ):
+                print("[Warning] Source is on the boundaries or outside of the room!")
+            if (
+                rec_x <= 0
+                or rec_x >= room_y
+                or rec_y <= 0
+                or rec_y >= room_y
+                or rec_z <= 0
+                or rec_z >= room_z
+            ):
+                print("[Warning] Receiver is on the boundaries or outside of the room!")
+
+    @staticmethod
     def check_all_conflicts(params):
         """Run all conflict checks efficiently"""
         ConflictChecks.directivity_checks(params)
-        ConflictChecks.distance_checks(params)
+        ConflictChecks.distance_spheres_checks(params)
+        ConflictChecks.distance_boundaries_checks(params)
         ConflictChecks.wall_material_checks(params)
 
 
@@ -670,7 +707,7 @@ def parseCmdArgs_ARG(mode="RTF"):
         type=int,
     )
     parse.add_argument(
-        "-mode",
+        "-method",
         help="Speficy which DEISM mode to use: \
         ORG, LC, MIX",
         type=str,
@@ -715,7 +752,7 @@ def parseCmdArgs_ARG(mode="RTF"):
     return parse.parse_args()
 
 
-def loadSingleParam(configs, args, mode="RTF"):
+def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     """
     Directly read the configSingleParam.yml file to obtain parameters,
     without first writing the parameters to yml,
@@ -745,12 +782,27 @@ def loadSingleParam(configs, args, mode="RTF"):
     # Environment parameters, make sure the values are all float
     params["soundSpeed"] = args.c or float(configs["Environment"]["soundSpeed"])
     params["airDensity"] = args.rho or float(configs["Environment"]["airDensity"])
-    # Room parameters, in case empty (DEISM-ARG), use "try" to avoid error !!!
-    try:
+    # ------------------------------------------------------------
+    # Room geometry parameters
+    # Shoebox room: roomSize
+    # Convex room: vertices, wallCenters
+    if roomtype == "shoebox":
         params["roomSize"] = np.array(args.room or list(configs["Dimensions"].values()))
-    except:
-        # just skip if the value is not specified
-        pass
+    elif roomtype == "convex":
+        # TODO: Right now we don't support inputing geometry throught the command line
+        # So we use the geometry including vertices and wallCenters defined in the config file
+        params["vertices"] = np.array(list(configs["Dimensions"]["vertices"]))
+        params["wallCenters"] = np.array(list(configs["Dimensions"]["wallCenters"]))
+        params["ifRotateRoom"] = configs["Dimensions"]["ifRotateRoom"]
+        params["roomRotation"] = np.array(
+            configs["Dimensions"]["roomRotation"].values()
+        )
+        params["convexRoom"] = args.ifconvex or configs["Dimensions"]["ifConvexRoom"]
+
+    else:
+        raise ValueError(
+            f"Invalid room type: {roomtype}, must be 'shoebox' or 'convex'"
+        )
     # ------------------------------------------------------------
     # Reflections
     # The maximum reflection order is either defined or set to -1, if not defined
@@ -842,10 +894,7 @@ def loadSingleParam(configs, args, mode="RTF"):
     params["radiusReceiver"] = args.recr0 or configs["Radius"]["receiver"]
     params["sourceType"] = args.srctype or configs["Directivities"]["source"]
     params["receiverType"] = args.rectype or configs["Directivities"]["receiver"]
-    try:
-        params["convexRoom"] = args.ifconvex or configs["DEISM_specs"]["convexRoom"]
-    except:
-        pass
+
     params["ifRemoveDirectPath"] = args.ird or configs["DEISM_specs"]["ifRemoveDirect"]
     params["DEISM_method"] = args.method or configs["DEISM_specs"]["Method"]
     try:
@@ -912,7 +961,7 @@ def printDict(dict):
                 # If print the 2D array value of the key "vertices",
                 if key == "vertices":
                     # If "if_rotate_room" is 1, add "rotated" before the key "vertices"
-                    if dict["if_rotate_room"] == 1:
+                    if dict["ifRotateRoom"] == 1:
                         key = "rotated vertices"
                     # For each row in the 2D array
                     row_id = 0
@@ -978,7 +1027,7 @@ def printDict(dict):
         # print("[All] ", end="\n")
 
 
-def cmdArgsToDict(mode="RTF"):
+def cmdArgsToDict(mode="RTF", roomtype="shoebox"):
     """
     Takes the command line arguments and the parameters from the configSingleParam.yml file
     outputs:
@@ -986,48 +1035,64 @@ def cmdArgsToDict(mode="RTF"):
     - cmdArgs: the command line arguments
     """
     # Decide with default yml name to load
-    if mode == "RTF":
-        yml_name = "configSingleParam_RTF.yml"
-    elif mode == "RIR":
-        yml_name = "configSingleParam_RIR.yml"
+    if roomtype == "shoebox":
+        if mode == "RTF":
+            yml_name = "configSingleParam_RTF.yml"
+        elif mode == "RIR":
+            yml_name = "configSingleParam_RIR.yml"
+        else:
+            raise ValueError(f"Invalid mode: {mode}")
+    elif roomtype == "convex":
+        if mode == "RTF":
+            yml_name = "configSingleParam_ARG_RTF.yml"
+        elif mode == "RIR":
+            yml_name = "configSingleParam_ARG_RIR.yml"
+        else:
+            raise ValueError(f"Invalid mode: {mode}")
     else:
-        raise ValueError(f"Invalid mode: {mode}")
+        raise ValueError(f"Invalid room: {roomtype}, must be 'shoebox' or 'convex'")
     # First load the parameters in the configSingleParam.yml file directly as params,
     configsInYaml = readYaml(yml_name)
     # parse the command line arguments
-    cmdArgs = parseCmdArgs(mode)
+    # TODO: merge the two functions parseCmdArgs and parseCmdArgs_ARG later
+    if roomtype == "shoebox":
+        cmdArgs = parseCmdArgs(mode)
+    elif roomtype == "convex":
+        cmdArgs = parseCmdArgs_ARG(mode)
+    else:
+        raise ValueError(f"Invalid room: {roomtype}, must be 'shoebox' or 'convex'")
     # replace the corresponding variables in configsInYaml with the values entered from the command line
-    params = loadSingleParam(configsInYaml, cmdArgs, mode)
+    params = loadSingleParam(configsInYaml, cmdArgs, mode, roomtype)
     # Compute the rest of the parameters
-    params = compute_rest_params(params)
+    # params = compute_rest_params(params)
 
     return params, cmdArgs
 
 
-def cmdArgsToDict_ARG(mode="RTF"):
-    """
-    Takes the command line arguments and the parameters from the configSingleParam.yml file
-    outputs:
-    - params: the final configuration dictionary
-    - cmdArgs: the command line arguments
-    """
-    # Decide with default yml name to load
-    if mode == "RTF":
-        yml_name = "configSingleParam_ARG_RTF.yml"
-    elif mode == "RIR":
-        yml_name = "configSingleParam_ARG_RIR.yml"
-    else:
-        raise ValueError(f"Invalid mode: {mode}")
-    # First load the parameters in the configSingleParam.yml file directly as params,
-    configsInYaml = readYaml(yml_name)
-    # parse the command line arguments
-    cmdArgs = parseCmdArgs_ARG(mode)
-    # replace the corresponding variables in configsInYaml with the values entered from the command line
-    params = loadSingleParam(configsInYaml, cmdArgs, mode)
-    # Compute the rest of the parameters
-    params = compute_rest_params(params)
+# def cmdArgsToDict_ARG(mode="RTF"):
+#     """
+#     Takes the command line arguments and the parameters from the configSingleParam.yml file
+#     outputs:
+#     - params: the final configuration dictionary
+#     - cmdArgs: the command line arguments
+#     """
+#     # Decide with default yml name to load
+#     if mode == "RTF":
+#         yml_name = "configSingleParam_ARG_RTF.yml"
+#     elif mode == "RIR":
+#         yml_name = "configSingleParam_ARG_RIR.yml"
+#     else:
+#         raise ValueError(f"Invalid mode: {mode}")
+#     # First load the parameters in the configSingleParam.yml file directly as params,
+#     configsInYaml = readYaml(yml_name)
+#     # parse the command line arguments
+#     cmdArgs = parseCmdArgs_ARG(mode)
+#     # replace the corresponding variables in configsInYaml with the values entered from the command line
+#     params = loadSingleParam(configsInYaml, cmdArgs, mode)
+#     # Compute the rest of the parameters
+#     params = compute_rest_params(params)
 
-    return params, cmdArgs
+#     return params, cmdArgs
 
 
 def load_directive_pressure(silentMode, src_or_rec, name):

@@ -10,27 +10,52 @@ Environment:
 # 2. 3D size of the room
 # (unit: meter)
 Dimensions:
-  length: 4
-  width: 3
-  height: 2.5
+  vertices: [
+              [0, 0, 0],  # Origin
+              [0, 0, 3.5],
+              [0, 3, 2.5],
+              [0, 3, 0],
+              [4, 0, 0],
+              [4, 0, 3.5],
+              [4, 3, 2.5],
+              [4, 3, 0],
+            ]
+  wallCenters: [
+                  [0, 1.5, 1.5],
+                  [2, 3, 1.25],
+                  [4, 1.5, 1.5],
+                  [2, 0, 1.75],
+                  [2, 1.5, 0],
+                  [2, 1.5, 3],
+                ]
+  ifRotateRoom: 1
+  roomRotation: 
+    alpha: 90
+    beta: 90
+    gamma: 90 # [alpha, beta, gamma] in degrees
+  ifConvexRoom: 1 # We only support convex rooms for now
 
 # 3. Boundary conditions and max. reflection order
 Reflections:
-  angleDependentFlag: 1 # 1 means angle-dependent reflection coefficients, 0 means angle-independent reflection coefficients
-  # format of reflection coefficient: [Z_x0,Z_x1,Z_y0,Z_y1,Z_z0,Z_z1]
-  acoustImpendence: [18, 18, 18, 18, 18, 18]
-  # Should support frequency-dependency as well,
-  # i.e., for each entry in the list, it is either a complex-valued number or a filename
-  # e.g., "imp_1", "imp_2". In this way, the users can load their own impedance profiles
-  # An example would be:
-  # ["imp_1", "imp_1", "imp_2", "imp_3", "imp_5", "imp_6"], where each "imp_#" corresponds to the name of a impedance profile
-  # Loading the impedance profile is followed by a frequency interpolation from the complex-valued impedance to the frequencies defined in 5. frequency terms
-  # Summary, supported input:
-  # 1. AcoustImpendence: 18+0j # A single value for 6 walls, no frequency-dependency
-  # 2. AcoustImpendence: [18, 20, 8, 5, 30, 19] # Different values for 6 walls, no frequency-dependency
-  # 3. AcoustImpendence: "imp_1" # A name for a impedance profile to load, used for all 6 walls
-  # 4. AcoustImpendence: ["imp_1", "imp_1", "imp_2", "imp_3", "imp_5", "imp_6"] # Different loaded profiles for different walls
-  maxReflectionOrder: 40 
+  # format of reflection coefficient: [Z_x1,Z_x2,Z_y1,Z_y2,Z_z1,Z_z2]
+  # x1, x2 means the walls perpendicular to the x-axis, x = 0 or x = length
+  # y1, y2 means the walls perpendicular to the y-axis, y = 0 or y = width
+  # z1, z2 means the walls perpendicular to the z-axis, z = 0 or z = height
+  impedance: [18, 18, 18, 18, 18, 18]
+  # Input format for impedance
+  # 1. AcoustImpedance: 18+0j # A single value for 6 walls, no frequency-dependency
+  # 2. AcoustImpedance: [18, 20, 8, 5, 30, 19] # Different values for 6 walls, no frequency-dependency
+  # ------------------------------------------------------------
+  # absorpCoefficient: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1] # Absorption coefficients
+  # Notes, the format of the absorption coefficients are the same as the acoustImpedance
+  # ------------------------------------------------------------
+  # reverberationTime: 0.5 # Reverberation time
+  # You can only define one of the three parameters, a warning will be shown in the console if more than one is defined
+  # The relationship between the three parameters is:
+  # 1. When you define impedance, T60 will be calculated and used in the following calculations
+  # 2. When you define absorption coefficient, impedance will be calculated, followed by T60
+  # 3. When you define reverberation time, impedance will be calculated
+  maxReflectionOrder: 5 
 
 # Simulation parameters # 
 # 4. positions of sound source and receiver in 3-dimensional Cartesian coordinate
@@ -55,18 +80,12 @@ Frequencies:
   startFrequency: 2
   endFrequency:  24000
   frequencyStep: 2
-  samplingRate: 48000
-
-# 6. RIR information
-RIRs:
-  ifGetRIR: 1 # 1 means get RIRs, 0 means get RTFs
-  RIRLength: 1 # in seconds
 
 # Directivity parameters #
 # 7. maximal spherical harmonic directivity order
 MaxSphDirectivityOrder:
-  nSourceOrder: 5
-  vReceiverOrder: 5
+  sourceOrder: 5
+  receiverOrder: 5
 
 # 8. Facing/Rotation of the directivities
 # Three angles are need to describe the Z-X-Z convention of rotation;
@@ -107,7 +126,7 @@ Directivities:
 # 3. MIX: Early reflections up to order 2 are calculated using ORG, and the rest are calculated using LC
 DEISM_specs: 
   ifRemoveDirect: 0 # If remove the direct sound from the image sources
-  Mode: "MIX" # "ORG", "LC", "MIX"
+  Method: "MIX" # "ORG", "LC", "MIX"
   mixEarlyOrder: 2 # The order of reflections using DEISM-ORG if choose "MIX"
   numParaImages: 50000 # Number of images parallel for the calculation, information for users about RAM consumption
   # If normalize the receiver directivity if the receiver directivity is obtained by placing a point source

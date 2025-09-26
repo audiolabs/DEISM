@@ -217,7 +217,22 @@ PYBIND11_MODULE(libroom_deism, m) {
             py::arg("absorption") = Eigen::ArrayXf::Zero(1),
             py::arg("scattering") = Eigen::ArrayXf::Zero(1),
             py::arg("name") = "")    //--> new
+        .def_static("from_complex_impedance", 
+            [](const Eigen::Matrix<float, 3, Eigen::Dynamic> &corners,
+               const Eigen::Matrix<float,3,1>& centroid, 
+               const Eigen::ArrayXcf &impedence_bands_complex,
+               const Eigen::ArrayXf &absorption,
+               const Eigen::ArrayXf &scatter,
+               const std::string &name) {
+                return new Wall_deism<3>(corners, centroid, impedence_bands_complex, absorption, scatter, name);
+            },
+            py::arg("corners"),py::arg("centroid"), py::arg("impedence_bands_complex"), 
+            py::arg("absorption") = Eigen::ArrayXf::Zero(1),
+            py::arg("scattering") = Eigen::ArrayXf::Zero(1),
+            py::arg("name") = "",
+            py::return_value_policy::take_ownership)    //--> new complex constructor
         .def("get_attenuation",&Wall_deism<3>::get_attenuation)   //--> new
+        .def("get_impedence_complex",&Wall_deism<3>::get_impedence_complex)   //--> new
         .def("area", &Wall_deism<3>::area)
         .def("intersection", &Wall_deism<3>::intersection)
         .def("intersects", &Wall_deism<3>::intersects)
@@ -273,7 +288,22 @@ PYBIND11_MODULE(libroom_deism, m) {
             py::arg("absorption") = Eigen::ArrayXf::Zero(1),
             py::arg("scattering") = Eigen::ArrayXf::Zero(1),
             py::arg("name") = "")    //--> new
+        .def_static("from_complex_impedance", 
+            [](const Eigen::Matrix<float, 2, Eigen::Dynamic> &corners,
+               const Eigen::Matrix<float,2,1>& centroid, 
+               const Eigen::ArrayXcf &impedence_bands_complex,
+               const Eigen::ArrayXf &absorption,
+               const Eigen::ArrayXf &scatter,
+               const std::string &name) {
+                return new Wall_deism<2>(corners, centroid, impedence_bands_complex, absorption, scatter, name);
+            },
+            py::arg("corners"), py::arg("centroid"), py::arg("impedence_bands_complex"), 
+            py::arg("absorption") = Eigen::ArrayXf::Zero(1),
+            py::arg("scattering") = Eigen::ArrayXf::Zero(1),
+            py::arg("name") = "",
+            py::return_value_policy::take_ownership)    //--> new complex constructor
         .def("get_attenuation",&Wall_deism<2>::get_attenuation)   //tan new
+        .def("get_impedence_complex",&Wall_deism<2>::get_impedence_complex)   //--> new
         .def("area", &Wall_deism<2>::area)
         .def("intersection", &Wall_deism<2>::intersection)
         .def("intersects", &Wall_deism<2>::intersects)

@@ -82,6 +82,15 @@ def deism_method(json_file_path=None):
 
     # Convert data to the ones needed in DEISM
     print("Converting data to the ones needed in DEISM ... \n")
+    # -----------------------------------------------------------
+    # About room geometry and wall properties
+    # N is the number of vertices of the room
+    # M is the number of wall centers
+    # -----------------------------------------------------------
+    vertices = np.array(result_container["vertices"])  # Nx3 numpy array
+    wall_centers = np.array(result_container["wall_centers"])  # Mx3 numpy array
+    room_volumn = result_container["room_volumn"]  # float
+    room_areas = result_container["room_areas"]  # (M,) numpy array
     # we want the absorption has size 6 * len(frequency bands)
     # The first dimension is for the walls, viz., x1, x2, y1, y2, z1, z2
     # Corresponding to wall 1, wall 3, wall 2, wall 4, floor, ceiling
@@ -93,17 +102,29 @@ def deism_method(json_file_path=None):
             abs_coeffs_loaded[wall]
         )
     # Apply DEISM
-    deism = DEISM("RIR", "shoebox")
+    deism = DEISM("RIR", "convex")
+    deism.update_room(
+        vertices=vertices,
+        wall_centers=wall_centers,
+        room_volumn=room_volumn,
+        room_areas=room_areas,
+    )
     deism.update_wall_materials(
-        absorption_coefficients,
-        freq_bands,
-        "absorpCoefficient",
+        absorption_coefficients, freq_bands, "absorpCoefficient"
     )
     deism.update_freqs()
     deism.update_images()
     deism.update_directivities()
-    deism.run_DEISM()
-
+    pressure = deism.run_DEISM()
+    # -----------------------------------------------------------
+    # Save the simulation results
+    # -----------------------------------------------------------
+    # Save the simulation results in the json file
+    result_container["results"][0]["responses"][0][
+        "receiverResults"
+    ] = pressure.tolist()
+    with open(json_file_path, "w") as new_result_json:
+        new_result_json.write(json.dumps(result_container, indent=4))
     print("desim_method: simulation done!")
 
 
