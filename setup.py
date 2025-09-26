@@ -21,7 +21,7 @@ import platform
 with open("deism/version.py") as f:
     exec(f.read())
 try:
-    from setuptools import Extension, distutils, setup, find_packages, Command, develop
+    from setuptools import Extension, distutils, setup, find_packages, Command
     from setuptools.command.build_ext import build_ext
     from setuptools.command.install_lib import install_lib
 except ImportError:
@@ -72,61 +72,9 @@ libroom_files = [
 extra_compile_args = ["-DEIGEN_MPL2_ONLY", "-Wall", "-O3", "-DEIGEN_NO_DEBUG"]
 extra_link_args = []
 # Only add "-arch arm64" if running on ARM-based macOS
-# Check both native ARM64 and x86_64 emulation on Apple Silicon
-if sys.platform == "darwin":
-    # Check if we're on Apple Silicon (either native ARM64 or x86_64 emulation)
-    import subprocess
-
-    try:
-        # Check hardware model to detect Apple Silicon Macs
-        result = subprocess.run(["sysctl", "hw.model"], capture_output=True, text=True)
-        if result.returncode == 0:
-            hw_model = result.stdout.strip()
-            # Apple Silicon Macs have model numbers like MacBookPro18,3, MacBookAir10,1, etc.
-            # Check if it's an Apple Silicon model (M1/M2/M3/M4)
-            if any(
-                x in hw_model
-                for x in [
-                    "MacBookPro18",
-                    "MacBookPro19",
-                    "MacBookPro20",
-                    "MacBookPro21",
-                    "MacBookPro22",
-                    "MacBookPro23",
-                    "MacBookPro24",
-                    "MacBookAir10",
-                    "MacBookAir11",
-                    "MacBookAir12",
-                    "MacBookAir13",
-                    "MacBookAir14",
-                    "MacBookAir15",
-                    "MacStudio1",
-                    "MacStudio2",
-                    "MacStudio3",
-                    "MacStudio4",
-                    "MacPro7,1",
-                    "iMac21",
-                    "iMac22",
-                    "iMac23",
-                    "iMac24",
-                ]
-            ):
-                extra_compile_args += ["-arch", "arm64"]
-                extra_link_args = ["-arch", "arm64"]
-                print(
-                    f"Detected Apple Silicon hardware ({hw_model}), building for ARM64 architecture"
-                )
-            else:
-                # Fallback: check if we're running native ARM64
-                if platform.machine() == "arm64":
-                    extra_compile_args += ["-arch", "arm64"]
-                    extra_link_args = ["-arch", "arm64"]
-                    print("Detected native ARM64, building for ARM64 architecture")
-    except:
-        # Fallback to original logic
-        if platform.machine() == "arm64":
-            extra_compile_args += ["-arch", "arm64"]
-            extra_link_args = ["-arch", "arm64"]
+if sys.platform == "darwin" and platform.machine() == "arm64":
+    extra_compile_args += ["-arch", "arm64"]
+    extra_link_args = ["-arch", "arm64"]
 # When you run python setup.py build_ext --inplace or pip install .,
 # the Extension specified in the ext_modules list will trigger the build process.
 ext_modules = [  # This specifies the C++ extension that will be built.
@@ -260,82 +208,6 @@ class BuildExt(build_ext):
 ### Build Tools End ###
 
 
-# Only define CustomDevelop if setuptools is available
-try:
-    from setuptools.command.develop import develop
-
-    class CustomDevelop(develop):
-        """Custom develop command that ensures compiled extensions are copied to package directory."""
-
-        def run(self):
-            # Completely bypass the problematic parent run method that calls pip recursively
-            # Do the develop installation manually
-            self.initialize_options()
-            self.finalize_options()
-
-            # Build extensions first
-            if self.distribution.ext_modules:
-                self.run_command("build_ext")
-
-            # Manually create the .pth file for editable install
-            self._create_pth_file_manually()
-
-            # Copy compiled extensions to package directory
-            self._copy_extensions_to_package()
-
-            # Install package data if any
-            if self.distribution.package_data:
-                self.run_command("install_data")
-
-        def _create_pth_file_manually(self):
-            """Manually create the .pth file for editable installation."""
-            import os
-            import site
-
-            # Get the site-packages directory
-            site_packages = site.getsitepackages()[0]
-
-            # Create the .pth file
-            pth_filename = (
-                f"{self.distribution.get_name()}-{self.distribution.get_version()}.pth"
-            )
-            pth_path = os.path.join(site_packages, pth_filename)
-
-            # Get the absolute path to the project directory
-            project_dir = os.path.abspath(os.getcwd())
-
-            # Write the .pth file
-            with open(pth_path, "w") as f:
-                f.write(project_dir + "\n")
-
-            print(f"Created .pth file: {pth_path}")
-            print(f"Project directory: {project_dir}")
-
-        def _copy_extensions_to_package(self):
-            """Copy compiled extensions from build directory to package directory."""
-            import os
-            import shutil
-            import glob
-
-            # Find all compiled extensions in build directory
-            build_dir = os.path.join("build", "lib*", "deism")
-            build_patterns = glob.glob(build_dir)
-
-            for build_path in build_patterns:
-                if os.path.exists(build_path):
-                    # Find .so files in build directory
-                    so_files = glob.glob(os.path.join(build_path, "*.so"))
-                    for so_file in so_files:
-                        # Copy to deism package directory
-                        dest_file = os.path.join("deism", os.path.basename(so_file))
-                        shutil.copy2(so_file, dest_file)
-                        print(f"Copied {so_file} to {dest_file}")
-
-except ImportError:
-    # Fallback if setuptools is not available
-    CustomDevelop = None
-
-
 setup_kwargs = dict(
     name="deism",
     version=__version__,
@@ -371,7 +243,6 @@ setup_kwargs = dict(
     ],
     cmdclass={
         "build_ext": BuildExt,
-        **({"develop": CustomDevelop} if CustomDevelop is not None else {}),
     },  # taken from pybind11 example
 )
 
