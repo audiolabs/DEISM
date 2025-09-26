@@ -1,7 +1,7 @@
 import time
 import numpy as np
 from scipy import special as scy
-from scipy.integrate import trapz
+from scipy.integrate import trapezoid
 from scipy.optimize import least_squares
 from scipy.interpolate import PchipInterpolator
 from scipy.fft import ifft
@@ -611,7 +611,7 @@ def _get_imp_abs_scalar(z_scalar, aran_scalar):
         * np.sin(2 * theta)
         / (z_scalar**2 * np.cos(theta) ** 2 + 2 * z_scalar * np.cos(theta) + 1)
     )
-    aest = trapz(summ, theta)
+    aest = trapezoid(summ, theta)
 
     # Check for division by zero or invalid values
     if not np.isfinite(aest) or abs(aran_scalar) < 1e-10:
