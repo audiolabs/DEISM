@@ -1,15 +1,10 @@
-import yaml
-import argparse
-import os
-import time
 import numpy as np
-import matplotlib.pyplot as plt
-import ray
 from deism.core_deism import *
 from deism.data_loader import *
 
 
-def main():
+def test_deism_arg_simulation():
+    """Test DEISM-ARG simulation with impedance update."""
     deism = DEISM("RIR", "convex")
     # Testing impedance update
     # Example of room volumn and roomAreas
@@ -26,23 +21,17 @@ def main():
     deism.update_images()
     deism.update_directivities()
     pressure = deism.run_DEISM()
-    # visualize the room
-    # deism.room_convex.plot_room()
-    # Save the simulation results
-    np.savez(
-        f"./outputs/{deism.mode}s/DEISM_{deism.roomtype}_{deism.mode}s_test",
-        pressure=pressure,
-        posSource=deism.params["posSource"],
-        posReceiver=deism.params["posReceiver"],
-        freqs=deism.params["freqs"],
-        sampleRate=deism.params["sampleRate"],
-        reverberationTime=deism.params["reverberationTime"],
-        RIRLength=deism.params["RIRLength"],
-        soundSpeed=deism.params["soundSpeed"],
-    )
+
+    # Basic assertions to verify the simulation ran successfully
+    assert pressure is not None, "Pressure should not be None"
+    assert len(pressure) > 0, "Pressure should have data"
+    assert deism.params["posSource"] is not None, "Source position should be set"
+    assert deism.params["posReceiver"] is not None, "Receiver position should be set"
+    assert deism.params["freqs"] is not None, "Frequencies should be set"
+
     print("Simulation done!")
 
 
 # -------------------------------------------------------
 if __name__ == "__main__":
-    main()
+    test_deism_arg_simulation()
