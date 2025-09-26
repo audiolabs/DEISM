@@ -1,0 +1,325 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Examples &mdash; DEISM 2.1.2 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=b249c870" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=b3e23499"></script>
+      <script src="_static/doctools.js?v=9a2dae69"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/interactive.js?v=55ca7945"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API Reference" href="api_reference.html" />
+    <link rel="prev" title="Basic Workflows" href="workflows.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DEISM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#key-features">Key Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#applications">Applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#academic-publications">Academic publications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#contributors">Contributors</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#installation-via-pip-recommended">Installation via pip (Recommended)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#building-from-source">Building from Source</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#step-by-step-installation">Step-by-Step Installation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#latex-dependency">LaTeX Dependency</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#common-installation-issues">Common Installation Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#development-installation">Development Installation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="workflows.html">Basic Workflows</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#deism-arg-arbitrary-room-geometry">DEISM-ARG (Arbitrary Room Geometry)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="workflows.html#basic-workflow">Basic Workflow</a></li>
+<li class="toctree-l3"><a class="reference internal" href="workflows.html#command-line-options">Command Line Options</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#deism-for-shoebox-rooms">DEISM for Shoebox Rooms</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="workflows.html#id1">Basic Workflow</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#some-tests-and-comparisons">Some tests and comparisons</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="workflows.html#version-comparison">Version Comparison</a></li>
+<li class="toctree-l3"><a class="reference internal" href="workflows.html#validation-against-other-tools">Validation Against Other Tools</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#working-with-directivities">Working with Directivities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="workflows.html#simple-directivities">Simple Directivities</a></li>
+<li class="toctree-l3"><a class="reference internal" href="workflows.html#arbitrary-directivities">Arbitrary Directivities</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#best-practices">Best Practices</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="workflows.html#distance-recommendations">Distance Recommendations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="workflows.html#same-speaker-scenarios">Same-Speaker Scenarios</a></li>
+<li class="toctree-l3"><a class="reference internal" href="workflows.html#silent-mode">Silent Mode</a></li>
+<li class="toctree-l3"><a class="reference internal" href="workflows.html#performance-optimization">Performance Optimization</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#troubleshooting-common-issues">Troubleshooting Common Issues</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#deism-arg-examples">DEISM-ARG Examples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#basic-single-parameter-example">Basic Single Parameter Example</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#algorithm-comparison">Algorithm Comparison</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#validation-against-pyroomacoustics">Validation Against pyroomacoustics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#iwaenc-paper-reproduction">IWAENC Paper Reproduction</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#deism-shoebox-examples">DEISM Shoebox Examples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#basic-shoebox-example">Basic Shoebox Example</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#algorithm-performance-comparison">Algorithm Performance Comparison</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#image-source-calculation-comparison">Image Source Calculation Comparison</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#jasa-paper-reproductions">JASA Paper Reproductions</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#core-functions">Core Functions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="api_reference.html#deism-arg-core-functions">DEISM-ARG Core Functions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#run_DEISM_ARG"><code class="docutils literal notranslate"><span class="pre">run_DEISM_ARG()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#Room_deism_cpp"><code class="docutils literal notranslate"><span class="pre">Room_deism_cpp</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api_reference.html#data-loading-functions">Data Loading Functions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#compute_rest_params"><code class="docutils literal notranslate"><span class="pre">compute_rest_params()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#loadSingleParam"><code class="docutils literal notranslate"><span class="pre">loadSingleParam()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#detect_conflicts"><code class="docutils literal notranslate"><span class="pre">detect_conflicts()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="api_reference.html#deism-algorithm-functions">DEISM Algorithm Functions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#run_DEISM"><code class="docutils literal notranslate"><span class="pre">run_DEISM()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#pre_calc_images_src_rec_original"><code class="docutils literal notranslate"><span class="pre">pre_calc_images_src_rec_original()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#pre_calc_images_src_rec_lowComplexity"><code class="docutils literal notranslate"><span class="pre">pre_calc_images_src_rec_lowComplexity()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#pre_calc_images_src_rec_MIX"><code class="docutils literal notranslate"><span class="pre">pre_calc_images_src_rec_MIX()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#ray_run_DEISM"><code class="docutils literal notranslate"><span class="pre">ray_run_DEISM()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#ray_run_DEISM_LC"><code class="docutils literal notranslate"><span class="pre">ray_run_DEISM_LC()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="api_reference.html#ray_run_DEISM_MIX"><code class="docutils literal notranslate"><span class="pre">ray_run_DEISM_MIX()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#configuration-parameters">Configuration Parameters</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="api_reference.html#environment-parameters">Environment Parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="api_reference.html#room-geometry-parameters">Room Geometry Parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="api_reference.html#position-and-orientation-parameters">Position and Orientation Parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="api_reference.html#frequency-parameters">Frequency Parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="api_reference.html#directivity-parameters">Directivity Parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="api_reference.html#deism-algorithm-parameters">DEISM Algorithm Parameters</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#performance-considerations">Performance Considerations</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DEISM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Examples</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/examples.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="examples">
+<h1>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h1>
+<p>This section provides an overview of the example scripts included with DEISM. All examples are located in the <code class="docutils literal notranslate"><span class="pre">examples/</span></code> directory.</p>
+<section id="deism-arg-examples">
+<h2>DEISM-ARG Examples<a class="headerlink" href="#deism-arg-examples" title="Link to this heading"></a></h2>
+<section id="basic-single-parameter-example">
+<h3>Basic Single Parameter Example<a class="headerlink" href="#basic-single-parameter-example" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">deism_arg_singleparam_example.py</span></code></p>
+<p><strong>Usage</strong>:</p>
+<p>From IDE:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Run directly in your IDE</span>
+</pre></div>
+</div>
+<p>From command line:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">deism_arg_singleparam_example</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">help</span>  <span class="c1"># View options</span>
+<span class="n">python</span> <span class="n">deism_arg_singleparam_example</span><span class="o">.</span><span class="n">py</span> <span class="o">-</span><span class="n">c</span> <span class="mi">350</span> <span class="o">-</span><span class="n">zs</span> <span class="mi">20</span> <span class="o">--</span><span class="n">run</span>  <span class="c1"># Run with custom parameters</span>
+</pre></div>
+</div>
+<p><strong>Key Features</strong>:
+- Demonstrates basic DEISM-ARG workflow
+- Shows parameter configuration
+- Supports command-line parameter overrides
+- Uses <code class="docutils literal notranslate"><span class="pre">configSingleParam_arg.yml</span></code> for default parameters</p>
+</section>
+<section id="algorithm-comparison">
+<h3>Algorithm Comparison<a class="headerlink" href="#algorithm-comparison" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">deism_args_compare.py</span></code></p>
+<p>Compares different versions of DEISM-ARG algorithms to demonstrate trade-offs between computational cost and accuracy.</p>
+<p><strong>Compared Methods</strong>:
+- <strong>Original version</strong>: Most accurate, highest computational cost
+- <strong>LC version</strong>: Fastest execution, good approximation for higher-order reflections
+- <strong>Mix version</strong>: Balanced approach using Original for early reflections and LC for higher orders</p>
+<p><strong>Features</strong>:
+- Frequency- and wall-dependent impedance definition
+- Performance benchmarking
+- Accuracy comparison plots</p>
+</section>
+<section id="validation-against-pyroomacoustics">
+<h3>Validation Against pyroomacoustics<a class="headerlink" href="#validation-against-pyroomacoustics" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">deism_arg_pra_compare.py</span></code></p>
+<p>Validates DEISM-ARG results against the popular pyroomacoustics library.</p>
+<p><strong>Comparison Metrics</strong>:
+- Number of image sources
+- Positions of image sources
+- Computational performance</p>
+<p><strong>Output</strong>:
+- Quantitative comparison results
+- Visualization of differences
+- Validation reports</p>
+</section>
+<section id="iwaenc-paper-reproduction">
+<h3>IWAENC Paper Reproduction<a class="headerlink" href="#iwaenc-paper-reproduction" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">deism_arg_IWAENC_fig5_fig6.py</span></code></p>
+<p>Reproduces figures 5 and 6 from the IWAENC 2024 paper on arbitrary geometries.</p>
+<p><strong>Purpose</strong>:
+- Academic result reproduction
+- Complex room geometry examples</p>
+<p><strong>Reference</strong>: See <a class="reference internal" href="introduction.html#iwaenc-paper"><span class="std std-ref">Arbitrary Geometries</span></a> for the full publication details.</p>
+</section>
+</section>
+<section id="deism-shoebox-examples">
+<h2>DEISM Shoebox Examples<a class="headerlink" href="#deism-shoebox-examples" title="Link to this heading"></a></h2>
+<section id="basic-shoebox-example">
+<h3>Basic Shoebox Example<a class="headerlink" href="#basic-shoebox-example" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">deism_singleparam_example.py</span></code></p>
+<p>Simple example for rectangular (shoebox) room acoustics simulation.</p>
+<p><strong>Usage</strong>:</p>
+<p>run from IDE:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Run directly in your IDE</span>
+</pre></div>
+</div>
+<p>run from command line:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">deism_singleparam_example</span><span class="o">.</span><span class="n">py</span> <span class="o">--</span><span class="n">help</span>  <span class="c1"># View options</span>
+<span class="n">python</span> <span class="n">deism_singleparam_example</span><span class="o">.</span><span class="n">py</span> <span class="o">-</span><span class="n">c</span> <span class="mi">350</span> <span class="o">-</span><span class="n">zs</span> <span class="mi">20</span> <span class="o">--</span><span class="n">run</span>  <span class="c1"># Run with custom parameters</span>
+</pre></div>
+</div>
+<p><strong>Features</strong>:
+- Basic DEISM workflow
+- Rectangular room setup
+- Uses <code class="docutils literal notranslate"><span class="pre">configSingleParam.yml</span></code>
+- Essential functionality demonstration</p>
+</section>
+<section id="algorithm-performance-comparison">
+<h3>Algorithm Performance Comparison<a class="headerlink" href="#algorithm-performance-comparison" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">deisms_lc_mix_test.py</span></code></p>
+<p>Compares different DEISM algorithm versions for shoebox rooms.</p>
+<p><strong>Compared Methods</strong>:
+- DEISM original
+- DEISM MIX (original + LC vectorized)
+- DEISM LC vectorized
+- FEM as ground truth reference</p>
+<p><strong>Analysis</strong>:
+- Accuracy assessment
+- Computational time comparison
+- Error analysis</p>
+</section>
+<section id="image-source-calculation-comparison">
+<h3>Image Source Calculation Comparison<a class="headerlink" href="#image-source-calculation-comparison" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">shoebox_images_cal_compare.py</span></code></p>
+<p>Focuses specifically on image source calculation methods and their speed.</p>
+<p><strong>Features</strong>:
+- Computational time comparison</p>
+</section>
+<section id="jasa-paper-reproductions">
+<h3>JASA Paper Reproductions<a class="headerlink" href="#jasa-paper-reproductions" title="Link to this heading"></a></h3>
+<p><strong>File</strong>: <code class="docutils literal notranslate"><span class="pre">deism_JASA_fig8.py</span></code> and <code class="docutils literal notranslate"><span class="pre">deism_JASA_fig9.py</span></code></p>
+<p>Reproduce figures from the main paper <a class="reference internal" href="introduction.html#main-paper"><span class="std std-ref">Main Paper</span></a>.</p>
+<p><strong>Purpose</strong>:
+- Academic result reproduction
+- Publication-quality examples</p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="workflows.html" class="btn btn-neutral float-left" title="Basic Workflows" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api_reference.html" class="btn btn-neutral float-right" title="API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Audiolabs Erlangen, Germany.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

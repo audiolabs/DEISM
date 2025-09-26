@@ -1,0 +1,179 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\geometry{margin=1in}
+
+\title{Room Acoustics Analysis Algorithms Summary}
+\author{DEISM Project}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Overview}
+This document summarizes the algorithms and mathematical functions implemented in the room acoustics analysis script. The script performs parameter estimation, frequency response analysis, and time-domain analysis for room acoustics applications.
+
+\section{Core Algorithms}
+
+\subsection{Parameter Estimation Algorithm}
+The main algorithm \texttt{get\_params(V, S, c, datain)} calculates room acoustics parameters based on different input modes:
+
+\subsubsection{Input Parameters}
+\begin{itemize}
+    \item $V$: Room volume (m³)
+    \item $S$: Surface area (m²)
+    \item $c$: Speed of sound (m/s)
+    \item \texttt{datain}: Input data array containing mode and parameter values
+\end{itemize}
+
+\subsubsection{Mode 1: Impedance-based Calculation}
+When mode = "imp", the algorithm calculates $T_{60}$ and $\alpha$ from impedance $\zeta$:
+
+\begin{align}
+b &= \frac{1}{\zeta} \\
+\text{ratio}_1 &= \frac{1 + b}{1 - b} \\
+\text{ratio}_2 &= \frac{b + 1}{b - 1} \\
+d &= \ln(|\text{ratio}_1|^2) + 2\Re\left[b(2 - b\ln(|\text{ratio}_2|))\right] \\
+T_{60} &= \frac{24\ln(10)V}{cSd} \\
+\alpha &= \frac{8\Re(\zeta)}{|\zeta|^2}\left[1 + \frac{\Re(\zeta)^2 - \Im(\zeta)^2}{\Im(\zeta)|\zeta|^2}\arctan\left(\frac{\Im(\zeta)}{1 + \Re(\zeta)}\right) - \frac{\Re(\zeta)}{|\zeta|^2}\ln(1 + 2\Re(\zeta) + |\zeta|^2)\right]
+\end{align}
+
+\subsubsection{Mode 2: Absorption Coefficient-based Calculation}
+When mode = "abs", the algorithm uses optimization to find impedance from absorption coefficient:
+
+\begin{align}
+\text{Objective function: } f(z_r) &= \left|\frac{\alpha_{\text{ref}} - \alpha_{\text{est}}(z_r)}{\alpha_{\text{ref}}}\right| \times 100
+\end{align}
+
+The optimization uses the Levenberg-Marquardt algorithm with multiple initial guesses and fallback to grid search.
+
+\subsubsection{Mode 3: Reverberation Time-based Calculation}
+When mode = "t60", the algorithm calculates impedance from reverberation time:
+
+\begin{align}
+\text{Objective function: } f(z_r) &= \left|\frac{T_{60,\text{ref}} - T_{60,\text{est}}(z_r)}{T_{60,\text{ref}}}\right| \times 100
+\end{align}
+
+\subsection{Absorption Coefficient Calculation}
+The function \texttt{get\_imp\_abs(z, aran)} calculates the absorption coefficient from impedance:
+
+\begin{align}
+\alpha_{\text{est}} &= \int_0^{\pi/2} \frac{4z\cos(\theta)\sin(2\theta)}{z^2\cos^2(\theta) + 2z\cos(\theta) + 1} d\theta
+\end{align}
+
+This integral is computed using the trapezoidal rule with 200 integration points.
+
+\subsection{Reverberation Time Calculation}
+The function \texttt{get\_imp\_t60(z, ref, V, S, c)} calculates reverberation time from impedance:
+
+\begin{align}
+b &= \frac{1}{z} \\
+d &= \ln\left(\left|\frac{1 + b}{1 - b}\right|^2\right) + 2\Re\left[b\left(2 - b\ln\left(\left|\frac{b + 1}{b - 1}\right|\right)\right)\right] \\
+T_{60} &= \frac{24\ln(10)V}{cSd}
+\end{align}
+
+\subsection{Frequency Response Analysis}
+The frequency response calculation uses modal analysis:
+
+\begin{align}
+\phi_s &= \cos\left(\frac{\pi x_s}{L_x}\right)\cos\left(\frac{\pi y_s}{L_y}\right)\cos\left(\frac{\pi z_s}{L_z}\right) \\
+\phi_r &= \cos\left(\frac{\pi x_r}{L_x}\right)\cos\left(\frac{\pi y_r}{L_y}\right)\cos\left(\frac{\pi z_r}{L_z}\right) \\
+\sigma &= \frac{2c}{4\zeta} + \frac{2c}{3\zeta} + \frac{2c}{2.5\zeta} \\
+k_d &= c\sqrt{\left(\frac{1}{4}\right)^2 + \left(\frac{1}{3}\right)^2 + \left(\frac{1}{2.5}\right)^2} + j\frac{\sigma}{2c} \\
+k &= \frac{\omega}{c} \\
+P(\omega) &= \frac{j\omega Q\rho\phi_s\phi_r}{K(k_d^2 - k^2)}
+\end{align}
+
+where:
+\begin{itemize}
+    \item $\phi_s, \phi_r$: Source and receiver mode shapes
+    \item $\sigma$: Modal damping
+    \item $k_d$: Complex wavenumber
+    \item $P(\omega)$: Frequency response
+\end{itemize}
+
+\subsection{Time Domain Analysis}
+The time domain response is obtained through inverse FFT:
+
+\begin{align}
+p(t) &= \Re\left[\mathcal{F}^{-1}\{P(\omega)\}\right]
+\end{align}
+
+\subsection{Decibel Conversion}
+The utility function \texttt{db(x)} converts magnitude to decibels:
+
+\begin{align}
+\text{db}(x) &= 20\log_{10}(|x|)
+\end{align}
+
+\section{Optimization Algorithms}
+
+\subsection{Levenberg-Marquardt Algorithm}
+The script uses \texttt{scipy.optimize.least\_squares} with the Levenberg-Marquardt method for parameter estimation. The algorithm minimizes the sum of squares of residuals:
+
+\begin{align}
+\min_{x} \sum_{i=1}^{m} f_i(x)^2
+\end{align}
+
+\subsection{Grid Search Fallback}
+When the optimization fails, a grid search is performed:
+
+\begin{align}
+z_{\text{optimal}} = \arg\min_{z \in [1, 100]} f(z)
+\end{align}
+
+\section{Numerical Integration}
+
+\subsection{Trapezoidal Rule}
+The absorption coefficient calculation uses the trapezoidal rule for numerical integration:
+
+\begin{align}
+\int_a^b f(x)dx \approx \frac{b-a}{2n}\left[f(a) + 2\sum_{i=1}^{n-1}f(x_i) + f(b)\right]
+\end{align}
+
+\section{Error Handling and Robustness}
+
+\subsection{Complex Logarithm Handling}
+The algorithm handles complex logarithms by using absolute values to avoid complex results:
+
+\begin{align}
+\ln(z) \rightarrow \ln(|z|) \text{ for numerical stability}
+\end{align}
+
+\subsection{Fallback Values}
+When calculations produce non-finite results, fallback values are used:
+\begin{itemize}
+    \item $d = 10^{-6}$ for invalid damping calculations
+    \item Error penalty of $10^6$ for optimization failures
+\end{itemize}
+
+\section{Implementation Notes}
+
+\begin{itemize}
+    \item The script uses NumPy for numerical computations
+    \item SciPy is used for optimization and integration
+    \item Matplotlib is used for visualization
+    \item Complex arithmetic is handled carefully to avoid numerical instabilities
+    \item Multiple initial guesses are used for robust optimization
+    \item Warning suppression is implemented for cleaner output
+\end{itemize}
+
+\section{Physical Parameters}
+
+The analysis uses the following physical constants and parameters:
+\begin{itemize}
+    \item Speed of sound: $c = 343$ m/s
+    \item Air density: $\rho = 1.2$ kg/m³
+    \item Room volume: $V = 198.5$ m³
+    \item Surface area: $S = 214.46$ m²
+    \item Sampling frequency: $f_s = 44100$ Hz
+\end{itemize}
+
+\end{document}
