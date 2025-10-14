@@ -45,7 +45,7 @@ def sofa_to_internal(sofa_path, target_freqs=None, ear="L"):
     r0 = float(np.median(r_m))
 
     # 2) time-domain HRIR → frequency response H(f)
-    ir = np.array(ds.variables["Data.IR"])  # typical shape (J, R, N)
+    ir = np.array(ds.variables["Data.IR"])  # typical shape (J, R, N), R: # of receivers(ears), N: time samples 
     fs = float(np.array(ds.variables["Data.SamplingRate"]).squeeze())
     ds.close()
 
@@ -55,7 +55,7 @@ def sofa_to_internal(sofa_path, target_freqs=None, ear="L"):
         # fallback: if dataset is mono or layout differs, just take channel 0
         ear_idx = 0
     J, _, N = ir.shape if ir.ndim == 3 else (ir.shape[0], 1, ir.shape[-1])
-    ir_ear = ir[:, ear_idx, :] if ir.ndim == 3 else ir
+    ir_ear = ir[:, ear_idx, :] if ir.ndim == 3 else ir # impluse response of one ear
 
     # rFFT per direction → shape (J, F)
     H_dirF = np.fft.rfft(ir_ear, axis=-1)  # (J, F_sofa)
@@ -69,7 +69,7 @@ def sofa_to_internal(sofa_path, target_freqs=None, ear="L"):
         H_FJ = H_FJ[1:, :]
         f_sofa = f_sofa[1:]
 
-    # 4) interpolate complex response to target_freqs
+    # 4) TODO：interpolate complex response to target_freqs
     if target_freqs is not None:
         tf = np.asarray(target_freqs, float).ravel()
         # separate real/imag for safe interpolation
@@ -128,7 +128,7 @@ def load_audiolabs_logo():
         logo_path = os.path.join("examples", "audiolabs_logo.png")
         logo_image = Image.open(logo_path)
 
-        # calculate original ratio of width and height
+        # Calculate original ratio of width and height
         original_width, original_height = logo_image.size
         aspect_ratio = original_width / original_height
 
@@ -328,9 +328,19 @@ def balloon_plot_with_slider(
     S = params["pointSrcStrength"] if current_is_receiver else None
 
     # Create figure with Audiolabs styling
-    plt.style.use("seaborn-v0_8")  # Start with a clean style
-    fig = plt.figure(figsize=(6, 8), facecolor=AUDIOLABS_WHITE)
+    plt.style.use("seaborn-v0_8")  # Start with a clean style    
+    fig = plt.figure(figsize=(6, 8), facecolor=AUDIOLABS_WHITE)  
     plt.subplots_adjust(bottom=0.35, right=0.85)
+    
+    # status box
+    status_text = fig.text( 0.21, 0.02, "", ha="left", va="center", fontsize=9, color=AUDIOLABS_ORANGE, 
+                           bbox=dict(boxstyle="round", fc=AUDIOLABS_LIGHT_GRAY, ec=AUDIOLABS_ORANGE, alpha=0.8) )
+    def set_status(msg, color=AUDIOLABS_ORANGE):
+        """Display a status message at the bottom of the interface"""
+        status_text.set_text(msg)
+        status_text.set_color(color)
+        fig.canvas.draw_idle()
+
     # Create axis for the 3D plot
     ax_recon = fig.add_subplot(111, projection="3d")
     ax_recon.view_init(elev=30, azim=45)  # Set the initial viewing angle
@@ -349,12 +359,66 @@ def balloon_plot_with_slider(
     fmt = lambda f: f"{f:.1f}"
     text_box_freq = mpl.widgets.TextBox(ax_freq_input, "", initial=fmt(initial_freq))
     fig.text(0.895, 0.257, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
+    # Display frequency range
+    fmm_text = fig.text(
+        0.81, 0.235,  # a bit under the textbox; tweak if you like
+        f"[{fmt(freqs.min())}, {fmt(freqs.max())}]",
+        fontsize=9, color=AUDIOLABS_GRAY, ha="left", va="center"
+    )
 
     # Add checkbox for receiver directivity normalization
-    ax_norm = plt.axes([0.2, 0.04, 0.3, 0.03], facecolor=AUDIOLABS_LIGHT_GRAY)
+    ax_norm = plt.axes([0.2, 0.04, 0.31, 0.035], facecolor=AUDIOLABS_LIGHT_GRAY)
     norm_checkbox = mpl.widgets.CheckButtons(
         ax_norm, ["Normalize Receiver"], [bool(params.get("ifReceiverNormalize", 0))]
+    )  
+    # Make sure artists have valid positions
+    fig.canvas.draw()  # important before reading bbox
+
+    # Move the label text left/right in the checkbox axes (0..1 coordinates)
+    LABEL_X = 0.18  
+    for txt in norm_checkbox.labels:
+        # ensure we place in axes coordinates (not data)
+        txt.set_transform(ax_norm.transAxes)
+        x_old, y_old = txt.get_position()
+        txt.set_position((LABEL_X, y_old))
+        txt.set_ha("left")
+        txt.set_va("center")
+        txt.set_clip_on(False)
+    ax_help = plt.axes([0.475, 0.055, 0.005, 0.005])
+    ax_help.axis("off")  # makes the axes just a blank container
+    t = ax_help.text(
+        0.5,
+        0.5,
+        "?",
+        ha="center",
+        va="center",
+        fontsize=10,
+        bbox=dict(boxstyle="circle", facecolor=AUDIOLABS_DARK_GRAY, alpha=0.8),
+        color="white",
     )
+    tooltip = ax_help.annotate(
+        "Normalize Receiver:\nDivide receiver Psh by point-source strength S(f)\n"
+        "Only for FEM-based receiver data; ignored for SOFA.\n"
+        "'x' means normalization",
+        xy=(0.5, 0.5),  # center of the ? symbol
+        xycoords="axes fraction",  # important: relative to ax_help
+        xytext=(20, 20),
+        textcoords="offset points",
+        ha="left",
+        va="bottom",
+        bbox=dict(boxstyle="round", fc="w", ec=AUDIOLABS_GRAY, alpha=0.95),
+        arrowprops=dict(arrowstyle="->", color=AUDIOLABS_GRAY),
+        visible=False,
+    )
+
+    def on_move(event):
+        if event.inaxes is ax_help:
+            tooltip.set_visible(True)
+        else:
+            tooltip.set_visible(False)
+        event.canvas.draw_idle()
+
+    cid = fig.canvas.mpl_connect("motion_notify_event", on_move)
 
     def toggle_normalize(label):
         """Used to judge if Psh should be normalized"""
@@ -371,6 +435,13 @@ def balloon_plot_with_slider(
         if not current_is_receiver:
             fig.canvas.draw_idle()
             return
+
+        # Progress Bar
+        if params["ifReceiverNormalize"]:
+            win = InitializationWindow("Normalizing receiver…")
+        else:
+            win = InitializationWindow("Denormalizing receiver…")
+        win.update_progress(0, "Starting...", "")
 
         # Rebuild caches from pristine Psh_raw to avoid double-dividing
         Psh = Psh_raw.copy()
@@ -400,7 +471,23 @@ def balloon_plot_with_slider(
                 k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
             )
 
+            win.update_progress(
+                5 + 90 * (freq_idx + 1) / len(freqs),
+                f"Rebuilding at {freqs[freq_idx]:.0f} Hz",
+                "computing Psh, Pnm & Cnm",
+            )
+
+        win.update_progress(100, "Recomputation Complete!", "")
+        time.sleep(0.3)
+        win.close()
+
         update(None)  # now the redraw uses the rebuilt caches
+
+        if params.get("ifReceiverNormalize", 0):
+            set_status("Receiver normalization.")
+        else:
+            set_status("Receiver denormalization.")
+
 
     norm_checkbox.on_clicked(toggle_normalize)
 
@@ -408,12 +495,17 @@ def balloon_plot_with_slider(
     def on_text_submit(text):
         try:
             val = float(text)
-            if freqs.min() <= val <= freqs.max():
+            fmin = float(freqs.min())
+            fmax = float(freqs.max())
+            if fmin <= val <= fmax:
                 freq_slider.set_val(val)  # trigger update()
+                set_status(f"Frequency set to {val:.1f} Hz")
             else:
-                print("Input frequency out of range")
-        except:
-            print("Please input a valid frequency")
+                set_status(f"Out of range: [{fmin:.1f}, {fmax:.1f}] Hz", color="crimson")
+                # Write back to the nearest boundary, providing immediate feedback
+                text_box_freq.set_val(f"{np.clip(val, fmin, fmax):.1f}")
+        except Exception:
+            set_status("Please input a valid number for frequency.", color="crimson")
 
     text_box_freq.on_submit(on_text_submit)
 
@@ -486,6 +578,8 @@ def balloon_plot_with_slider(
     )
     time.sleep(0.5)
     progress_window.close()
+
+    set_status(f"Frequency range: {fmt(freqs.min())}–{fmt(freqs.max())} Hz")
 
     def browse_file(event):
         # Create the Tkinter root window object
@@ -764,6 +858,8 @@ def balloon_plot_with_slider(
         freq_slider.valmin = freqs.min()
         freq_slider.valmax = freqs.max()
         freq_slider.ax.set_xlim(freqs.min(), freqs.max())
+        fmm_text.set_text(f"[{fmt(freqs.min())}, {fmt(freqs.max())}]")
+        set_status(f"Frequency range: {fmt(freqs.min())}–{fmt(freqs.max())} Hz")
         # Set to middle frequency
         freq_slider.set_val(freqs[len(freqs) // 2])
         # Update r0 slider
@@ -811,10 +907,23 @@ def balloon_plot_with_slider(
         )
         k = k_all[freq_idx]
 
-        for n in range(current_sh_order + 1):
-            hn_r0_rec = hn_cache[(n, round(k * r0_rec, 6))]
-            for m in range(-n, n + 1):
-                Pnm_rec[:, n, m + n] = Cnm_s[:, n, m] * hn_r0_rec
+        with np.errstate(invalid="raise", divide="raise", over="raise"):
+            try:
+                for n in range(current_sh_order + 1):
+                    try:
+                        hn_r0_rec = hn_cache[(n, round(k * r0_rec, 6))]
+                    except KeyError:
+                        set_status("Internal cache miss for Hankel: try slightly different radius.", color="crimson")
+                        ax_recon.cla()
+                        fig.canvas.draw_idle()
+                        return
+                    for m in range(-n, n + 1):
+                        Pnm_rec[:, n, m + n] = Cnm_s[:, n, m] * hn_r0_rec
+            except FloatingPointError:
+                set_status("Numerical instability at current (frequency, radius, order). Try lower order or larger radius.", color="crimson")
+                ax_recon.cla()
+                fig.canvas.draw_idle()
+                return
 
         # Plot reconstructed
         plot_balloon_rec(
