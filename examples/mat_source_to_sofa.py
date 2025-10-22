@@ -100,5 +100,5 @@ def mat_source_to_sofa(mat_path, sofa_path, fs=None, nfft=None):
 if __name__ == "__main__":
     # paths
     mat_path = os.path.join("examples", "data", "sampled_directivity", "source", "Speaker_cuboid_cyldriver_source.mat")   
-    sofa_path = "Speaker_cuboid_cyldriver_source_converted.sofa"
+    sofa_path = os.path.join("examples", "data", "sampled_directivity", "sofa", "Speaker_cuboid_cyldriver_source_converted.sofa")
     mat_source_to_sofa(mat_path, sofa_path, fs=None, nfft=None)
