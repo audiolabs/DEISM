@@ -22,7 +22,7 @@ import time
 from netCDF4 import Dataset
 
 
-def sofa_to_internal(sofa_path, target_freqs=None, ear="L"):
+def sofa_to_internal(sofa_path, ear="L"):   #, target_freqs=None
     """
     Convert a SOFA HRTF/HRIR file to the internal (Psh, Dir_all, freqs, r0) format
 
@@ -69,19 +69,21 @@ def sofa_to_internal(sofa_path, target_freqs=None, ear="L"):
         H_FJ = H_FJ[1:, :]
         f_sofa = f_sofa[1:]
 
-    # 4) TODO：interpolate complex response to target_freqs
-    if target_freqs is not None:
-        tf = np.asarray(target_freqs, float).ravel()
-        # separate real/imag for safe interpolation
-        Hr = np.empty((tf.size, H_FJ.shape[1]), dtype=float)
-        Hi = np.empty_like(Hr)
-        for j in range(H_FJ.shape[1]):
-            Hr[:, j] = np.interp(tf, f_sofa, H_FJ.real[:, j])
-            Hi[:, j] = np.interp(tf, f_sofa, H_FJ.imag[:, j])
-        H_FJ = Hr + 1j * Hi
-        freqs = tf
-    else:
-        freqs = f_sofa
+    freqs = f_sofa
+
+    # # 4) interpolate complex response to target_freqs
+    # if target_freqs is not None:
+    #     tf = np.asarray(target_freqs, float).ravel()
+    #     # separate real/imag for safe interpolation
+    #     Hr = np.empty((tf.size, H_FJ.shape[1]), dtype=float)
+    #     Hi = np.empty_like(Hr)
+    #     for j in range(H_FJ.shape[1]):
+    #         Hr[:, j] = np.interp(tf, f_sofa, H_FJ.real[:, j])
+    #         Hi[:, j] = np.interp(tf, f_sofa, H_FJ.imag[:, j])
+    #     H_FJ = Hr + 1j * Hi
+    #     freqs = tf
+    # else:
+    #     freqs = f_sofa
 
     Psh = H_FJ  # naming aligned
     return Psh, Dir_all, freqs, r0
@@ -769,9 +771,8 @@ def balloon_plot_with_slider(
         ext = os.path.splitext(current_file)[1].lower()
         if ext == ".sofa":
             # SOFA branch
-            target_f = None  # using freq range of SOFA file
             Psh, Dir_all, freqs, r0 = sofa_to_internal(
-                current_file, target_freqs=target_f, ear="L"
+                current_file, ear="L"
             )
             Psh_raw = Psh.copy()
             k_all = 2 * np.pi * freqs / 343.0
@@ -779,10 +780,12 @@ def balloon_plot_with_slider(
             params["ifReceiverNormalize"] = 0
 
             # after loading the new file, limit max order based on J
-            J = Dir_all.shape[0]
-            max_by_J = int(np.floor(np.sqrt(J)) - 1)  # make sure (N+1)^2 <= J
-            max_by_kr = int(np.floor((k_all.max() * r0)) + 2)  # experience cap of kr
-            max_sh_order = max(0, min(max_by_J, max_by_kr))
+            # J = Dir_all.shape[0]
+            # max_by_J = int(np.floor(np.sqrt(J)) - 1)  # make sure (N+1)^2 <= J
+            # max_by_kr = int(np.floor((k_all.max() * r0)))  # experience cap of kr
+            # max_sh_order = max(0, min(max_by_J, max_by_kr))
+            max_sh_order = 10
+
             # update cap of sh_slider
             sh_slider.valmax = max_sh_order
             sh_slider.ax.set_xlim(0, max_sh_order)
@@ -910,13 +913,11 @@ def balloon_plot_with_slider(
         with np.errstate(invalid="raise", divide="raise", over="raise"):
             try:
                 for n in range(current_sh_order + 1):
-                    try:
-                        hn_r0_rec = hn_cache[(n, round(k * r0_rec, 6))]
-                    except KeyError:
-                        set_status("Internal cache miss for Hankel: try slightly different radius.", color="crimson")
-                        ax_recon.cla()
-                        fig.canvas.draw_idle()
-                        return
+                    _key = (int(n), round(float(k * r0_rec), 6))
+                    hn_r0_rec = hn_cache.get(_key)
+                    if hn_r0_rec is None:
+                        hn_r0_rec = sphankel2(int(n), float(_key[1]))
+                        hn_cache[_key] = hn_r0_rec
                     for m in range(-n, n + 1):
                         Pnm_rec[:, n, m + n] = Cnm_s[:, n, m] * hn_r0_rec
             except FloatingPointError:
