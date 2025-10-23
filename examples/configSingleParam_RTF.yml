@@ -108,7 +108,7 @@ DEISM_specs:
   ifRemoveDirect: 0 # If remove the direct sound from the image sources
   Method: "MIX" # "ORG", "LC", "MIX"
   mixEarlyOrder: 2 # The order of reflections using DEISM-ORG if choose "MIX"
-  numParaImages: 50000 # Number of images parallel for the calculation, information for users about RAM consumption
+  numParaImages: 1000 # Number of images parallel for the calculation, information for users about RAM consumption
   # If normalize the receiver directivity if the receiver directivity is obtained by placing a point source
   # with flow strength QFlowStrength at the receiver position and measuring the sound pressure at a sphere around the receiver
   # You need to specify QFlowStrength after the following flag

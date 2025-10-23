@@ -8,6 +8,11 @@ import matplotlib.pyplot as plt
 import ray
 from deism.core_deism import *
 from deism.data_loader import *
+from deism.room_check import (
+    get_room_geometry,
+    update_surface_areas,
+    update_wall_centers,
+)
 
 # Import modules
 import itertools
@@ -28,9 +33,16 @@ import traceback
 logger = logging.getLogger(__name__)
 
 
-def parse_absorption_string(coeff_str):
-    """Parse absorption coefficient string to numpy array"""
-    return np.array([float(x.strip()) for x in coeff_str.split(",")])
+def parse_value(val):
+    """Handle strings of comma-separated floats OR single float values."""
+    if isinstance(val, str):
+        return np.array([float(x.strip()) for x in val.split(",") if x.strip()])
+    elif isinstance(val, (int, float)):
+        return np.array([val])
+    elif isinstance(val, (list, tuple)):
+        return np.array(val, dtype=float)
+    else:
+        raise ValueError(f"Unsupported type for parse_value: {type(val)}")
 
 
 def deism_method(json_file_path=None):
@@ -38,7 +50,31 @@ def deism_method(json_file_path=None):
     print("deism_method: starting simulation")
     st = time.time()  # start time of calculation
     result_container = {}
+    import os
+
+    result_container = {}
     if json_file_path is not None:
+        # Step 1: read JSON to get geo_path
+        with open(json_file_path, "r") as json_file:
+            result_container = json.load(json_file)
+            geo_path = os.path.join(
+                os.path.dirname(json_file_path), result_container["geo_path"]
+            )
+
+        # Step 2: update areas, wall centers, volume
+        update_surface_areas(json_file_path, geo_path)
+        update_wall_centers(json_file_path, geo_path)
+        Volume, room = get_room_geometry(geo_file=geo_path)
+
+        # Step 3: write volume to JSON
+        with open(json_file_path, "r+") as json_file:
+            data = json.load(json_file)
+            data["geometry"][0]["room_volumn"] = Volume
+            json_file.seek(0)
+            json.dump(data, json_file, indent=4)
+            json_file.truncate()
+
+        # Step 4: re-load updated JSON into result_container
         with open(json_file_path, "r") as json_file:
             result_container = json.load(json_file)
 
@@ -87,33 +123,45 @@ def deism_method(json_file_path=None):
     # N is the number of vertices of the room
     # M is the number of wall centers
     # -----------------------------------------------------------
-    vertices = np.array(result_container["vertices"])  # Nx3 numpy array
-    wall_centers = np.array(result_container["wall_centers"])  # Mx3 numpy array
-    room_volumn = result_container["room_volumn"]  # float
-    room_areas = result_container["room_areas"]  # (M,) numpy array
+    vertices = np.array(result_container["geometry"][0]["vertices"])  # Nx3 numpy array
+    wall_centers_loaded = result_container["geometry"][0]["wall_centers"]
+    room_volumn = result_container["geometry"][0]["room_volumn"]  # float
+    room_areas_loaded = result_container["geometry"][0][
+        "room_areas"
+    ]  # (M,) numpy array
     # we want the absorption has size 6 * len(frequency bands)
     # The first dimension is for the walls, viz., x1, x2, y1, y2, z1, z2
     # Corresponding to wall 1, wall 3, wall 2, wall 4, floor, ceiling
     wall_order = ["wall1", "wall3", "wall2", "wall4", "floor", "ceiling"]
     # Create an empty array for the absorption coefficients
     absorption_coefficients = np.zeros((6, len(freq_bands)))
+    wall_centers = np.zeros((6, 3))
+    room_areas = np.zeros((6, 1))
     for wall in wall_order:
-        absorption_coefficients[wall_order.index(wall), :] = parse_absorption_string(
+        absorption_coefficients[wall_order.index(wall), :] = parse_value(
             abs_coeffs_loaded[wall]
         )
+        wall_centers[wall_order.index(wall), :] = parse_value(wall_centers_loaded[wall])
+        room_areas[wall_order.index(wall), :] = parse_value(room_areas_loaded[wall])
+
     # Apply DEISM
-    deism = DEISM("RIR", "convex")
+    deism = DEISM("RIR", room)
+    print("valuess of deism")  #
+    print("vertices", vertices)
+    print("wall center", wall_centers)
+    print("room areas", room_areas)
+
     deism.update_room(
-        vertices=vertices,
-        wall_centers=wall_centers,
-        room_volumn=room_volumn,
-        room_areas=room_areas,
+        vertices,
+        wall_centers,
+        room_volumn,
+        room_areas,
     )
     deism.update_wall_materials(
         absorption_coefficients, freq_bands, "absorpCoefficient"
     )
     deism.update_freqs()
-    deism.update_images()
+    deism.update_source_receiver()
     deism.update_directivities()
     pressure = deism.run_DEISM()
     # -----------------------------------------------------------
