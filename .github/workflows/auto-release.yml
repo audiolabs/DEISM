@@ -32,7 +32,7 @@ jobs:
       - name: Install system dependencies for gmsh
         run: |
           apt-get update
-          apt-get install -y libglu1-mesa-dev libgl1-mesa-glx build-essential
+          apt-get install -y libglu1-mesa-dev libgl1-mesa-dev build-essential
 
       - name: Install dependencies
         run: |
