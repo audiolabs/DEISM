@@ -240,6 +240,7 @@ setup_kwargs = dict(
         "pybind11>=2.2",
         "Cython",
         "pyroomacoustics",
+        "gmsh",
     ],
     cmdclass={
         "build_ext": BuildExt,

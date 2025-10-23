@@ -7,3 +7,4 @@ cython
 pybind11>=2.2
 ray
 sound-field-analysis
+gmsh
