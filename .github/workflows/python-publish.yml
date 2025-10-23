@@ -13,24 +13,12 @@ on:
     types: [published, prereleased]
 
 jobs:
-  # Ubuntu job with AMD64 platform for gmsh compatibility
-  build-ubuntu:
-    runs-on: ubuntu-latest
-    container:
-      image: ubuntu:22.04
-      options: --platform linux/amd64
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.9', '3.10', '3.11']
-    
-  # Other platforms (macOS, Windows)
-  build-other:
+  build-and-publish:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-13, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-13, macos-latest, windows-latest]
         python-version: ['3.9', '3.10', '3.11']
         exclude:
           - os: macos-latest
@@ -77,20 +65,6 @@ jobs:
           ls -l deism/tests
           pytest
 
-      # # Check the built package
-      # - name: Build package and check
-      #   run: |
-      #     python setup.py sdist bdist_wheel 
-      #     twine check dist/*  # Check the integrity of the package
-
-      # # Publish to PyPI (using OIDC and trusted publisher setup)
-      # - name: Publish to PyPI
-      #   uses: pypa/gh-action-pypi-publish@release/v1
-      #   with:
-      #     repository_url: https://upload.pypi.org/legacy/  # The repository URL for PyPI
-      #   env:
-      #     TWINE_USERNAME: __token__  # OIDC-based authentication
-      #     TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}  # Fallback in case OIDC is not available
       # Test the universal wheels (sdist) on Ubuntu only
       - name: Test the universal wheels
         if: matrix.os == 'ubuntu-latest'
@@ -125,7 +99,3 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.API_TOKEN }}
-
-      # - name: Clean up build artifacts
-      #   run: |
-      #     rm -rf dist build *.egg-info
