@@ -42,7 +42,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-glx build-essential
+          sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-dev build-essential
 
       # Step 4: Install dependencies using pip
       - name: Install dependencies
