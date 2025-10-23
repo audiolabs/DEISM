@@ -11,7 +11,7 @@ on:
     paths-ignore:
       - 'README.md'
       - 'docs/**'
-      - '.github/**'
+      # Temporarily removed .github/** to allow workflow testing
 
 jobs:
   auto-release:
