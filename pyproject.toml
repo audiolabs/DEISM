@@ -33,7 +33,7 @@ dependencies = [
     "cython",
     "pybind11>=2.2",
     "ray",
-    "sound-field-analysis"
+    "sound-field-analysis",
     "gmsh",
 ]
 [project.urls]
