@@ -45,8 +45,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install setuptools wheel
+          python -m pip install --upgrade pip --root-user-action=ignore
+          python -m pip install setuptools wheel --root-user-action=ignore
 
       - name: Get current version
         id: current_version
@@ -63,14 +63,18 @@ jobs:
             exit 1
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
 
       - name: Check if tag exists
         id: tag_exists
         run: |
+          echo "Checking if tag v${{ steps.current_version.outputs.version }} exists..."
           if git rev-parse "v${{ steps.current_version.outputs.version }}" >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.current_version.outputs.version }} already exists"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.current_version.outputs.version }} does not exist - will create release"
           fi
 
       - name: Create release
