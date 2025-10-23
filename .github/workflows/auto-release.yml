@@ -11,6 +11,10 @@ on:
 jobs:
   auto-release:
     runs-on: ubuntu-latest
+    # Force AMD64 platform for gmsh compatibility
+    container:
+      image: ubuntu:22.04
+      options: --platform linux/amd64
     if: '!contains(github.event.head_commit.message, ''[skip ci]'')'
     
     steps:
@@ -24,6 +28,11 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+
+      - name: Install system dependencies for gmsh
+        run: |
+          apt-get update
+          apt-get install -y libglu1-mesa-dev libgl1-mesa-glx build-essential
 
       - name: Install dependencies
         run: |
