@@ -1,5 +1,10 @@
 name: Auto Release
 
+# This workflow automatically creates GitHub releases when you push to main/master
+# Control PyPI upload by setting ENABLE_PYPI_UPLOAD environment variable:
+# - ENABLE_PYPI_UPLOAD: 'true'  → Creates production release → Triggers PyPI upload
+# - ENABLE_PYPI_UPLOAD: 'false' → Creates prerelease → No PyPI upload (test only)
+
 on:
   push:
     branches: [ main, master ]
@@ -13,9 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     # Force AMD64 platform for gmsh compatibility
     container:
-      image: ubuntu:22.04
+      image: ubuntu:24.04
       options: --platform linux/amd64
     if: '!contains(github.event.head_commit.message, ''[skip ci]'')'
+    env:
+      # Set to 'true' to enable PyPI upload (creates production release)
+      # Set to 'false' or leave empty for test release only
+      ENABLE_PYPI_UPLOAD: 'true'
     
     steps:
       - name: Checkout code
@@ -78,4 +87,4 @@ jobs:
             Changes in this release:
             ${{ github.event.head_commit.message }}
           draft: false
-          prerelease: false 
+          prerelease: ${{ env.ENABLE_PYPI_UPLOAD != 'true' }} 

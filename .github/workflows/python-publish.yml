@@ -10,7 +10,7 @@ name: deism
 
 on:
   release:
-    types: [published, prereleased]
+    types: [published]
 
 jobs:
   build-and-publish:
