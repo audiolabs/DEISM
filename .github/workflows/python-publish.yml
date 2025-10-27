@@ -71,7 +71,12 @@ jobs:
         run: |
           pip install auditwheel
           python -m build --wheel
+          # Remove original linux_x86_64 wheels and keep only repaired manylinux wheels
+          rm dist/*linux_x86_64.whl
           auditwheel repair dist/*.whl
+          # Move repaired wheels to dist/ and remove wheelhouse/
+          mv wheelhouse/*.whl dist/
+          rm -rf wheelhouse
           twine check dist/*
 
       - name: Build wheels (macOS/Windows)
