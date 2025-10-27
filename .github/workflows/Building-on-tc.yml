@@ -70,10 +70,13 @@ jobs:
           else
             echo "Tag $TAG_NAME already exists, skipping"
           fi
+        shell: bash
 
       - name: Build wheels
         env:
           CIBW_SKIP: "pp* *-musllinux_*"
+          # Limit to Python versions we actually support
+          CIBW_BUILD: "cp39-* cp310-* cp311-*"
           # Light import test for built wheels on each platform
           CIBW_TEST_COMMAND: "python -c \"import deism; print(getattr(deism, '__version__', 'unknown'))\""
           # macOS: build separate wheels for each architecture to avoid repair issues
