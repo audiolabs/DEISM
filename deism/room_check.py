@@ -223,7 +223,9 @@ def update_wall_centers(json_path, geo_path):
 
     if "geometry" not in data:
         data["geometry"] = [{}]
-
+    # Add room vertices to the JSON
+    data["geometry"][0]["vertices"] = [points[i + 1] for i in range(len(points))]
+    # Add wall centers to the JSON
     data["geometry"][0]["wall_centers"] = {
         name: f"{c[0]:.4f}, {c[1]:.4f}, {c[2]:.4f}" for name, c in centers.items()
     }

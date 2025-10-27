@@ -1,0 +1,52 @@
+name: Auto Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-13, macos-latest, windows-latest]
+        python-version: ["3.9", "3.10", "3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: (Ubuntu) system deps for gmsh
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-dev build-essential
+
+      - name: Install package + test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -U pytest
+          # Build C++ extension via editable install
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            export ARCHFLAGS="-arch x86_64 -arch arm64"
+          fi
+          python -m pip install -e .
+
+      - name: Run pytest
+        run: pytest -v
+
+      # Optional: a smoke run that won’t fail CI if plotting/LaTeX is required
+      - name: Quick example smoke test (non-blocking)
+        run: |
+          python - <<'PY'
+          print("Import smoke test:")
+          import deism; print("deism:", getattr(deism, "__version__", "unknown"))
+          PY

@@ -77,6 +77,13 @@ jobs:
             echo "Tag v${{ steps.current_version.outputs.version }} does not exist - will create release"
           fi
 
+      - name: Debug release conditions
+        run: |
+          echo "Tag exists: ${{ steps.tag_exists.outputs.exists }}"
+          echo "Version: ${{ steps.current_version.outputs.version }}"
+          echo "ENABLE_PYPI_UPLOAD: ${{ env.ENABLE_PYPI_UPLOAD }}"
+          echo "Will create release: ${{ steps.tag_exists.outputs.exists == 'false' }}"
+
       - name: Create release
         if: steps.tag_exists.outputs.exists == 'false'
         uses: actions/create-release@v1
