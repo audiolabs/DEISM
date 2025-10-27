@@ -18,6 +18,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-13, macos-latest, windows-latest]
+        python-version: ['3.9', '3.10', '3.11']
+        exclude:
+          - os: macos-latest
+            python-version: 3.9
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +29,7 @@ jobs:
       - name: Set up Python (build driver)
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install system dependencies for gmsh (Ubuntu only)
         if: matrix.os == 'ubuntu-latest'
@@ -49,6 +53,7 @@ jobs:
           echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
           echo "Current version: $VERSION"
           echo "Tag name: v$VERSION"
+        shell: bash
 
       - name: Create and push tag (if version changed)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -71,10 +76,13 @@ jobs:
           CIBW_SKIP: "pp* *-musllinux_*"
           # Light import test for built wheels on each platform
           CIBW_TEST_COMMAND: "python -c \"import deism; print(getattr(deism, '__version__', 'unknown'))\""
-          # macOS: try to produce both arch variants; universal2 if your project supports it
+          # macOS: build separate wheels for each architecture to avoid repair issues
           CIBW_ARCHS_MACOS: "x86_64 arm64"
+          # Disable wheel repair on macOS to avoid delocate issues
+          CIBW_REPAIR_WHEEL_COMMAND_MACOS: ""
+          # Linux: install system dependencies for gmsh
+          CIBW_BEFORE_BUILD_LINUX: "yum install -y mesa-libGLU-devel || apt-get update && apt-get install -y libglu1-mesa-dev libgl1-mesa-dev build-essential"
           # Windows: keep defaults
-          # Linux: manylinux defaults
         run: cibuildwheel --output-dir dist
 
       - name: Build sdist (Linux only)
