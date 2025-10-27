@@ -85,7 +85,10 @@ jobs:
           CIBW_REPAIR_WHEEL_COMMAND_MACOS: ""
           # Linux: install system dependencies for gmsh
           CIBW_BEFORE_BUILD_LINUX: "yum install -y mesa-libGLU-devel || apt-get update && apt-get install -y libglu1-mesa-dev libgl1-mesa-dev build-essential"
-          # Windows: keep defaults
+          # Windows: install build tools and dependencies
+          CIBW_BEFORE_BUILD_WINDOWS: "pip install --upgrade pip setuptools wheel"
+          # Disable wheel repair on Windows to avoid metadata issues
+          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: ""
         run: cibuildwheel --output-dir dist
 
       - name: Build sdist (Linux only)
