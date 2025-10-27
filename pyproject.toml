@@ -38,7 +38,3 @@ dependencies = [
 ]
 [project.urls]
 Homepage = "https://github.com/audiolabs/DEISM"
-
-[tool.setuptools]
-# Configure wheel building for manylinux compatibility
-plat-name = "manylinux2014_x86_64"
