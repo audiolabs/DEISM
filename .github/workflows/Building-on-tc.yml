@@ -2,6 +2,10 @@ name: Build Wheels (RC)
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'deism/version.py'
+  push:
     tags:
       - "v*rc*"
       - "v*.*.*.*.rc*"
@@ -46,6 +50,22 @@ jobs:
           echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
           echo "Current version: $VERSION"
           echo "Tag name: v$VERSION"
+
+      - name: Create and push tag (if version changed)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          TAG_NAME="v${{ steps.get_version.outputs.version }}"
+          echo "Checking if tag $TAG_NAME exists..."
+          if ! git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Creating new tag: $TAG_NAME"
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git tag "$TAG_NAME"
+            git push origin "$TAG_NAME"
+            echo "Tag $TAG_NAME created and pushed"
+          else
+            echo "Tag $TAG_NAME already exists, skipping"
+          fi
 
       - name: Build wheels
         env:
