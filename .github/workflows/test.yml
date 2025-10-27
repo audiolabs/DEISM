@@ -39,9 +39,10 @@ jobs:
             export ARCHFLAGS="-arch x86_64 -arch arm64"
           fi
           python -m pip install -e .
+        shell: bash
 
       - name: Run pytest
-        run: pytest -v
+        run: pytest
 
       # Optional: a smoke run that won’t fail CI if plotting/LaTeX is required
       - name: Quick example smoke test (non-blocking)
