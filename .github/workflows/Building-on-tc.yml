@@ -1,0 +1,66 @@
+name: Build Wheels (RC)
+
+on:
+  push:
+    tags:
+      - "v*-rc*"
+  workflow_dispatch:
+
+jobs:
+  build-wheels:
+    name: cibuildwheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-13, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python (build driver)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies for gmsh (Ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-dev build-essential
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install cibuildwheel
+        run: python -m pip install -U pip cibuildwheel==2.*
+
+      - name: Build wheels
+        env:
+          CIBW_SKIP: "pp* *-musllinux_*"
+          # Light import test for built wheels on each platform
+          CIBW_TEST_COMMAND: "python -c \"import deism; print(getattr(deism, '__version__', 'unknown'))\""
+          # macOS: try to produce both arch variants; universal2 if your project supports it
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
+          # Windows: keep defaults
+          # Linux: manylinux defaults
+        run: cibuildwheel --output-dir dist
+
+      - name: Build sdist (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python -m pip install -U build
+          python -m build --sdist
+
+      - name: Twine check
+        run: |
+          python -m pip install -U twine
+          twine check dist/*
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deism-${{ github.ref_name }}-wheels
+          path: dist/*

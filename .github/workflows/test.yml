@@ -44,10 +44,8 @@ jobs:
       - name: Run pytest
         run: pytest
 
-      # Optional: a smoke run that won’t fail CI if plotting/LaTeX is required
+      # Optional: a smoke run that won't fail CI if plotting/LaTeX is required
       - name: Quick example smoke test (non-blocking)
         run: |
-          python - <<'PY'
-          print("Import smoke test:")
-          import deism; print("deism:", getattr(deism, "__version__", "unknown"))
-          PY
+          python -c "print('Import smoke test:'); import deism; print('deism:', getattr(deism, '__version__', 'unknown'))"
+        shell: bash
