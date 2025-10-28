@@ -26,7 +26,7 @@ def mat_source_to_sofa(mat_path, sofa_path, fs=None, nfft=None):
 
     if fs is None:
         # leave some headroom so the top bin >= fmax
-        fs = 2.0 * (fmax + df)  # Hz
+        fs = 2.0 * (fmax)  # Hz   + df
     if nfft is None:
         nfft = int(np.round(fs / df))   # df ~= fs/nfft
         # ensure nfft even for rfft mapping
@@ -45,8 +45,8 @@ def mat_source_to_sofa(mat_path, sofa_path, fs=None, nfft=None):
     for j in range(J):
         H_j = Psh[:, j]  # complex H at given freqs
         # interpolate real/imag onto f_pos
-        Hr = np.interp(f_pos, freqs, H_j.real, left=0.0, right=0.0)
-        Hi = np.interp(f_pos, freqs, H_j.imag, left=0.0, right=0.0)
+        Hr = np.interp(f_pos, freqs, H_j.real)
+        Hi = np.interp(f_pos, freqs, H_j.imag)
         H_bins = np.zeros_like(f_bins, dtype=complex)
         H_bins[idx_pos] = Hr + 1j*Hi
         H_bins[0] = 0.0  # DC

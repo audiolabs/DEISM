@@ -784,7 +784,7 @@ def balloon_plot_with_slider(
             # max_by_J = int(np.floor(np.sqrt(J)) - 1)  # make sure (N+1)^2 <= J
             # max_by_kr = int(np.floor((k_all.max() * r0)))  # experience cap of kr
             # max_sh_order = max(0, min(max_by_J, max_by_kr))
-            max_sh_order = 10
+            max_sh_order = 6
 
             # update cap of sh_slider
             sh_slider.valmax = max_sh_order
