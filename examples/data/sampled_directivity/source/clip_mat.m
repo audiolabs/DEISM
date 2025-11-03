@@ -1,4 +1,4 @@
-cap_deg = 50;                        % degree range which are deleted is from pi - cap_rad to pi
+cap_deg = 50;                       % degree range which are deleted is from pi - cap_rad to pi
 cap_rad = deg2rad(cap_deg);         % convert to radians
 
 theta = Dir_all(:,2);               % inclination θ
