@@ -87,11 +87,40 @@ def sofa_to_internal(sofa_path, ear="L"):   #, target_freqs=None
 
     Psh = H_FJ  # naming aligned
 
-    # after Psh = H_FJ  and  Dir_all = [az, inc]
-    inc = Dir_all[:, 1]             # back to elevation
-    mask_south_gap = inc > np.deg2rad(130.0)  # south-pole missing band
-    if np.any(mask_south_gap):
-        Psh[:, mask_south_gap] = 0.0 + 0.0j
+    # ---- fill the south-pole missing band by inserting zero samples ----
+    az = Dir_all[:, 0].astype(float)
+    inc = Dir_all[:, 1].astype(float)
+
+    inc_thresh = np.deg2rad(130.0)
+    max_inc = float(np.max(inc)) if inc.size else 0.0
+
+    if max_inc < (np.pi - 1e-6) and max_inc < (inc_thresh + 1e-6):
+        # Estimating the original data grid structure
+        az_u = np.unique(np.round(az, 10))
+        inc_u = np.unique(np.round(inc, 10))
+
+        # Estimate the step size of inclination; if estimation is not possible, revert to 5°
+        if inc_u.size >= 2:
+            inc_step = float(np.median(np.diff(inc_u)))
+        else:
+            inc_step = np.deg2rad(5.0)
+        if not np.isfinite(inc_step) or inc_step <= 1e-6:
+            inc_step = np.deg2rad(5.0)
+
+        # Generate the required inc samples (> max_inc, extending to the South Pole π)
+        new_inc = np.arange(inc_thresh, np.pi + 1e-9, inc_step)
+        new_inc = new_inc[new_inc > (max_inc + 1e-9)]
+
+        if new_inc.size > 0:
+            # Using all original az sampling × new inc to form the grid
+            AZ, IN = np.meshgrid(az_u, new_inc, indexing="xy")
+            add_dirs = np.c_[AZ.ravel(), IN.ravel()].astype(float)
+
+            # Append an equal number of all-zero entries (complex zeros) to the Psh column dimension
+            add_Psh = np.zeros((Psh.shape[0], add_dirs.shape[0]), dtype=Psh.dtype)
+            Psh = np.concatenate([Psh, add_Psh], axis=1)
+            Dir_all = np.vstack([Dir_all, add_dirs])
+
 
     return Psh, Dir_all, freqs, r0
 
