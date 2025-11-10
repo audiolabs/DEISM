@@ -1,7 +1,7 @@
 %% === User parameters ===
-sofa_file   = 'D:\Projects\DEISM-main\DEISM-main\examples\data\sampled_directivity\sofa\mit_kemar_normal_pinna.sofa';  % path to your SOFA file
+sofa_file   = 'D:\Projects\DEISM-main\DEISM-main\examples\data\sampled_directivity\sofa\P0001_FreeFieldComp_48kHz.sofa';  % path to your SOFA file
 ear_select  = 1;          % 1 = left ear, 2 = right ear
-target_freq = 4500;      % Hz (pick any frequency you want)
+target_freq = 12187.5;      % Hz (pick any frequency you want)
 
 %% === Load SOFA HRTF ===
 hrtf = SOFAload(sofa_file);

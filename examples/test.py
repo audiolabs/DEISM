@@ -86,7 +86,96 @@ def sofa_to_internal(sofa_path, ear="L"):   #, target_freqs=None
     #     freqs = f_sofa
 
     Psh = H_FJ  # naming aligned
+
+    # ---- fill the south-pole missing band by inserting zero samples ----
+    az = Dir_all[:, 0].astype(float)
+    inc = Dir_all[:, 1].astype(float)
+
+    inc_thresh = np.deg2rad(130.0)
+    max_inc = float(np.max(inc)) if inc.size else 0.0
+
+    if max_inc < (np.pi - 1e-6) and max_inc < (inc_thresh + 1e-6):
+        # Estimating the original data grid structure
+        az_u = np.unique(np.round(az, 10))
+        inc_u = np.unique(np.round(inc, 10))
+
+        # Estimate the step size of inclination; if estimation is not possible, revert to 5°
+        if inc_u.size >= 2:
+            inc_step = float(np.median(np.diff(inc_u)))
+        else:
+            inc_step = np.deg2rad(5.0)
+        if not np.isfinite(inc_step) or inc_step <= 1e-6:
+            inc_step = np.deg2rad(5.0)
+
+        # Generate the required inc samples (> max_inc, extending to the South Pole π)
+        new_inc = np.arange(inc_thresh, np.pi + 1e-9, inc_step)
+        new_inc = new_inc[new_inc > (max_inc + 1e-9)]
+
+        if new_inc.size > 0:
+            # Using all original az sampling × new inc to form the grid
+            AZ, IN = np.meshgrid(az_u, new_inc, indexing="xy")
+            add_dirs = np.c_[AZ.ravel(), IN.ravel()].astype(float)
+
+            # Append an equal number of all-zero entries (complex zeros) to the Psh column dimension
+            add_Psh = np.zeros((Psh.shape[0], add_dirs.shape[0]), dtype=Psh.dtype)
+            Psh = np.concatenate([Psh, add_Psh], axis=1)
+            Dir_all = np.vstack([Dir_all, add_dirs])
+
+
     return Psh, Dir_all, freqs, r0
+
+
+def is_sofa_receiver_file(sofa_obj):
+    """
+    Decide whether a SOFA file is *receiver-directivity* (HRTF/HRIR:
+    fixed listener/ears, many source positions) or *source-directivity* (fixed
+    source, many receiver positions).
+    """
+    # 1) Prior from Conventions
+    conv = ""
+        # prefer SOFAConventions (e.g., "SimpleFreeFieldHRIR")
+    if hasattr(sofa_obj, "SOFAConventions"):
+        conv = str(getattr(sofa_obj, "SOFAConventions")).upper()
+    elif hasattr(sofa_obj, "Conventions"):
+        conv = str(getattr(sofa_obj, "Conventions")).upper()
+    if "HRIR" in conv or "HRTF" in conv:
+        return True
+    if "SOS" in conv or "SFS" in conv or "SRTF" in conv:
+        return False 
+
+    # 2) Count unique positions approximately
+    def flatten_pos(arr):
+        A = np.array(arr)
+        A = A.reshape(-1, A.shape[-1])  # works for (M,3)、(R,3)、(M,R,3), ...
+        return np.round(A.astype(float), 6)
+
+    src_pos = flatten_pos(getattr(sofa_obj, "SourcePosition"))
+    rec_pos = flatten_pos(getattr(sofa_obj, "ReceiverPosition"))
+
+    n_src_unique = np.unique(src_pos, axis=0).shape[0]
+    n_rec_unique = np.unique(rec_pos, axis=0).shape[0]
+
+    # 3) The side with more unique positions is the scanned side
+    if n_src_unique > n_rec_unique:
+        return True  # many sources, few receivers  -> receiver-type
+    if n_rec_unique > n_src_unique:
+        return False  # many receivers, few sources -> source-type
+
+    # 4) Tie-breaker: <=2 receivers almost always means ears -> receiver-type
+    if n_rec_unique <= 2:
+        return True
+    return False
+
+
+def get_directivity_coefs_sofa(k, maxSHorder, Pmnr0, r0):
+    # Calculate source directivity coefficients C_nm^s or receiver directivity coefficients C_vu^r
+    C_nm_s = np.zeros([k.size, maxSHorder + 1, 2 * maxSHorder + 1], dtype="complex")
+    for n in range(maxSHorder + 1):
+        hn_r0_all = sphankel2(n, k * r0)
+        for m in range(-n, n + 1):
+            # The source directivity coefficients
+            C_nm_s[:, n, m] = 1j * ((-1) ** m) / k * Pmnr0[:, n, m + n] / hn_r0_all
+    return C_nm_s
 
 
 # Audiolabs color scheme
@@ -751,10 +840,9 @@ def balloon_plot_with_slider(
 
         current_file = file_lookup[allowed_files[file_idx]]
         current_file_idx = file_idx
-
         is_sofa_file = os.path.splitext(current_file)[1].lower() == ".sofa"
-
         is_initial_draw = True
+        current_sofa_is_receiver = False
 
         # Create progress window
         progress_win = InitializationWindow("Loading File Progress")
@@ -771,6 +859,11 @@ def balloon_plot_with_slider(
         ext = os.path.splitext(current_file)[1].lower()
         if ext == ".sofa":
             # SOFA branch
+            ds = Dataset(current_file, "r")
+            try:
+                current_sofa_is_receiver = is_sofa_receiver_file(ds)
+            finally:
+                ds.close()
             Psh, Dir_all, freqs, r0 = sofa_to_internal(
                 current_file, ear="L"
             )
@@ -779,12 +872,7 @@ def balloon_plot_with_slider(
             current_is_receiver = True
             params["ifReceiverNormalize"] = 0
 
-            # after loading the new file, limit max order based on J
-            # J = Dir_all.shape[0]
-            # max_by_J = int(np.floor(np.sqrt(J)) - 1)  # make sure (N+1)^2 <= J
-            # max_by_kr = int(np.floor((k_all.max() * r0)))  # experience cap of kr
-            # max_sh_order = max(0, min(max_by_J, max_by_kr))
-            max_sh_order = 10
+            max_sh_order = 6
 
             # update cap of sh_slider
             sh_slider.valmax = max_sh_order
@@ -842,9 +930,15 @@ def balloon_plot_with_slider(
                 np.array([freqs[freq_idx]]),
             )
             k = k_all[freq_idx]
-            Cnm_s_cache[(freq_idx, max_sh_order, r0)] = get_directivity_coefs(
+            
+            if current_sofa_is_receiver:
+                Cnm_s_cache[(freq_idx, max_sh_order, r0)] = get_directivity_coefs_sofa(
                 k, max_sh_order, full_Pnm_cache[(freq_idx, max_sh_order)], r0
-            )
+                )
+            else:
+                Cnm_s_cache[(freq_idx, max_sh_order, r0)] = get_directivity_coefs(
+                k, max_sh_order, full_Pnm_cache[(freq_idx, max_sh_order)], r0
+                )
             elapsed_step = time.perf_counter() - start_step
             progress_win.update_progress(
                 35 + freq_idx / len(freqs) * 60,
