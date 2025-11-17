@@ -476,6 +476,10 @@ if __name__ == "__main__":
     ff_path   = os.path.join(path, "BuK-ED_freefield.sofa")
     diff_path = os.path.join(path, "BuK-ED_difffield.sofa")
 
+    # raw_path       = os.path.join(path, "P0001_Raw_48kHz.sofa")
+    # ff_path        = os.path.join(path, "P0001_FreeFieldComp_48kHz.sofa")
+    # ff_min_path    = os.path.join(path, "P0001_FreeFieldCompMinPhase_48kHz.sofa")
+
     # Raw vs Free-field
     # compare_two_files(raw_path, ff_path,
     #                   label_ref="Raw", label_cmp="Free-field",
