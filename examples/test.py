@@ -38,7 +38,7 @@ def sofa_to_internal(sofa_path, ear="L"):   #, target_freqs=None
     src = np.array(ds.variables["SourcePosition"])  # (J,3) [az_deg, el_deg, r_m]
     az_deg, el_deg, r_m = src[:, 0], src[:, 1], src[:, 2]
     az = np.deg2rad(az_deg)
-    inc = np.deg2rad(90.0 - el_deg)  # inc = 90° - el
+    inc = np.deg2rad(90.0 - el_deg)  # inc = 90° - el   
     Dir_all = np.c_[az, inc].astype(float)
 
     # radius: often constant in SOFA; take median as r0
@@ -91,7 +91,7 @@ def sofa_to_internal(sofa_path, ear="L"):   #, target_freqs=None
     az = Dir_all[:, 0].astype(float)
     inc = Dir_all[:, 1].astype(float)
 
-    inc_thresh = np.deg2rad(130.0)
+    inc_thresh = np.deg2rad(135.0)
     max_inc = float(np.max(inc)) if inc.size else 0.0
 
     if max_inc < (np.pi - 1e-6) and max_inc < (inc_thresh + 1e-6):

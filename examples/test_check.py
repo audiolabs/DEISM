@@ -10,7 +10,7 @@ from deism.data_loader import *
 import matplotlib as mpl
 from matplotlib.widgets import Slider, Button
 import tkinter as tk
-from tkinter import Tk, filedialog, ttk
+from tkinter import Tk, filedialog, ttk, messagebox
 import os
 from mpl_toolkits.mplot3d import proj3d
 from matplotlib.patches import FancyArrowPatch
@@ -462,6 +462,12 @@ def balloon_plot_with_slider(
     norm_checkbox = mpl.widgets.CheckButtons(
         ax_norm, ["Normalize Receiver"], [bool(params.get("ifReceiverNormalize", 0))]
     )  
+    # Add checkbox for the reciprocal relation 
+    ax_recip = plt.axes([0.53, 0.04, 0.20, 0.035], facecolor=AUDIOLABS_LIGHT_GRAY)
+    recip_checkbox = mpl.widgets.CheckButtons(
+        ax_recip, ["Reciprocity"], [bool(params.get("ifReciprocal", 0))]
+    )
+
     # Make sure artists have valid positions
     fig.canvas.draw()  # important before reading bbox
 
@@ -475,9 +481,30 @@ def balloon_plot_with_slider(
         txt.set_ha("left")
         txt.set_va("center")
         txt.set_clip_on(False)
+
+    for txt in recip_checkbox.labels:
+        txt.set_transform(ax_recip.transAxes)
+        x_old, y_old = txt.get_position()
+        txt.set_position((LABEL_X, y_old))
+        txt.set_ha("left")
+        txt.set_va("center")
+        txt.set_clip_on(False)
+    
     ax_help = plt.axes([0.475, 0.055, 0.005, 0.005])
+    ax_help2 = plt.axes([0.7, 0.055, 0.005, 0.005])
     ax_help.axis("off")  # makes the axes just a blank container
-    t = ax_help.text(
+    ax_help2.axis("off")
+    ax_help.text(
+        0.5,
+        0.5,
+        "?",
+        ha="center",
+        va="center",
+        fontsize=10,
+        bbox=dict(boxstyle="circle", facecolor=AUDIOLABS_DARK_GRAY, alpha=0.8),
+        color="white",
+    )
+    ax_help2.text(
         0.5,
         0.5,
         "?",
@@ -501,15 +528,90 @@ def balloon_plot_with_slider(
         arrowprops=dict(arrowstyle="->", color=AUDIOLABS_GRAY),
         visible=False,
     )
-
+    tooltip2 = ax_help2.annotate(
+        "Reciprocity:\n"
+        "Toggle using the reciprocal relation\n"
+        "for computing the directivity coefficients.\n"
+        "Affects all file types.",
+        xy=(0.5, 0.5),  # center of the ? symbol
+        xycoords="axes fraction",  # important: relative to ax_help
+        xytext=(20, 20),
+        textcoords="offset points",
+        ha="left",
+        va="bottom",
+        bbox=dict(boxstyle="round", fc="w", ec=AUDIOLABS_GRAY, alpha=0.95),
+        arrowprops=dict(arrowstyle="->", color=AUDIOLABS_GRAY),
+        visible=False,
+    )
+    
     def on_move(event):
         if event.inaxes is ax_help:
             tooltip.set_visible(True)
         else:
             tooltip.set_visible(False)
+
+        if event.inaxes is ax_help2:
+            tooltip2.set_visible(True)
+        else:
+            tooltip2.set_visible(False)
+        
         event.canvas.draw_idle()
 
-    cid = fig.canvas.mpl_connect("motion_notify_event", on_move)
+    fig.canvas.mpl_connect("motion_notify_event", on_move)
+
+    def compute_and_store_cnm(freq_idx, order, Psh_use):
+        """
+            Depending on the switch selection, determine whether to apply the reciprocal relation.
+            Regardless of file type (SOFA/MAT, source/receiver)
+            Compute Pnm and Cnm
+        """
+
+        full_Pnm_cache[(freq_idx, order)] = SHCs_from_pressure_LS(
+            Psh_use.reshape(1, -1), Dir_all, order, np.array([freqs[freq_idx]])
+        )
+        k = k_all[freq_idx]
+
+        if params.get("ifReciprocal", 0):
+            Cnm_s_cache[(freq_idx, order, r0)] = get_directivity_coefs_sofa(
+                k, order, full_Pnm_cache[(freq_idx, order)], r0
+            )
+        else:
+            Cnm_s_cache[(freq_idx, order, r0)] = get_directivity_coefs(
+                k, order, full_Pnm_cache[(freq_idx, order)], r0
+            )
+
+    def toggle_recip(label):
+        """Toggle reciprocal relation：effective for all file types; rebuilding Cnm_s_cache upon toggling"""
+        nonlocal full_Pnm_cache, Cnm_s_cache
+
+        params["ifReciprocal"] = 1 - params.get("ifReciprocal", 0)
+
+        win = InitializationWindow("Applying reciprocal relation..." if params["ifReciprocal"]
+                                else "Removing reciprocal relation...")
+        win.update_progress(0, "Rebuilding caches...", "")
+
+        full_Pnm_cache.clear()
+        Cnm_s_cache.clear()
+
+        for freq_idx in range(len(freqs)):
+            
+            Psh_use = Psh[freq_idx]
+
+            compute_and_store_cnm(freq_idx, sh_order, Psh_use)
+
+            win.update_progress(
+                5 + 90 * (freq_idx + 1) / len(freqs),
+                f"Rebuilding at {freqs[freq_idx]:.0f} Hz",
+                "computing Psh, Pnm & Cnm",
+            )
+
+        win.update_progress(100, "Done!", "")
+        time.sleep(0.2); win.close()
+        update(None)
+        set_status("Reciprocal relation: ON" if params["ifReciprocal"] else "Reciprocal relation: OFF")
+
+    recip_checkbox.on_clicked(toggle_recip)
+
 
     def toggle_normalize(label):
         """Used to judge if Psh should be normalized"""
@@ -554,13 +656,7 @@ def balloon_plot_with_slider(
             else:
                 Psh_use = Psh[freq_idx]
 
-            full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
-                Psh_use.reshape(1, -1), Dir_all, sh_order, np.array([freqs[freq_idx]])
-            )
-            k = k_all[freq_idx]
-            Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
-                k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
-            )
+            compute_and_store_cnm(freq_idx, sh_order, Psh_use)
 
             win.update_progress(
                 5 + 90 * (freq_idx + 1) / len(freqs),
@@ -649,13 +745,8 @@ def balloon_plot_with_slider(
         else:
             Psh_use = Psh_raw[freq_idx]
 
-        full_Pnm_cache[(freq_idx, sh_order)] = SHCs_from_pressure_LS(
-            Psh_use.reshape(1, -1), Dir_all, sh_order, np.array([freqs[freq_idx]])
-        )
-        k = k_all[freq_idx]
-        Cnm_s_cache[(freq_idx, sh_order, r0)] = get_directivity_coefs(
-            k, sh_order, full_Pnm_cache[(freq_idx, sh_order)], r0
-        )
+        compute_and_store_cnm(freq_idx, sh_order, Psh_use)
+
         elapsed_step = time.perf_counter() - start_step
         progress_window.update_progress(
             65 + freq_idx / len(freqs) * 30,
@@ -923,22 +1014,8 @@ def balloon_plot_with_slider(
             else:
                 Psh_use = Psh_raw[freq_idx]
 
-            full_Pnm_cache[(freq_idx, max_sh_order)] = SHCs_from_pressure_LS(
-                Psh_use.reshape(1, -1),
-                Dir_all,
-                max_sh_order,
-                np.array([freqs[freq_idx]]),
-            )
-            k = k_all[freq_idx]
-            
-            if current_sofa_is_receiver:
-                Cnm_s_cache[(freq_idx, max_sh_order, r0)] = get_directivity_coefs_sofa(
-                k, max_sh_order, full_Pnm_cache[(freq_idx, max_sh_order)], r0
-                )
-            else:
-                Cnm_s_cache[(freq_idx, max_sh_order, r0)] = get_directivity_coefs(
-                k, max_sh_order, full_Pnm_cache[(freq_idx, max_sh_order)], r0
-                )
+            compute_and_store_cnm(freq_idx, sh_order, Psh_use)
+
             elapsed_step = time.perf_counter() - start_step
             progress_win.update_progress(
                 35 + freq_idx / len(freqs) * 60,
