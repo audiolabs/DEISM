@@ -40,7 +40,12 @@ def load_directivity(path, ear="L"):
       r0       : float
     """
     if path.lower().endswith(".sofa"):
-        Psh, Dir_all, freqs, r0 = sofa_to_internal(path, ear=ear)
+        initial_file = os.path.join("examples", "data", "sampled_directivity", "source", "Speaker_cuboid_cyldriver_source.mat")
+        mat = loadmat(initial_file)
+        Dir_all = mat["Dir_all"]
+        ref_dirs_source = Dir_all.copy()
+        
+        Psh, Dir_all, freqs, r0 = sofa_to_internal(path, ear=ear, ref_dirs = ref_dirs_source)
         Psh = np.asarray(Psh)
         if Psh.shape[0] != len(freqs):  # In case shape is (J, F) instead of (F, J)
             Psh = Psh.T
@@ -292,8 +297,9 @@ def plot_differences(freqs, Dir_all, dmag, dphase_abs,
     # === Figure 2 ===
     az = Dir_all[:, 0]
     inc = Dir_all[:, 1]
-    az_deg = np.rad2deg(az)
-    inc_deg = np.rad2deg(inc)
+    # Convert to lat/lon for the map projection
+    lat = np.pi/2 - inc
+    lon = az - np.pi    # shift center
 
     example_freqs = [2000, 4000, 8000, 12000]
     idxs = [int(np.argmin(np.abs(freqs - f))) for f in example_freqs]
@@ -304,31 +310,27 @@ def plot_differences(freqs, Dir_all, dmag, dphase_abs,
 
     for col, (fi, f_target) in enumerate(zip(idxs, example_freqs)):
         # Magnitude difference
-        ax_mag = axes[0, col]
+        ax_mag = fig2.add_subplot(2, n_cols, col + 1, projection="mollweide")
         sc1 = ax_mag.scatter(
-            az_deg, inc_deg, c=dmag[fi, :], s=15,
+            lon, lat, c=dmag[fi, :], s=15, cmap='viridis'
         )
         ax_mag.set_title(f"{f_target:.0f} Hz |ΔP|")
         ax_mag.set_xlabel("Azimuth [deg]")
         ax_mag.set_ylabel("Inclination [deg]")
-        ax_mag.set_xlim([az_deg.min(), az_deg.max()])
-        ax_mag.set_ylim([inc_deg.min(), inc_deg.max()])
         ax_mag.grid(True, alpha=0.2)
-        fig2.colorbar(sc1, ax=ax_mag, shrink=0.8)
+        fig2.colorbar(sc1, ax=ax_mag, orientation='horizontal')
 
         # Phase difference
-        ax_ph = axes[1, col]
+        ax_ph = fig2.add_subplot(2, n_cols, n_cols + col + 1, projection="mollweide")
         sc2 = ax_ph.scatter(
-            az_deg, inc_deg, c=dphase_abs[fi, :], s=15,
+            lon, lat, c=dphase_abs[fi, :], s=15,
             vmin=0, vmax=np.pi,
         )
         ax_ph.set_title(f"{f_target:.0f} Hz |Δphase|")
         ax_ph.set_xlabel("Azimuth [deg]")
         ax_ph.set_ylabel("Inclination [deg]")
-        ax_ph.set_xlim([az_deg.min(), az_deg.max()])
-        ax_ph.set_ylim([inc_deg.min(), inc_deg.max()])
         ax_ph.grid(True, alpha=0.2)
-        fig2.colorbar(sc2, ax=ax_ph, shrink=0.8)
+        fig2.colorbar(sc2, ax=ax_ph, orientation='horizontal')
 
     fig1.tight_layout()
     fig2.tight_layout()
@@ -466,32 +468,67 @@ def compare_olhead_eq(hrir_path, ff_eq_path, diff_eq_path,
                      mean_mag_rd, mean_ph_rd,
                      title_prefix="Diffuse-field vs Raw")
 
-
-if __name__ == "__main__":
-    path = os.path.join("examples", "data", "sampled_directivity", "sofa", "P0001_FreeFieldComp_48kHz.sofa")
-
+def experiment1():
+    """
+    Experiment 1:
+      - any SOFA file
+      - Analyze reciprocity on/off
+    """
+    path = os.path.join(
+        "examples", "data", "sampled_directivity", "sofa",
+        "P0001_FreeFieldComp_48kHz.sofa"
+    )
     analyze_reciprocity(path, ear="L", max_order=6, r0_rec=None)
 
-    # raw_path       = os.path.join(path, "P0001_Raw_48kHz.sofa")
-    # ff_path        = os.path.join(path, "P0001_FreeFieldComp_48kHz.sofa")
-    # ff_min_path    = os.path.join(path, "P0001_FreeFieldCompMinPhase_48kHz.sofa")
+def experiment2():
+    """
+    Experiment 2:
+      - SONICOM Raw vs Free-field
+      - SONICOM Raw vs Free-field MinPhase
+    """
+    base = os.path.join("examples", "data", "sampled_directivity", "sofa")
+    raw_path    = os.path.join(base, "P0001_Raw_48kHz.sofa")
+    ff_path     = os.path.join(base, "P0001_FreeFieldComp_48kHz.sofa")
+    ff_min_path = os.path.join(base, "P0001_FreeFieldCompMinPhase_48kHz.sofa")
 
     # Raw vs Free-field
-    # compare_two_files(raw_path, ff_path,
-    #                   label_ref="Raw", label_cmp="Free-field",
-    #                   ear="L", max_order=6, r0_rec=None)
+    compare_two_files(
+        raw_path, ff_path,
+        label_ref="Raw", label_cmp="Free-field",
+        ear="L", max_order=6, r0_rec=None
+    )
 
     # Raw vs Free-field MinPhase
-    # compare_two_files(raw_path, ff_min_path,
-    #                   label_ref="Raw", label_cmp="Free-field MinPhase",
-    #                   ear="L", max_order=6, r0_rec=None)
+    compare_two_files(
+        raw_path, ff_min_path,
+        label_ref="Raw", label_cmp="Free-field MinPhase",
+        ear="L", max_order=6, r0_rec=None
+    )
 
-    # raw_path  = os.path.join(path, "BuK-ED_hrir.sofa")
-    # ff_path   = os.path.join(path, "BuK-ED_freefield.sofa")
-    # diff_path = os.path.join(path, "BuK-ED_difffield.sofa")
+def experiment3():
+    """
+    Experiment 3:
+      - OlHeaD BuK-ED:
+        Raw vs Free-field & Diffuse-field
+    """
+    base = os.path.join("examples", "data", "sampled_directivity", "sofa")
+    raw_path  = os.path.join(base, "BuK-ED_hrir.sofa")
+    ff_path   = os.path.join(base, "BuK-ED_freefield.sofa")
+    diff_path = os.path.join(base, "BuK-ED_difffield.sofa")
 
-    # Raw vs Free-field & Diffuse-field
-    # compare_olhead_eq(raw_path, ff_path, diff_path,
-    #                   ear="L", max_order=6, r0_rec=None)
+    compare_olhead_eq(
+        raw_path, ff_path, diff_path,
+        ear="L", max_order=6, r0_rec=None
+    )
+
+
+if __name__ == "__main__":
+    EXP = 3  # 1 / 2 / 3
+    if EXP == 1:
+        experiment1()
+    elif EXP == 2:
+        experiment2()
+    else:
+        experiment3()
 
     plt.show()
