@@ -22,7 +22,7 @@ import time
 from netCDF4 import Dataset
 
 
-def sofa_to_internal(sofa_path, ear="L"):   #, target_freqs=None
+def sofa_to_internal(sofa_path, ear="L", ref_dirs=None):   #, target_freqs=None
     """
     Convert a SOFA HRTF/HRIR file to the internal (Psh, Dir_all, freqs, r0) format
 
@@ -88,39 +88,88 @@ def sofa_to_internal(sofa_path, ear="L"):   #, target_freqs=None
     Psh = H_FJ  # naming aligned
 
     # ---- fill the south-pole missing band by inserting zero samples ----
-    az = Dir_all[:, 0].astype(float)
-    inc = Dir_all[:, 1].astype(float)
+    # az = Dir_all[:, 0].astype(float)
+    # inc = Dir_all[:, 1].astype(float)
 
-    inc_thresh = np.deg2rad(135.0)
-    max_inc = float(np.max(inc)) if inc.size else 0.0
+    # inc_thresh = np.deg2rad(135.0)
+    # max_inc = float(np.max(inc)) if inc.size else 0.0
 
-    if max_inc < (np.pi - 1e-6) and max_inc < (inc_thresh + 1e-6):
-        # Estimating the original data grid structure
-        az_u = np.unique(np.round(az, 10))
-        inc_u = np.unique(np.round(inc, 10))
+    # if max_inc < (np.pi - 1e-6) and max_inc < (inc_thresh + 1e-6):
+    #     # Estimating the original data grid structure
+    #     az_u = np.unique(np.round(az, 10))
+    #     inc_u = np.unique(np.round(inc, 10))
 
-        # Estimate the step size of inclination; if estimation is not possible, revert to 5°
-        if inc_u.size >= 2:
-            inc_step = float(np.median(np.diff(inc_u)))
-        else:
-            inc_step = np.deg2rad(5.0)
-        if not np.isfinite(inc_step) or inc_step <= 1e-6:
-            inc_step = np.deg2rad(5.0)
+    #     # Estimate the step size of inclination; if estimation is not possible, revert to 5°
+    #     if inc_u.size >= 2:
+    #         inc_step = float(np.median(np.diff(inc_u)))
+    #     else:
+    #         inc_step = np.deg2rad(5.0)
+    #     if not np.isfinite(inc_step) or inc_step <= 1e-6:
+    #         inc_step = np.deg2rad(5.0)
 
-        # Generate the required inc samples (> max_inc, extending to the South Pole π)
-        new_inc = np.arange(inc_thresh, np.pi + 1e-9, inc_step)
-        new_inc = new_inc[new_inc > (max_inc + 1e-9)]
+    #     # Generate the required inc samples (> max_inc, extending to the South Pole π)
+    #     new_inc = np.arange(inc_thresh, np.pi + 1e-9, inc_step)
+    #     new_inc = new_inc[new_inc > (max_inc + 1e-9)]
 
-        if new_inc.size > 0:
-            # Using all original az sampling × new inc to form the grid
-            AZ, IN = np.meshgrid(az_u, new_inc, indexing="xy")
-            add_dirs = np.c_[AZ.ravel(), IN.ravel()].astype(float)
+    #     if new_inc.size > 0:
+    #         # Using all original az sampling × new inc to form the grid
+    #         AZ, IN = np.meshgrid(az_u, new_inc, indexing="xy")
+    #         add_dirs = np.c_[AZ.ravel(), IN.ravel()].astype(float)
 
-            # Append an equal number of all-zero entries (complex zeros) to the Psh column dimension
-            add_Psh = np.zeros((Psh.shape[0], add_dirs.shape[0]), dtype=Psh.dtype)
-            Psh = np.concatenate([Psh, add_Psh], axis=1)
-            Dir_all = np.vstack([Dir_all, add_dirs])
+    #         # Append an equal number of all-zero entries (complex zeros) to the Psh column dimension
+    #         add_Psh = np.zeros((Psh.shape[0], add_dirs.shape[0]), dtype=Psh.dtype)
+    #         Psh = np.concatenate([Psh, add_Psh], axis=1)
+    #         Dir_all = np.vstack([Dir_all, add_dirs])
 
+    if ref_dirs is not None:
+        # ref_dirs: (J_ref, 2) az/inc from source.mat (uniform sphere)
+        Dir_ref = ref_dirs.astype(float)
+        az_ref = Dir_ref[:, 0]
+        inc_ref = Dir_ref[:, 1]
+
+        az_src = Dir_all[:, 0]
+        inc_src = Dir_all[:, 1]
+
+        # convert to 3D unit vectors
+        def sph2cart(az, inc):
+            x = np.sin(inc) * np.cos(az)
+            y = np.sin(inc) * np.sin(az)
+            z = np.cos(inc)
+            return np.stack([x, y, z], axis=-1)
+
+        vec_src = sph2cart(az_src, inc_src)      # (J_sofa,3)
+        vec_ref = sph2cart(az_ref, inc_ref)      # (J_ref,3)
+
+        # great-circle distance cosine
+        dot = vec_src @ vec_ref.T                 # (J_sofa, J_ref)
+        dot = np.clip(dot, -1.0, 1.0)
+        dist = np.arccos(dot)                     # spherical distance (rad)
+
+        # choose K nearest neighbours
+        K = 8
+        idx = np.argpartition(dist, K, axis=0)[:K, :]  # (K, J_ref)
+        dist_K = dist[idx, np.arange(dist.shape[1])]
+
+        # weights = 1 / (d + eps)
+        eps = 1e-6
+        w = 1.0 / (dist_K + eps)
+        w = w / np.sum(w, axis=0, keepdims=True)  # normalize
+
+        # allocate new Psh
+        F = Psh.shape[0]
+        J_ref = Dir_ref.shape[0]
+        Psh_new = np.zeros((F, J_ref), dtype=complex)
+
+        # interpolate each freq
+        for fi in range(F):
+            P = Psh[fi]  # (J_sofa,)
+            Pn = P[idx]  # (K, J_ref)
+            # weighted average
+            Psh_new[fi] = np.sum(w * Pn, axis=0)
+
+        # replace old
+        Psh = Psh_new
+        Dir_all = Dir_ref
 
     return Psh, Dir_all, freqs, r0
 
@@ -410,6 +459,10 @@ def balloon_plot_with_slider(
     Dir_all = mat["Dir_all"]
     freqs = mat["freqs_mesh"].squeeze()
     r0 = float(mat["r0"].squeeze())
+
+    # Use the first source file's directions as reference grid for SOFA interpolation
+    ref_dirs_source = Dir_all.copy()
+
     max_sh_order = sh_order
     k_all = 2 * np.pi * freqs / 343
 
@@ -956,7 +1009,7 @@ def balloon_plot_with_slider(
             finally:
                 ds.close()
             Psh, Dir_all, freqs, r0 = sofa_to_internal(
-                current_file, ear="L"
+                current_file, ear="L", ref_dirs=ref_dirs_source
             )
             Psh_raw = Psh.copy()
             k_all = 2 * np.pi * freqs / 343.0

@@ -260,8 +260,8 @@ def compute_field_differences(P_ref, P_cmp):
     phase_ref = np.angle(P_ref)
     phase_cmp = np.angle(P_cmp)
     dphase = phase_cmp - phase_ref
-    dphase = (dphase + np.pi) % (2 * np.pi) - np.pi
-    dphase_abs = np.abs(dphase)
+    #dphase = (dphase + np.pi) % (2 * np.pi) - np.pi
+    dphase_abs =  dphase  #np.abs(dphase)
 
     mean_dmag = dmag.mean(axis=1)
     mean_dphase = dphase_abs.mean(axis=1)
@@ -468,13 +468,9 @@ def compare_olhead_eq(hrir_path, ff_eq_path, diff_eq_path,
 
 
 if __name__ == "__main__":
-    path = os.path.join("examples", "data", "sampled_directivity", "sofa")
+    path = os.path.join("examples", "data", "sampled_directivity", "sofa", "P0001_FreeFieldComp_48kHz.sofa")
 
-    # analyze_reciprocity(path, ear="L", max_order=6, r0_rec=None)
-
-    raw_path  = os.path.join(path, "BuK-ED_hrir.sofa")
-    ff_path   = os.path.join(path, "BuK-ED_freefield.sofa")
-    diff_path = os.path.join(path, "BuK-ED_difffield.sofa")
+    analyze_reciprocity(path, ear="L", max_order=6, r0_rec=None)
 
     # raw_path       = os.path.join(path, "P0001_Raw_48kHz.sofa")
     # ff_path        = os.path.join(path, "P0001_FreeFieldComp_48kHz.sofa")
@@ -490,8 +486,12 @@ if __name__ == "__main__":
     #                   label_ref="Raw", label_cmp="Free-field MinPhase",
     #                   ear="L", max_order=6, r0_rec=None)
 
-    # Raw vs Diffuse-field
-    compare_olhead_eq(raw_path, ff_path, diff_path,
-                      ear="L", max_order=6, r0_rec=None)
+    # raw_path  = os.path.join(path, "BuK-ED_hrir.sofa")
+    # ff_path   = os.path.join(path, "BuK-ED_freefield.sofa")
+    # diff_path = os.path.join(path, "BuK-ED_difffield.sofa")
+
+    # Raw vs Free-field & Diffuse-field
+    # compare_olhead_eq(raw_path, ff_path, diff_path,
+    #                   ear="L", max_order=6, r0_rec=None)
 
     plt.show()
