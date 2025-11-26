@@ -3,14 +3,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
 from deism.core_deism import *
-from test_check import * 
+from test_check import *
 from netCDF4 import Dataset
 
 
 def mat_to_internal(mat_path):
     """
     Convert *_source.mat / *_receiver.mat to
-    (Psh, Dir_all, freqs, r0) 
+    (Psh, Dir_all, freqs, r0)
 
     return:
       Psh     : (F, J) complex
@@ -20,10 +20,10 @@ def mat_to_internal(mat_path):
     """
     mat = loadmat(mat_path)
 
-    Psh = mat["Psh"]                       
-    Dir_all = mat["Dir_all"]            
-    freqs = mat["freqs_mesh"].squeeze()  
-    r0 = float(mat["r0"].squeeze())       
+    Psh = mat["Psh"]
+    Dir_all = mat["Dir_all"]
+    freqs = mat["freqs_mesh"].squeeze()
+    r0 = float(mat["r0"].squeeze())
 
     return Psh, Dir_all, freqs, r0
 
@@ -40,12 +40,20 @@ def load_directivity(path, ear="L"):
       r0       : float
     """
     if path.lower().endswith(".sofa"):
-        initial_file = os.path.join("examples", "data", "sampled_directivity", "source", "Speaker_cuboid_cyldriver_source.mat")
+        initial_file = os.path.join(
+            "examples",
+            "data",
+            "sampled_directivity",
+            "source",
+            "Speaker_cuboid_cyldriver_source.mat",
+        )
         mat = loadmat(initial_file)
         Dir_all = mat["Dir_all"]
         ref_dirs_source = Dir_all.copy()
-        
-        Psh, Dir_all, freqs, r0 = sofa_to_internal(path, ear=ear, ref_dirs = ref_dirs_source)
+
+        Psh, Dir_all, freqs, r0 = sofa_to_internal(
+            path, ear=ear, ref_dirs=ref_dirs_source
+        )
         Psh = np.asarray(Psh)
         if Psh.shape[0] != len(freqs):  # In case shape is (J, F) instead of (F, J)
             Psh = Psh.T
@@ -53,7 +61,12 @@ def load_directivity(path, ear="L"):
         Psh, Dir_all, freqs, r0 = mat_to_internal(path)
     else:
         raise ValueError(f"Unsupported file type: {path}")
-    return Psh, Dir_all, freqs, r0  # Psh, np.asarray(Dir_all), np.asarray(freqs), float(r0)
+    return (
+        Psh,
+        Dir_all,
+        freqs,
+        r0,
+    )  # Psh, np.asarray(Dir_all), np.asarray(freqs), float(r0)
 
 
 def build_cnm_cache(Psh, Dir_all, freqs, r0, max_order, use_reciprocal):
@@ -154,9 +167,7 @@ def build_pressure_field_with_reciprocity(path, ear="L", max_order=6, r0_rec=Non
     )
 
     print("  Reconstructing pressure field ...")
-    P_field = reconstruct_pressure_field(
-        cnm_rec, k_all, Dir_all, r0, r0_rec, max_order
-    )
+    P_field = reconstruct_pressure_field(cnm_rec, k_all, Dir_all, r0, r0_rec, max_order)
 
     return P_field, Dir_all, freqs
 
@@ -212,8 +223,9 @@ def load_olhead_eq_response(eq_sofa_path, ear, freqs_target):
     return H_eq
 
 
-def build_pressure_field_olhead(case, hrir_path, ff_eq_path, diff_eq_path,
-                                ear="L", max_order=6, r0_rec=None):
+def build_pressure_field_olhead(
+    case, hrir_path, ff_eq_path, diff_eq_path, ear="L", max_order=6, r0_rec=None
+):
     """
     case: 'raw' / 'free' / 'diff'
     Only read direction and Psh from hrir_path, then multiply EQ if needed.
@@ -228,7 +240,7 @@ def build_pressure_field_olhead(case, hrir_path, ff_eq_path, diff_eq_path,
         Psh_use = Psh_raw
     elif case.lower() == "free":
         H_eq = load_olhead_eq_response(ff_eq_path, ear, freqs)  # (F,)
-        Psh_use = Psh_raw * H_eq[:, np.newaxis]                 # (F, J)
+        Psh_use = Psh_raw * H_eq[:, np.newaxis]  # (F, J)
     elif case.lower() == "diff":
         H_eq = load_olhead_eq_response(diff_eq_path, ear, freqs)
         Psh_use = Psh_raw * H_eq[:, np.newaxis]
@@ -237,12 +249,14 @@ def build_pressure_field_olhead(case, hrir_path, ff_eq_path, diff_eq_path,
 
     # 3) Use existing Cnm / reconstruction logic
     print(f"  Building Cnm cache with reciprocity for case '{case}' ...")
-    cnm_cache, k_all = build_cnm_cache(Psh_use, Dir_all, freqs, r0,
-                                       max_order, use_reciprocal=True)
+    cnm_cache, k_all = build_cnm_cache(
+        Psh_use, Dir_all, freqs, r0, max_order, use_reciprocal=True
+    )
 
     print("  Reconstructing pressure field ...")
-    P_field = reconstruct_pressure_field(cnm_cache, k_all, Dir_all,
-                                         r0, r0_rec, max_order)
+    P_field = reconstruct_pressure_field(
+        cnm_cache, k_all, Dir_all, r0, r0_rec, max_order
+    )
 
     return P_field, Dir_all, freqs
 
@@ -265,8 +279,8 @@ def compute_field_differences(P_ref, P_cmp):
     phase_ref = np.angle(P_ref)
     phase_cmp = np.angle(P_cmp)
     dphase = phase_cmp - phase_ref
-    #dphase = (dphase + np.pi) % (2 * np.pi) - np.pi
-    dphase_abs =  dphase  #np.abs(dphase)
+    # dphase = (dphase + np.pi) % (2 * np.pi) - np.pi
+    dphase_abs = dphase  # np.abs(dphase)
 
     mean_dmag = dmag.mean(axis=1)
     mean_dphase = dphase_abs.mean(axis=1)
@@ -274,8 +288,9 @@ def compute_field_differences(P_ref, P_cmp):
     return dmag, dphase_abs, mean_dmag, mean_dphase
 
 
-def plot_differences(freqs, Dir_all, dmag, dphase_abs,
-                     mean_dmag, mean_dphase, title_prefix=""):
+def plot_differences(
+    freqs, Dir_all, dmag, dphase_abs, mean_dmag, mean_dphase, title_prefix=""
+):
     """
     Plot two types of figures:
       - Figure 1: frequency vs mean |ΔP| / |Δphase|
@@ -298,42 +313,69 @@ def plot_differences(freqs, Dir_all, dmag, dphase_abs,
     az = Dir_all[:, 0]
     inc = Dir_all[:, 1]
     # Convert to lat/lon for the map projection
-    lat = np.pi/2 - inc
-    lon = az - np.pi    # shift center
+    lat = np.pi / 2 - inc
+    lon = az - np.pi  # shift center
 
     example_freqs = [2000, 4000, 8000, 12000]
     idxs = [int(np.argmin(np.abs(freqs - f))) for f in example_freqs]
 
     n_cols = len(idxs)
-    fig2, axes = plt.subplots(2, n_cols, figsize=(3 * n_cols, 6))
+    fig2 = plt.figure(figsize=(3.4 * n_cols, 6.5), constrained_layout=True)
+    gs = fig2.add_gridspec(2, n_cols, hspace=0.015, wspace=0.15)
     fig2.suptitle(f"{title_prefix} (selected frequencies)")
+
+    lon_ticks_deg = np.arange(-135, 136, 45)
+    lat_ticks_deg = np.arange(-60, 61, 30)
+
+    def _style_mollweide(ax):
+        """Improve readability for Mollweide projection axes."""
+        ax.set_xticks(np.deg2rad(lon_ticks_deg))
+        ax.set_xticklabels([f"{deg:d}°" for deg in lon_ticks_deg], fontsize=9)
+        ax.set_yticks(np.deg2rad(lat_ticks_deg))
+        ax.set_yticklabels([f"{deg:d}°" for deg in lat_ticks_deg], fontsize=9)
+        ax.tick_params(axis="both", pad=6, colors="black", labelcolor="black")
+        ax.grid(True, alpha=0.25, linestyle="--", linewidth=0.6)
+        ax.set_xlabel("")
+        ax.set_ylabel("")
 
     for col, (fi, f_target) in enumerate(zip(idxs, example_freqs)):
         # Magnitude difference
-        ax_mag = fig2.add_subplot(2, n_cols, col + 1, projection="mollweide")
-        sc1 = ax_mag.scatter(
-            lon, lat, c=dmag[fi, :], s=15, cmap='viridis'
-        )
+        ax_mag = fig2.add_subplot(gs[0, col], projection="mollweide")
+        sc1 = ax_mag.scatter(lon, lat, c=dmag[fi, :], s=15, cmap="plasma")
         ax_mag.set_title(f"{f_target:.0f} Hz |ΔP|")
-        ax_mag.set_xlabel("Azimuth [deg]")
-        ax_mag.set_ylabel("Inclination [deg]")
-        ax_mag.grid(True, alpha=0.2)
-        fig2.colorbar(sc1, ax=ax_mag, orientation='horizontal')
+        _style_mollweide(ax_mag)
+        fig2.colorbar(
+            sc1,
+            ax=ax_mag,
+            orientation="horizontal",
+            pad=0.08,
+            fraction=0.05,
+            aspect=30,
+        )
 
         # Phase difference
-        ax_ph = fig2.add_subplot(2, n_cols, n_cols + col + 1, projection="mollweide")
+        ax_ph = fig2.add_subplot(gs[1, col], projection="mollweide")
         sc2 = ax_ph.scatter(
-            lon, lat, c=dphase_abs[fi, :], s=15,
-            vmin=0, vmax=np.pi,
+            lon,
+            lat,
+            c=dphase_abs[fi, :],
+            s=15,
+            vmin=0,
+            vmax=np.pi,
+            cmap="plasma",
         )
         ax_ph.set_title(f"{f_target:.0f} Hz |Δphase|")
-        ax_ph.set_xlabel("Azimuth [deg]")
-        ax_ph.set_ylabel("Inclination [deg]")
-        ax_ph.grid(True, alpha=0.2)
-        fig2.colorbar(sc2, ax=ax_ph, orientation='horizontal')
+        _style_mollweide(ax_ph)
+        fig2.colorbar(
+            sc2,
+            ax=ax_ph,
+            orientation="horizontal",
+            pad=0.08,
+            fraction=0.05,
+            aspect=30,
+        )
 
     fig1.tight_layout()
-    fig2.tight_layout()
 
 
 def analyze_reciprocity(path, ear="L", max_order=6, r0_rec=None):
@@ -347,29 +389,31 @@ def analyze_reciprocity(path, ear="L", max_order=6, r0_rec=None):
         r0_rec = r0
 
     print("Building Cnm caches ...")
-    cnm_off, k_all = build_cnm_cache(Psh, Dir_all, freqs, r0,
-                                     max_order, use_reciprocal=False)
-    cnm_on, _ = build_cnm_cache(Psh, Dir_all, freqs, r0,
-                                max_order, use_reciprocal=True)
+    cnm_off, k_all = build_cnm_cache(
+        Psh, Dir_all, freqs, r0, max_order, use_reciprocal=False
+    )
+    cnm_on, _ = build_cnm_cache(Psh, Dir_all, freqs, r0, max_order, use_reciprocal=True)
 
     print("Reconstructing pressure fields ...")
-    P_off = reconstruct_pressure_field(cnm_off, k_all, Dir_all,
-                                       r0, r0_rec, max_order)
-    P_on = reconstruct_pressure_field(cnm_on, k_all, Dir_all,
-                                      r0, r0_rec, max_order)
+    P_off = reconstruct_pressure_field(cnm_off, k_all, Dir_all, r0, r0_rec, max_order)
+    P_on = reconstruct_pressure_field(cnm_on, k_all, Dir_all, r0, r0_rec, max_order)
 
-    dmag, dphase_abs, mean_dmag, mean_dphase = compute_field_differences(
-        P_off, P_on
+    dmag, dphase_abs, mean_dmag, mean_dphase = compute_field_differences(P_off, P_on)
+
+    plot_differences(
+        freqs,
+        Dir_all,
+        dmag,
+        dphase_abs,
+        mean_dmag,
+        mean_dphase,
+        title_prefix="reciprocity on vs off",
     )
 
-    plot_differences(freqs, Dir_all, dmag, dphase_abs,
-                     mean_dmag, mean_dphase,
-                     title_prefix="reciprocity on vs off")
 
-
-def compare_two_files(path_ref, path_cmp,
-                      label_ref, label_cmp,
-                      ear="L", max_order=6, r0_rec=None):
+def compare_two_files(
+    path_ref, path_cmp, label_ref, label_cmp, ear="L", max_order=6, r0_rec=None
+):
     """
     Compare two files under reciprocity-on condition:
       path_ref: reference (Raw)
@@ -409,8 +453,10 @@ def compare_two_files(path_ref, path_cmp,
     P_ref_use = P_ref[idx_ref, :]
     P_cmp_use = P_cmp[idx_cmp, :]
 
-    print(f"  Using {len(freqs_use)} common frequency bins "
-          f"from {freqs_use[0]:.1f} Hz to {freqs_use[-1]:.1f} Hz")
+    print(
+        f"  Using {len(freqs_use)} common frequency bins "
+        f"from {freqs_use[0]:.1f} Hz to {freqs_use[-1]:.1f} Hz"
+    )
 
     # 3) Compute differences & plot
     dmag, dphase_abs, mean_dmag, mean_dphase = compute_field_differences(
@@ -418,34 +464,51 @@ def compare_two_files(path_ref, path_cmp,
     )
 
     title = f"{label_cmp} vs. {label_ref}"
-    plot_differences(freqs_use, Dir_ref, dmag, dphase_abs,
-                     mean_dmag, mean_dphase, title_prefix=title)
+    plot_differences(
+        freqs_use, Dir_ref, dmag, dphase_abs, mean_dmag, mean_dphase, title_prefix=title
+    )
 
 
-def compare_olhead_eq(hrir_path, ff_eq_path, diff_eq_path,
-                      ear="L", max_order=6, r0_rec=None):
+def compare_olhead_eq(
+    hrir_path, ff_eq_path, diff_eq_path, ear="L", max_order=6, r0_rec=None
+):
     # Raw
     print("=" * 80)
     print("Case: RAW")
     P_raw, Dir_all, freqs = build_pressure_field_olhead(
-        "raw", hrir_path, ff_eq_path, diff_eq_path,
-        ear=ear, max_order=max_order, r0_rec=r0_rec
+        "raw",
+        hrir_path,
+        ff_eq_path,
+        diff_eq_path,
+        ear=ear,
+        max_order=max_order,
+        r0_rec=r0_rec,
     )
 
     # Free-field
     print("=" * 80)
     print("Case: FREE-FIELD")
     P_free, Dir2, freqs2 = build_pressure_field_olhead(
-        "free", hrir_path, ff_eq_path, diff_eq_path,
-        ear=ear, max_order=max_order, r0_rec=r0_rec
+        "free",
+        hrir_path,
+        ff_eq_path,
+        diff_eq_path,
+        ear=ear,
+        max_order=max_order,
+        r0_rec=r0_rec,
     )
 
     # Diffuse-field
     print("=" * 80)
     print("Case: DIFFUSE-FIELD")
     P_diff, Dir3, freqs3 = build_pressure_field_olhead(
-        "diff", hrir_path, ff_eq_path, diff_eq_path,
-        ear=ear, max_order=max_order, r0_rec=r0_rec
+        "diff",
+        hrir_path,
+        ff_eq_path,
+        diff_eq_path,
+        ear=ear,
+        max_order=max_order,
+        r0_rec=r0_rec,
     )
 
     # Grid/frequency sanity check
@@ -453,20 +516,29 @@ def compare_olhead_eq(hrir_path, ff_eq_path, diff_eq_path,
     assert np.allclose(freqs, freqs2) and np.allclose(freqs, freqs3)
 
     # Raw vs Free-field
-    dmag_rf, dph_rf, mean_mag_rf, mean_ph_rf = compute_field_differences(
-        P_raw, P_free
+    dmag_rf, dph_rf, mean_mag_rf, mean_ph_rf = compute_field_differences(P_raw, P_free)
+    plot_differences(
+        freqs,
+        Dir_all,
+        dmag_rf,
+        dph_rf,
+        mean_mag_rf,
+        mean_ph_rf,
+        title_prefix="Free-field vs Raw",
     )
-    plot_differences(freqs, Dir_all, dmag_rf, dph_rf,
-                     mean_mag_rf, mean_ph_rf,
-                     title_prefix="Free-field vs Raw")
 
     # Raw vs Diffuse-field
-    dmag_rd, dph_rd, mean_mag_rd, mean_ph_rd = compute_field_differences(
-        P_raw, P_diff
+    dmag_rd, dph_rd, mean_mag_rd, mean_ph_rd = compute_field_differences(P_raw, P_diff)
+    plot_differences(
+        freqs,
+        Dir_all,
+        dmag_rd,
+        dph_rd,
+        mean_mag_rd,
+        mean_ph_rd,
+        title_prefix="Diffuse-field vs Raw",
     )
-    plot_differences(freqs, Dir_all, dmag_rd, dph_rd,
-                     mean_mag_rd, mean_ph_rd,
-                     title_prefix="Diffuse-field vs Raw")
+
 
 def experiment1():
     """
@@ -475,10 +547,14 @@ def experiment1():
       - Analyze reciprocity on/off
     """
     path = os.path.join(
-        "examples", "data", "sampled_directivity", "sofa",
-        "P0001_FreeFieldComp_48kHz.sofa"
+        "examples",
+        "data",
+        "sampled_directivity",
+        "sofa",
+        "P0001_FreeFieldComp_48kHz.sofa",
     )
     analyze_reciprocity(path, ear="L", max_order=6, r0_rec=None)
+
 
 def experiment2():
     """
@@ -487,23 +563,32 @@ def experiment2():
       - SONICOM Raw vs Free-field MinPhase
     """
     base = os.path.join("examples", "data", "sampled_directivity", "sofa")
-    raw_path    = os.path.join(base, "P0001_Raw_48kHz.sofa")
-    ff_path     = os.path.join(base, "P0001_FreeFieldComp_48kHz.sofa")
+    raw_path = os.path.join(base, "P0001_Raw_48kHz.sofa")
+    ff_path = os.path.join(base, "P0001_FreeFieldComp_48kHz.sofa")
     ff_min_path = os.path.join(base, "P0001_FreeFieldCompMinPhase_48kHz.sofa")
 
     # Raw vs Free-field
     compare_two_files(
-        raw_path, ff_path,
-        label_ref="Raw", label_cmp="Free-field",
-        ear="L", max_order=6, r0_rec=None
+        raw_path,
+        ff_path,
+        label_ref="Raw",
+        label_cmp="Free-field",
+        ear="L",
+        max_order=6,
+        r0_rec=None,
     )
 
     # Raw vs Free-field MinPhase
     compare_two_files(
-        raw_path, ff_min_path,
-        label_ref="Raw", label_cmp="Free-field MinPhase",
-        ear="L", max_order=6, r0_rec=None
+        raw_path,
+        ff_min_path,
+        label_ref="Raw",
+        label_cmp="Free-field MinPhase",
+        ear="L",
+        max_order=6,
+        r0_rec=None,
     )
+
 
 def experiment3():
     """
@@ -512,18 +597,15 @@ def experiment3():
         Raw vs Free-field & Diffuse-field
     """
     base = os.path.join("examples", "data", "sampled_directivity", "sofa")
-    raw_path  = os.path.join(base, "BuK-ED_hrir.sofa")
-    ff_path   = os.path.join(base, "BuK-ED_freefield.sofa")
+    raw_path = os.path.join(base, "BuK-ED_hrir.sofa")
+    ff_path = os.path.join(base, "BuK-ED_freefield.sofa")
     diff_path = os.path.join(base, "BuK-ED_difffield.sofa")
 
-    compare_olhead_eq(
-        raw_path, ff_path, diff_path,
-        ear="L", max_order=6, r0_rec=None
-    )
+    compare_olhead_eq(raw_path, ff_path, diff_path, ear="L", max_order=6, r0_rec=None)
 
 
 if __name__ == "__main__":
-    EXP = 3  # 1 / 2 / 3
+    EXP = 1  # 1 / 2 / 3
     if EXP == 1:
         experiment1()
     elif EXP == 2:
