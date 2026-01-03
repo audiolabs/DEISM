@@ -1054,7 +1054,7 @@ def balloon_plot_with_slider(
             current_is_receiver = is_receiver_file(allowed_files[file_idx])
             S = params["pointSrcStrength"] if current_is_receiver else None
 
-        # precomputation of full_Pnm and Cnm_s
+        # precomputation of Psh and Cnm_s
         for freq_idx in range(len(freqs)):
             start_step = time.perf_counter()
             if current_is_receiver and params.get("ifReceiverNormalize", 0):
