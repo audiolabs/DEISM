@@ -33,7 +33,7 @@ try:
 except (ImportError, RuntimeError):
     CPP_COUNTING_AVAILABLE = False
 
-# for class Dir_Visualizer:
+# for directivity visualizer:
 import os
 import tkinter as tk
 from tkinter import filedialog, ttk
