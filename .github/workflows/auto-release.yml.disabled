@@ -1,0 +1,101 @@
+name: Auto Release
+
+# This workflow automatically creates GitHub releases when you push to main/master
+# Control PyPI upload by setting ENABLE_PYPI_UPLOAD environment variable:
+# - ENABLE_PYPI_UPLOAD: 'true'  → Creates production release → Triggers PyPI upload
+# - ENABLE_PYPI_UPLOAD: 'false' → Creates prerelease → No PyPI upload (test only)
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      # Temporarily removed .github/** to allow workflow testing
+
+jobs:
+  auto-release:
+    runs-on: ubuntu-latest
+    # Force AMD64 platform for gmsh compatibility
+    container:
+      image: ubuntu:24.04
+      options: --platform linux/amd64
+    if: '!contains(github.event.head_commit.message, ''[skip ci]'')'
+    env:
+      # Set to 'true' to enable PyPI upload (creates production release)
+      # Set to 'false' or leave empty for test release only
+      ENABLE_PYPI_UPLOAD: 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install system dependencies for gmsh
+        run: |
+          apt-get update
+          apt-get install -y libglu1-mesa-dev libgl1-mesa-dev build-essential
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip --root-user-action=ignore
+          python -m pip install setuptools wheel --root-user-action=ignore
+
+      - name: Get current version
+        id: current_version
+        run: |
+          # Extract version from deism/version.py
+          if [ -f "deism/version.py" ]; then
+            VERSION=$(python -c "exec(open('deism/version.py').read()); print(__version__)")
+          elif [ -f "setup.py" ]; then
+            VERSION=$(python setup.py --version)
+          elif [ -f "pyproject.toml" ]; then
+            VERSION=$(grep -oP '(?<=version = ")[^"]*' pyproject.toml)
+          else
+            echo "No version file found"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+
+      - name: Check if tag exists
+        id: tag_exists
+        run: |
+          echo "Checking if tag v${{ steps.current_version.outputs.version }} exists..."
+          if git rev-parse "v${{ steps.current_version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.current_version.outputs.version }} already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.current_version.outputs.version }} does not exist - will create release"
+          fi
+
+      - name: Debug release conditions
+        run: |
+          echo "Tag exists: ${{ steps.tag_exists.outputs.exists }}"
+          echo "Version: ${{ steps.current_version.outputs.version }}"
+          echo "ENABLE_PYPI_UPLOAD: ${{ env.ENABLE_PYPI_UPLOAD }}"
+          echo "Will create release: ${{ steps.tag_exists.outputs.exists == 'false' }}"
+
+      - name: Create release
+        if: steps.tag_exists.outputs.exists == 'false'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.current_version.outputs.version }}
+          release_name: Release v${{ steps.current_version.outputs.version }}
+          body: |
+            Auto-generated release for version ${{ steps.current_version.outputs.version }}
+            
+            Changes in this release:
+            ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: ${{ env.ENABLE_PYPI_UPLOAD != 'true' }} 

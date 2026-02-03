@@ -6,11 +6,19 @@ include LICENSE
 
 graft deism
 
+# Include C++ source files for count_reflections
+include deism/count_reflections.cpp
+include deism/build_count_reflections.sh
+
 # Exclude large data files in examples/data
 prune examples/data
 
 global-exclude *.py[co]
 global-exclude __pycache__
+# Note: *.so, *.dylib, *.dll are excluded from source distributions
+# but will be included in wheels after compilation during build
 global-exclude *.so
+global-exclude *.dylib
+global-exclude *.dll
 global-exclude *.pyd
 global-exclude .DS_Store

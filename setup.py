@@ -176,8 +176,99 @@ class BuildExt(build_ext):
                 ext.extra_compile_args += opts
                 ext.extra_link_args += opts
         build_ext.build_extensions(self)
+
+        # Compile count_reflections.cpp as a standalone shared library
+        self.build_count_reflections_lib()
+
         # Add the following two lines to remove the build directory after building
         self.clean()
+
+    def build_count_reflections_lib(self):
+        """Compile count_reflections.cpp as a standalone shared library."""
+        deism_dir = os.path.join(os.path.dirname(__file__), "deism")
+        cpp_file = os.path.join(deism_dir, "count_reflections.cpp")
+
+        if not os.path.exists(cpp_file):
+            print(
+                f"Warning: {cpp_file} not found, skipping count_reflections compilation"
+            )
+            return
+
+        # Determine library extension based on platform
+        if sys.platform == "darwin":
+            lib_ext = ".dylib"
+        elif sys.platform == "win32":
+            lib_ext = ".dll"
+        else:
+            lib_ext = ".so"
+
+        # Compile into source directory (for editable installs)
+        lib_file_source = os.path.join(deism_dir, f"count_reflections{lib_ext}")
+
+        # Also compile into build_lib if it exists (for regular installs/wheels)
+        build_lib = getattr(self, "build_lib", None)
+        if build_lib:
+            lib_file_build = os.path.join(
+                build_lib, "deism", f"count_reflections{lib_ext}"
+            )
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(lib_file_build), exist_ok=True)
+        else:
+            lib_file_build = None
+
+        # Compile command
+        if sys.platform == "win32":
+            # Windows: use g++ if available
+            compile_cmd = [
+                "g++",
+                "-shared",
+                "-fPIC",
+                "-O3",
+                "-std=c++11",
+                cpp_file,
+                "-o",
+                lib_file_source,
+            ]
+        else:
+            # Unix-like (Linux, macOS)
+            compile_cmd = [
+                "g++",
+                "-shared",
+                "-fPIC",
+                "-O3",
+                "-std=c++11",
+                cpp_file,
+                "-o",
+                lib_file_source,
+            ]
+
+        print(f"Compiling count_reflections library: {' '.join(compile_cmd)}")
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                compile_cmd, check=True, capture_output=True, text=True
+            )
+            print(f"Successfully compiled count_reflections{lib_ext}")
+
+            # If build_lib exists, copy the compiled library there too
+            if lib_file_build and os.path.exists(lib_file_source):
+                shutil.copy2(lib_file_source, lib_file_build)
+                print(f"Copied library to build directory: {lib_file_build}")
+        except subprocess.CalledProcessError as e:
+            print(f"Warning: Failed to compile count_reflections library:")
+            print(f"  Command: {' '.join(compile_cmd)}")
+            print(f"  Error: {e.stderr}")
+            print(
+                "  The package will still work, but count_reflections_cpp will not be available."
+            )
+        except FileNotFoundError:
+            print(
+                "Warning: g++ compiler not found. count_reflections library will not be compiled."
+            )
+            print(
+                "  The package will still work, but count_reflections_cpp will not be available."
+            )
 
     def clean(self):
         """Custom clean step after build is complete."""
@@ -241,6 +332,9 @@ setup_kwargs = dict(
         "Cython",
         "pyroomacoustics",
     ],
+    extras_require={
+        "geometry": ["gmsh"],
+    },
     cmdclass={
         "build_ext": BuildExt,
     },  # taken from pybind11 example

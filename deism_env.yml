@@ -18,3 +18,4 @@ dependencies:
   - pip:
     - ray
     - sound-field-analysis
+    - gmsh

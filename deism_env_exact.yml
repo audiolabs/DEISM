@@ -98,4 +98,5 @@ dependencies:
       - rpds-py==0.20.0
       - sound-field-analysis==2021.2.4
       - urllib3==2.2.3
+      - gmsh
 prefix: /Users/xuzeyu/miniconda3/envs/DEISM

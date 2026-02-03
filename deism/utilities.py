@@ -1,6 +1,95 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import numpy.typing as npt
+from typing import Optional
+from scipy.signal import lfilter, sosfiltfilt, tf2sos
+
+
+def _compute_highpass_coeffs(fs: float, fcut: float) -> tuple[np.ndarray, np.ndarray]:
+    """Return numerator and denominator coefficients for the RIR high-pass filter."""
+    W = 2.0 * np.pi * float(fcut) / float(fs)
+    R1 = np.exp(-W)
+    B1 = 2.0 * R1 * np.cos(W)
+    B2 = -R1 * R1
+    A1 = -(1.0 + R1)
+
+    b = np.array([1.0, A1, R1], dtype=np.float64)
+    a = np.array([1.0, -B1, -B2], dtype=np.float64)
+    return b, a
+
+
+def highpass_RIR(
+    h: npt.ArrayLike,
+    fs: float,
+    fcut: float = 100.0,
+    *,
+    axis: int = 0,
+    zero_phase: bool = False,
+    dtype: Optional[npt.DTypeLike] = None,
+) -> np.ndarray:
+    """Apply the audiolabs high-pass filter to room impulse responses.
+
+    Parameters
+    ----------
+    h:
+        Array containing the room impulse response. Time samples must be located along
+        ``axis``.
+    fs:
+        Sampling rate in Hertz. Must be positive.
+    fcut:
+        High-pass cutoff frequency in Hertz. Must satisfy ``0 < fcut < fs/2``. Defaults
+        to 100 Hz as used in ``audiolabs/rir-generator``.
+    axis:
+        Axis along which the filter is applied. Defaults to 0 and accepts negative
+        indices.
+    zero_phase:
+        When ``True`` the filter is applied in a zero-phase manner using
+        :func:`scipy.signal.sosfiltfilt`, avoiding phase distortion at the cost of an
+        additional reverse pass. Defaults to ``False`` (causal :func:`scipy.signal.lfilter`).
+    dtype:
+        Optional NumPy dtype specification used for the internal representation and
+        output. When ``None`` the result uses at least single precision while preserving
+        higher precision inputs.
+
+    Returns
+    -------
+    numpy.ndarray
+        Filtered impulse response with the same shape as ``h``.
+
+    Raises
+    ------
+    ValueError
+        If ``fs`` is non-positive, ``fcut`` is outside ``(0, fs/2)``, or ``axis`` is
+        incompatible with the input shape.
+    """
+    if fs <= 0:
+        raise ValueError("fs must be positive.")
+    if not (0.0 < fcut < fs / 2.0):
+        raise ValueError(f"fcut must be in (0, fs/2). Got fcut={fcut}, fs={fs}.")
+
+    target_dtype = dtype or np.result_type(h, np.float32)
+    h_array = np.asarray(h, dtype=target_dtype)
+
+    if h_array.ndim == 0:
+        raise ValueError("x must be at least 1-dimensional.")
+
+    if axis < 0:
+        axis += h_array.ndim
+    if axis < 0 or axis >= h_array.ndim:
+        raise ValueError(
+            f"axis={axis} is out of bounds for input with ndim={h_array.ndim}."
+        )
+
+    b, a = _compute_highpass_coeffs(fs, fcut)
+
+    if zero_phase:
+        sos = tf2sos(b, a)
+        filtered = sosfiltfilt(sos, h_array, axis=axis)
+    else:
+        filtered = lfilter(b, a, h_array, axis=axis)
+
+    return np.asarray(filtered, dtype=target_dtype)
 
 
 def cart2sph(x, y, z):

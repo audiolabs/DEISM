@@ -22,7 +22,7 @@ from deism.utilities import (
     cart2sph,
     sph2cart,
 )
-from deism.core_deism import (
+from deism.shared_utils import (
     rotation_matrix_ZXZ,
     SHCs_from_pressure_LS,
 )
@@ -674,25 +674,54 @@ class Wall_deism_cpp:
             the Wall_deism initialized object
         """
         walls = None
-        if points.shape[0] == 2:
-            walls = libroom_deism.Wall2D_deism(
-                points,
-                centroid,
-                impedence,  # -->new
-                energy_absorp_coef,
-                scatter_coef,
-                name,
+        # Check if impedance is complex and use appropriate constructor
+        if np.iscomplexobj(impedence):
+            # Use complex constructor to preserve full impedance information
+            # Convert to complex array explicitly to match C++ signature
+            impedence_complex = impedence.astype(np.complex64)
+            print(
+                f"DEBUG: Using complex constructor with impedance type: {impedence_complex.dtype}"
             )
-        elif points.shape[0] == 3:
-            walls = libroom_deism.Wall_deism(
-                points,
-                centroid,
-                impedence,  # -->new
-                energy_absorp_coef,
-                scatter_coef,
-                name,
-            )
+            if points.shape[0] == 2:
+                walls = libroom_deism.Wall2D_deism.from_complex_impedance(
+                    points,
+                    centroid,
+                    impedence_complex,  # Complex impedance passed to complex constructor
+                    energy_absorp_coef,
+                    scatter_coef,
+                    name,
+                )
+            elif points.shape[0] == 3:
+                walls = libroom_deism.Wall_deism.from_complex_impedance(
+                    points,
+                    centroid,
+                    impedence_complex,  # Complex impedance passed to complex constructor
+                    energy_absorp_coef,
+                    scatter_coef,
+                    name,
+                )
         else:
+            # Use real constructor for backward compatibility
+            if points.shape[0] == 2:
+                walls = libroom_deism.Wall2D_deism(
+                    points,
+                    centroid,
+                    impedence,  # Real impedance
+                    energy_absorp_coef,
+                    scatter_coef,
+                    name,
+                )
+            elif points.shape[0] == 3:
+                walls = libroom_deism.Wall_deism(
+                    points,
+                    centroid,
+                    impedence,  # Real impedance
+                    energy_absorp_coef,
+                    scatter_coef,
+                    name,
+                )
+
+        if walls is None:
             raise TypeError("The first dimension of points should be 2 or 3!")
 
         return walls
@@ -811,9 +840,7 @@ class Room_deism_cpp:
             *choose_wall_centers: ?
         """
         # parameters initialization
-        if not params["silentMode"]:
-            print("[Calculating] DEISM-ARG image generation, ", end="")
-        begin = time.time()
+        self.params = params
         self.points = params["vertices"]
         self.centroid = np.mean(self.points, axis=0)
         self.walls = []
@@ -823,8 +850,8 @@ class Room_deism_cpp:
         self.ism_order = params["maxReflOrder"]
         self.visible_sources = []
         # --------------------new------------------------------------------
-        # self.Z_S = params["Z_S"]  # Change to self.impedence later !!!!!!!!!
-        self.impedence = params["acousImpend"]
+        # self.Z_S = params["Z_S"]  # Change to self.i                                                                                                                           mpedence later !!!!!!!!!
+        self.impedence = params["impedance"]
         self.freqs = params["freqs"]
         # if params["wallCenters"] is not defined, use the default one
         if "wallCenters" not in params:
@@ -860,6 +887,16 @@ class Room_deism_cpp:
         self.room_engine = None
         # initialize the parameter self.room_engine
         self._init_room()
+
+    def update_images(self, source=None, receiver=None):
+        if not self.params["silentMode"]:
+            print("[Calculating] DEISM-ARG image generation, ", end="")
+        begin = time.time()
+        # Update source and receiver positions and update images
+        if source is not None:
+            self.source = source
+        if receiver is not None:
+            self.microphones[0] = receiver
         self.room_engine.add_mic(self.microphones[0].T)
         self.room_engine.n_bands = len(self.freqs)  # -->new
         self.room_engine.image_source_model(self.source.T)
@@ -868,7 +905,7 @@ class Room_deism_cpp:
         elapsed_pra_deism = time.time() - begin
         minutes, seconds = divmod(elapsed_pra_deism, 60)
         minutes = int(minutes)
-        if not params["silentMode"]:
+        if not self.params["silentMode"]:
             print(f"Done [{minutes} minutes, {seconds:.3f} seconds]", end="\n\n")
 
     def _init_room(self, *args):
@@ -1146,7 +1183,7 @@ def get_ref_paths_ARG(params, room_pra_deism):
         reflection_matrix = reflection_matrix[:, :, 1:]
         atten_all = atten_all[:, 1:]
     # If using the MIX mode, we need to separate the early reflections and late reflections
-    if params["DEISM_mode"] == "MIX":
+    if params["DEISM_method"] == "MIX":
         # Find the indices of the early reflections using the 1D numpy array room_pra_deism.room_engine.orders
         # This array contains the order of each image source
         # Find this indices of the early reflections whose order is less than or equal to params["maxEarlyOrder"]

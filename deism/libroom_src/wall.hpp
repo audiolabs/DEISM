@@ -97,7 +97,8 @@ class Wall_deism
     // the impedence of e.g. 1000Hz? since impedence is defined as a dynamic array
     // n_bands-->how many frequency bands are there.
     // int n_bands;    //-->new
-    Eigen::ArrayXf impedence_bands;     //-->new
+    Eigen::ArrayXf impedence_bands;     //-->new (real part)
+    Eigen::ArrayXcf impedence_bands_complex;  //-->new (complex support)
     // solution: define impedence under certain points and propagate to all 
     // frequency by interpolation
     /**************************************************************************/
@@ -152,6 +153,16 @@ class Wall_deism
         const std::string &_name
     );
 
+    // New constructor with complex impedance support
+    Wall_deism(
+        const Eigen::Matrix<float, D, Eigen::Dynamic> &_corners,
+        const Eigen::Matrix<float,D,1>& _centroid,    //-->new
+        const Eigen::ArrayXcf &_impedence_bands_complex,  //-->new (complex)
+        const Eigen::ArrayXf &_absorption,
+        const Eigen::ArrayXf &_scatter,
+        const std::string &_name
+    );
+
     /**************************************************************************/
 
     // Copy constructor
@@ -161,8 +172,8 @@ class Wall_deism
       transmission(w.transmission), energy_reflection(w.energy_reflection),
       normal(w.normal), corners(w.corners),
       origin(w.origin), basis(w.basis), flat_corners(w.flat_corners),
-      impedence_bands(w.impedence_bands),reflection_matrix(w.reflection_matrix),
-      centroid(w.centroid)
+      reflection_matrix(w.reflection_matrix), centroid(w.centroid),
+      impedence_bands(w.impedence_bands), impedence_bands_complex(w.impedence_bands_complex)
     {}
 
     // public methods
@@ -208,6 +219,9 @@ class Wall_deism
     // since impedence is a array, so the attenuation should be a array,too.
     // float get_attenuation(float theta) const;   //-->new
     Eigen::ArrayXf get_attenuation(float theta) const;   //-->new
+    
+    // Get complex impedance
+    const Eigen::ArrayXcf &get_impedence_complex() const { return impedence_bands_complex; }
 
     Eigen::Matrix<float,D,Eigen::Dynamic> orderPoints(
         const Eigen::Matrix<float,D,Eigen::Dynamic>& points);   //-->new

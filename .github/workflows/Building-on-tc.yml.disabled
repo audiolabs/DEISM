@@ -1,0 +1,109 @@
+name: Build Wheels (RC)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deism/version.py'
+    tags:
+      - "v*rc*"
+      - "v*.*.*.*.rc*"
+  workflow_dispatch:
+
+jobs:
+  build-wheels:
+    name: cibuildwheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-13, macos-latest, windows-latest]
+        python-version: ['3.9', '3.10', '3.11']
+        exclude:
+          - os: macos-latest
+            python-version: 3.9
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python (build driver)
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install system dependencies for gmsh (Ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-dev build-essential
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install cibuildwheel
+        run: python -m pip install -U pip cibuildwheel==2.*
+
+      - name: Get version from version.py
+        id: get_version
+        run: |
+          VERSION=$(python -c "exec(open('deism/version.py').read()); print(__version__)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $VERSION"
+          echo "Tag name: v$VERSION"
+        shell: bash
+
+      - name: Create and push tag (if version changed)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          TAG_NAME="v${{ steps.get_version.outputs.version }}"
+          echo "Checking if tag $TAG_NAME exists..."
+          if ! git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Creating new tag: $TAG_NAME"
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git tag "$TAG_NAME"
+            git push origin "$TAG_NAME"
+            echo "Tag $TAG_NAME created and pushed"
+          else
+            echo "Tag $TAG_NAME already exists, skipping"
+          fi
+        shell: bash
+
+      - name: Build wheels
+        env:
+          CIBW_SKIP: "pp* *-musllinux_*"
+          # Limit to Python versions we actually support
+          CIBW_BUILD: "cp39-* cp310-* cp311-*"
+          # Light import test for built wheels on each platform
+          CIBW_TEST_COMMAND: "python -c \"import deism; print(getattr(deism, '__version__', 'unknown'))\""
+          # macOS: build separate wheels for each architecture to avoid repair issues
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
+          # Disable wheel repair on macOS to avoid delocate issues
+          CIBW_REPAIR_WHEEL_COMMAND_MACOS: ""
+          # Linux: install system dependencies for gmsh
+          CIBW_BEFORE_BUILD_LINUX: "yum install -y mesa-libGLU-devel || apt-get update && apt-get install -y libglu1-mesa-dev libgl1-mesa-dev build-essential"
+          # Windows: install build tools and dependencies
+          CIBW_BEFORE_BUILD_WINDOWS: "pip install --upgrade pip setuptools wheel"
+          # Disable wheel repair on Windows to avoid metadata issues
+          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: ""
+        run: cibuildwheel --output-dir dist
+
+      - name: Build sdist (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python -m pip install -U build
+          python -m build --sdist
+
+      - name: Twine check
+        run: |
+          python -m pip install -U twine
+          twine check dist/*
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deism-${{ steps.get_version.outputs.version }}-wheels
+          path: dist/*
