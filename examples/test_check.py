@@ -1,24 +1,28 @@
-import numpy as np
-import matplotlib
+import os
+# os.add_dll_directory(r"D:\Program_Dev\Anaconda\envs\DEISM\Library\bin")
+# os.add_dll_directory(r"D:\Program_Dev\Anaconda\envs\DEISM\Scripts")
+# os.add_dll_directory(r"D:\Program_Dev\Anaconda\Library\bin")
+import time
 
-matplotlib.use("TkAgg")
+import numpy as np
+import matplotlib as mpl
+mpl.use("TkAgg")
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider, Button
+from matplotlib.patches import FancyArrowPatch
+
 from scipy.io import loadmat
 from scipy.special import sph_harm
+from scipy.interpolate import interp1d
+
 from deism.core_deism import *
 from deism.data_loader import *
-import matplotlib as mpl
-from matplotlib.widgets import Slider, Button
+
 import tkinter as tk
-from tkinter import Tk, filedialog, ttk, messagebox
-import os
+from tkinter import filedialog, ttk
+
 from mpl_toolkits.mplot3d import proj3d
-from matplotlib.patches import FancyArrowPatch
-from PIL import Image, ImageTk
-import io
-import urllib.request
-from scipy.interpolate import interp1d
-import time
+from PIL import Image
 from netCDF4 import Dataset
 
 
@@ -71,55 +75,7 @@ def sofa_to_internal(sofa_path, ear="L", ref_dirs=None):   #, target_freqs=None
 
     freqs = f_sofa
 
-    # # 4) interpolate complex response to target_freqs
-    # if target_freqs is not None:
-    #     tf = np.asarray(target_freqs, float).ravel()
-    #     # separate real/imag for safe interpolation
-    #     Hr = np.empty((tf.size, H_FJ.shape[1]), dtype=float)
-    #     Hi = np.empty_like(Hr)
-    #     for j in range(H_FJ.shape[1]):
-    #         Hr[:, j] = np.interp(tf, f_sofa, H_FJ.real[:, j])
-    #         Hi[:, j] = np.interp(tf, f_sofa, H_FJ.imag[:, j])
-    #     H_FJ = Hr + 1j * Hi
-    #     freqs = tf
-    # else:
-    #     freqs = f_sofa
-
     Psh = H_FJ  # naming aligned
-
-    # ---- fill the south-pole missing band by inserting zero samples ----
-    # az = Dir_all[:, 0].astype(float)
-    # inc = Dir_all[:, 1].astype(float)
-
-    # inc_thresh = np.deg2rad(135.0)
-    # max_inc = float(np.max(inc)) if inc.size else 0.0
-
-    # if max_inc < (np.pi - 1e-6) and max_inc < (inc_thresh + 1e-6):
-    #     # Estimating the original data grid structure
-    #     az_u = np.unique(np.round(az, 10))
-    #     inc_u = np.unique(np.round(inc, 10))
-
-    #     # Estimate the step size of inclination; if estimation is not possible, revert to 5°
-    #     if inc_u.size >= 2:
-    #         inc_step = float(np.median(np.diff(inc_u)))
-    #     else:
-    #         inc_step = np.deg2rad(5.0)
-    #     if not np.isfinite(inc_step) or inc_step <= 1e-6:
-    #         inc_step = np.deg2rad(5.0)
-
-    #     # Generate the required inc samples (> max_inc, extending to the South Pole π)
-    #     new_inc = np.arange(inc_thresh, np.pi + 1e-9, inc_step)
-    #     new_inc = new_inc[new_inc > (max_inc + 1e-9)]
-
-    #     if new_inc.size > 0:
-    #         # Using all original az sampling × new inc to form the grid
-    #         AZ, IN = np.meshgrid(az_u, new_inc, indexing="xy")
-    #         add_dirs = np.c_[AZ.ravel(), IN.ravel()].astype(float)
-
-    #         # Append an equal number of all-zero entries (complex zeros) to the Psh column dimension
-    #         add_Psh = np.zeros((Psh.shape[0], add_dirs.shape[0]), dtype=Psh.dtype)
-    #         Psh = np.concatenate([Psh, add_Psh], axis=1)
-    #         Dir_all = np.vstack([Dir_all, add_dirs])
 
     if ref_dirs is not None:
         # ref_dirs: (J_ref, 2) az/inc from source.mat (uniform sphere)
@@ -174,46 +130,46 @@ def sofa_to_internal(sofa_path, ear="L", ref_dirs=None):   #, target_freqs=None
     return Psh, Dir_all, freqs, r0
 
 
-def is_sofa_receiver_file(sofa_obj):
-    """
-    Decide whether a SOFA file is *receiver-directivity* (HRTF/HRIR:
-    fixed listener/ears, many source positions) or *source-directivity* (fixed
-    source, many receiver positions).
-    """
-    # 1) Prior from Conventions
-    conv = ""
-        # prefer SOFAConventions (e.g., "SimpleFreeFieldHRIR")
-    if hasattr(sofa_obj, "SOFAConventions"):
-        conv = str(getattr(sofa_obj, "SOFAConventions")).upper()
-    elif hasattr(sofa_obj, "Conventions"):
-        conv = str(getattr(sofa_obj, "Conventions")).upper()
-    if "HRIR" in conv or "HRTF" in conv:
-        return True
-    if "SOS" in conv or "SFS" in conv or "SRTF" in conv:
-        return False 
+# def is_sofa_receiver_file(sofa_obj):
+#     """
+#     Decide whether a SOFA file is *receiver-directivity* (HRTF/HRIR:
+#     fixed listener/ears, many source positions) or *source-directivity* (fixed
+#     source, many receiver positions).
+#     """
+#     # 1) Prior from Conventions
+#     conv = ""
+#         # prefer SOFAConventions (e.g., "SimpleFreeFieldHRIR")
+#     if hasattr(sofa_obj, "SOFAConventions"):
+#         conv = str(getattr(sofa_obj, "SOFAConventions")).upper()
+#     elif hasattr(sofa_obj, "Conventions"):
+#         conv = str(getattr(sofa_obj, "Conventions")).upper()
+#     if "HRIR" in conv or "HRTF" in conv:
+#         return True
+#     if "SOS" in conv or "SFS" in conv or "SRTF" in conv:
+#         return False 
 
-    # 2) Count unique positions approximately
-    def flatten_pos(arr):
-        A = np.array(arr)
-        A = A.reshape(-1, A.shape[-1])  # works for (M,3)、(R,3)、(M,R,3), ...
-        return np.round(A.astype(float), 6)
+#     # 2) Count unique positions approximately
+#     def flatten_pos(arr):
+#         A = np.array(arr)
+#         A = A.reshape(-1, A.shape[-1])  # works for (M,3)、(R,3)、(M,R,3), ...
+#         return np.round(A.astype(float), 6)
 
-    src_pos = flatten_pos(getattr(sofa_obj, "SourcePosition"))
-    rec_pos = flatten_pos(getattr(sofa_obj, "ReceiverPosition"))
+#     src_pos = flatten_pos(getattr(sofa_obj, "SourcePosition"))
+#     rec_pos = flatten_pos(getattr(sofa_obj, "ReceiverPosition"))
 
-    n_src_unique = np.unique(src_pos, axis=0).shape[0]
-    n_rec_unique = np.unique(rec_pos, axis=0).shape[0]
+#     n_src_unique = np.unique(src_pos, axis=0).shape[0]
+#     n_rec_unique = np.unique(rec_pos, axis=0).shape[0]
 
-    # 3) The side with more unique positions is the scanned side
-    if n_src_unique > n_rec_unique:
-        return True  # many sources, few receivers  -> receiver-type
-    if n_rec_unique > n_src_unique:
-        return False  # many receivers, few sources -> source-type
+#     # 3) The side with more unique positions is the scanned side
+#     if n_src_unique > n_rec_unique:
+#         return True  # many sources, few receivers  -> receiver-type
+#     if n_rec_unique > n_src_unique:
+#         return False  # many receivers, few sources -> source-type
 
-    # 4) Tie-breaker: <=2 receivers almost always means ears -> receiver-type
-    if n_rec_unique <= 2:
-        return True
-    return False
+#     # 4) Tie-breaker: <=2 receivers almost always means ears -> receiver-type
+#     if n_rec_unique <= 2:
+#         return True
+#     return False
 
 
 def get_directivity_coefs_sofa(k, maxSHorder, Pmnr0, r0):
@@ -1003,11 +959,11 @@ def balloon_plot_with_slider(
         ext = os.path.splitext(current_file)[1].lower()
         if ext == ".sofa":
             # SOFA branch
-            ds = Dataset(current_file, "r")
-            try:
-                current_sofa_is_receiver = is_sofa_receiver_file(ds)
-            finally:
-                ds.close()
+            # ds = Dataset(current_file, "r")
+            # try:
+            #     current_sofa_is_receiver = is_sofa_receiver_file(ds)
+            # finally:
+            #     ds.close()
             Psh, Dir_all, freqs, r0 = sofa_to_internal(
                 current_file, ear="L", ref_dirs=ref_dirs_source
             )
