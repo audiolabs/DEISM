@@ -49,6 +49,9 @@ from scipy.special import sph_harm
 from scipy.interpolate import interp1d
 from netCDF4 import Dataset
 
+class D_v():
+    # ......
+
 # -------------------------------
 # About new features
 # -------------------------------
