@@ -5,7 +5,7 @@ Anjana
 Zeyu Xu
 """
 
-import gmsh
+# import gmsh
 import numpy as np
 from scipy.spatial import ConvexHull
 import re
