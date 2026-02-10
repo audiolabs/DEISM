@@ -142,7 +142,7 @@ class ConflictChecks:
                 print("[Warning] Source is on the boundaries or outside of the room!")
             if (
                 rec_x <= 0
-                or rec_x >= room_y
+                or rec_x >= room_x
                 or rec_y <= 0
                 or rec_y >= room_y
                 or rec_z <= 0
