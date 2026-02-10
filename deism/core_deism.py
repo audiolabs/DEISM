@@ -5560,9 +5560,6 @@ if __name__ == "__main__":
     Main entry point for testing the Dir_Visualizer class
     This replicates the functionality from test_check.py but uses the Dir_Visualizer class
     """
-    # Create the main Tk window and hide it
-    # root = tk.Tk()
-    # root.withdraw()
 
     # Try to get parameters from cmdArgsToDict if available
     params, cmdArgs = cmdArgsToDict()
