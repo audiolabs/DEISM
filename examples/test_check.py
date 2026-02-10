@@ -1,0 +1,1279 @@
+import numpy as np
+import matplotlib
+matplotlib.use("TkAgg")
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from matplotlib.widgets import Slider, Button
+from matplotlib.patches import FancyArrowPatch
+from scipy.io import loadmat
+from scipy.special import sph_harm
+from deism.core_deism import *
+from deism.data_loader import *
+import tkinter as tk
+from tkinter import filedialog, ttk
+import os
+import time
+from mpl_toolkits.mplot3d import proj3d
+from PIL import Image
+from scipy.interpolate import interp1d
+from netCDF4 import Dataset
+
+
+def sofa_to_internal(sofa_path, ear="L", ref_dirs=None):   #, target_freqs=None
+    """
+    Convert a SOFA HRTF/HRIR file to the internal (Psh, Dir_all, freqs, r0) format
+
+    Returns:
+      Psh     : (F, J) complex    # frequency x directions(F = # of frequency point, J = # of sampling points)
+      Dir_all : (J, 2) float rad  # columns: [az, inc], with inc = pi/2 - el
+      freqs   : (F,) float        # frequency axis (Hz) after optional interpolation
+      r0      : float             # reference radius (m)
+    """
+    ds = Dataset(sofa_path, "r")
+
+    # 1) directions (deg) → radians, and convert elevation→inclination
+    src = np.array(ds.variables["SourcePosition"])  # (J,3) [az_deg, el_deg, r_m]
+    az_deg, el_deg, r_m = src[:, 0], src[:, 1], src[:, 2]
+    az = np.deg2rad(az_deg)
+    inc = np.deg2rad(90.0 - el_deg)  # inc = 90° - el   
+    Dir_all = np.c_[az, inc].astype(float)
+
+    # radius: often constant in SOFA; take median as r0
+    r0 = float(np.median(r_m))
+
+    # 2) time-domain HRIR → frequency response H(f)
+    ir = np.array(ds.variables["Data.IR"])  # typical shape (J, R, N), R: # of receivers(ears), N: time samples 
+    fs = float(np.array(ds.variables["Data.SamplingRate"]).squeeze())
+    ds.close()
+
+    # choose ear (0=left, 1=right)
+    ear_idx = 0 if str(ear).upper().startswith("L") else 1
+    if ir.ndim != 3 or ir.shape[1] < 2:
+        # fallback: if dataset is mono or layout differs, just take channel 0
+        ear_idx = 0
+    J, _, N = ir.shape if ir.ndim == 3 else (ir.shape[0], 1, ir.shape[-1])
+    ir_ear = ir[:, ear_idx, :] if ir.ndim == 3 else ir # impluse response of one ear
+
+    # rFFT per direction → shape (J, F)
+    H_dirF = np.fft.rfft(ir_ear, axis=-1)  # (J, F_sofa)
+    f_sofa = np.fft.rfftfreq(N, 1 / fs)  # (F_sofa,)
+
+    # 3) arrange to (F, J)
+    H_FJ = H_dirF.T.astype(complex)  # (F_sofa, J)
+
+    # --- drop DC (0 Hz), which makes k=0 and h_n^(2)(0) singular ---
+    if f_sofa[0] == 0.0:
+        H_FJ = H_FJ[1:, :]
+        f_sofa = f_sofa[1:]
+
+    freqs = f_sofa
+
+    Psh = H_FJ  # naming aligned
+
+    if ref_dirs is not None:
+        # ref_dirs: (J_ref, 2) az/inc from source.mat (uniform sphere)
+        Dir_ref = ref_dirs.astype(float)
+        az_ref = Dir_ref[:, 0]
+        inc_ref = Dir_ref[:, 1]
+
+        az_src = Dir_all[:, 0]
+        inc_src = Dir_all[:, 1]
+
+        # convert to 3D unit vectors
+        def sph2cart(az, inc):
+            x = np.sin(inc) * np.cos(az)
+            y = np.sin(inc) * np.sin(az)
+            z = np.cos(inc)
+            return np.stack([x, y, z], axis=-1)
+
+        vec_src = sph2cart(az_src, inc_src)      # (J_sofa,3)
+        vec_ref = sph2cart(az_ref, inc_ref)      # (J_ref,3)
+
+        # great-circle distance cosine
+        dot = vec_src @ vec_ref.T                 # (J_sofa, J_ref)
+        dot = np.clip(dot, -1.0, 1.0)
+        dist = np.arccos(dot)                     # spherical distance (rad)
+
+        # choose K nearest neighbours
+        K = 8
+        idx = np.argpartition(dist, K, axis=0)[:K, :]  # (K, J_ref)
+        dist_K = dist[idx, np.arange(dist.shape[1])]
+
+        # weights = 1 / (d + eps)
+        eps = 1e-6
+        w = 1.0 / (dist_K + eps)
+        w = w / np.sum(w, axis=0, keepdims=True)  # normalize
+
+        # allocate new Psh
+        F = Psh.shape[0]
+        J_ref = Dir_ref.shape[0]
+        Psh_new = np.zeros((F, J_ref), dtype=complex)
+
+        # interpolate each freq
+        for fi in range(F):
+            P = Psh[fi]  # (J_sofa,)
+            Pn = P[idx]  # (K, J_ref)
+            # weighted average
+            Psh_new[fi] = np.sum(w * Pn, axis=0)
+
+        # replace old
+        Psh = Psh_new
+        Dir_all = Dir_ref
+
+    return Psh, Dir_all, freqs, r0
+
+
+# def is_sofa_receiver_file(sofa_obj):
+#     """
+#     Decide whether a SOFA file is *receiver-directivity* (HRTF/HRIR:
+#     fixed listener/ears, many source positions) or *source-directivity* (fixed
+#     source, many receiver positions).
+#     """
+#     # 1) Prior from Conventions
+#     conv = ""
+#         # prefer SOFAConventions (e.g., "SimpleFreeFieldHRIR")
+#     if hasattr(sofa_obj, "SOFAConventions"):
+#         conv = str(getattr(sofa_obj, "SOFAConventions")).upper()
+#     elif hasattr(sofa_obj, "Conventions"):
+#         conv = str(getattr(sofa_obj, "Conventions")).upper()
+#     if "HRIR" in conv or "HRTF" in conv:
+#         return True
+#     if "SOS" in conv or "SFS" in conv or "SRTF" in conv:
+#         return False 
+
+#     # 2) Count unique positions approximately
+#     def flatten_pos(arr):
+#         A = np.array(arr)
+#         A = A.reshape(-1, A.shape[-1])  # works for (M,3)、(R,3)、(M,R,3), ...
+#         return np.round(A.astype(float), 6)
+
+#     src_pos = flatten_pos(getattr(sofa_obj, "SourcePosition"))
+#     rec_pos = flatten_pos(getattr(sofa_obj, "ReceiverPosition"))
+
+#     n_src_unique = np.unique(src_pos, axis=0).shape[0]
+#     n_rec_unique = np.unique(rec_pos, axis=0).shape[0]
+
+#     # 3) The side with more unique positions is the scanned side
+#     if n_src_unique > n_rec_unique:
+#         return True  # many sources, few receivers  -> receiver-type
+#     if n_rec_unique > n_src_unique:
+#         return False  # many receivers, few sources -> source-type
+
+#     # 4) Tie-breaker: <=2 receivers almost always means ears -> receiver-type
+#     if n_rec_unique <= 2:
+#         return True
+#     return False
+
+
+def get_directivity_coefs_sofa(k, maxSHorder, Pmnr0, r0):
+    # Calculate source directivity coefficients C_nm^s or receiver directivity coefficients C_vu^r
+    C_nm_s = np.zeros([k.size, maxSHorder + 1, 2 * maxSHorder + 1], dtype="complex")
+    for n in range(maxSHorder + 1):
+        hn_r0_all = sphankel2(n, k * r0)
+        for m in range(-n, n + 1):
+            # The source directivity coefficients
+            C_nm_s[:, n, m] = 1j * ((-1) ** m) / k * Pmnr0[:, n, m + n] / hn_r0_all
+    return C_nm_s
+
+
+# Audiolabs color scheme
+AUDIOLABS_ORANGE = "#F15A24"
+AUDIOLABS_GRAY = "#5B6770"
+AUDIOLABS_LIGHT_GRAY = "#E6E6E6"
+AUDIOLABS_DARK_GRAY = "#333333"
+AUDIOLABS_WHITE = "#FFFFFF"
+AUDIOLABS_BLACK = "#000000"
+
+
+def configure_global_styles():
+    """Used to unify interface style"""
+
+    if not hasattr(configure_global_styles, "_called"):
+        style = ttk.Style()
+        style.theme_use("clam")
+
+        # Progressbar style
+        style.configure(
+            "Audiolabs.Horizontal.TProgressbar",
+            troughcolor=AUDIOLABS_LIGHT_GRAY,
+            background=AUDIOLABS_ORANGE,
+            bordercolor=AUDIOLABS_GRAY,
+        )
+
+        # label style
+        style.configure(
+            "TLabel",
+            background=AUDIOLABS_WHITE,
+            foreground=AUDIOLABS_BLACK,
+            font=("Arial", 10),
+        )
+
+        configure_global_styles._called = True
+
+
+def load_audiolabs_logo():
+    """Load Audiolabs logo while preserving aspect ratio"""
+    try:
+        logo_path = os.path.join("examples", "audiolabs_logo.png")
+        logo_image = Image.open(logo_path)
+
+        # Calculate original ratio of width and height
+        original_width, original_height = logo_image.size
+        aspect_ratio = original_width / original_height
+
+        # Scale by height, keeping proportions
+        new_height = 40
+        new_width = int(new_height * aspect_ratio)
+        logo_image = logo_image.resize(
+            (new_width, new_height), Image.Resampling.LANCZOS
+        )
+
+        return logo_image
+    except Exception as e:
+        print(f"Logo loading failed: {e}")
+        return Image.new("RGB", (100, 40), color=AUDIOLABS_WHITE)
+
+
+class InitializationWindow:
+    """Used to display the Progress-Window"""
+
+    def __init__(self, title="Progress"):
+        configure_global_styles()
+
+        self.root = tk.Toplevel()
+        self.root.title(title)
+        self.root.geometry("400x150")
+        self.root.configure(bg=AUDIOLABS_WHITE)
+
+        self.label = ttk.Label(
+            self.root,
+            text="",
+            font=("Arial", 12),
+            foreground=AUDIOLABS_BLACK,
+            background=AUDIOLABS_WHITE,
+        )
+        self.label.pack(pady=10)
+
+        self.progress = ttk.Progressbar(
+            self.root,
+            orient="horizontal",
+            length=300,
+            mode="determinate",
+            style="Audiolabs.Horizontal.TProgressbar",
+        )
+        self.progress.pack(pady=10)
+
+        self.status_label = ttk.Label(
+            self.root,
+            text="",
+            font=("Arial", 10),
+            foreground=AUDIOLABS_DARK_GRAY,
+            background=AUDIOLABS_WHITE,
+        )
+        self.status_label.pack(pady=5)
+
+    def update_progress(self, value, message, status=""):
+        self.progress["value"] = value
+        self.label.config(width=60, anchor="center", text=message)
+        self.status_label.config(width=60, anchor="center", text=status)
+        self.root.update_idletasks()
+        self.root.update()
+
+    def close(self):
+        self.root.destroy()
+
+
+class Arrow3D(FancyArrowPatch):
+    """Used to create 3D arrows"""
+
+    # Initialize and save 3D coordinate information
+    def __init__(self, xs, ys, zs, *args, **kwargs):
+        super().__init__((0, 0), (0, 0), *args, **kwargs)
+        self._verts3d = xs, ys, zs  # Save 3D vertex coordinates
+
+    # Convert 3D coordinates to 2D coordinates and call the parent class for drawing
+    def draw(self, renderer):
+        xs3d, ys3d, zs3d = self._verts3d
+        xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, self.axes.M)
+        self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
+        super().draw(renderer)
+
+    # Tell matplotlib the depth of the arrows so they are rendered in the correct order
+    def do_3d_projection(self, renderer=None):
+        xs3d, ys3d, zs3d = self._verts3d
+        xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, self.axes.M)
+        return zs[0]  # Returns the z value for depth ordering
+
+
+def interpolate_Cnm(freqs, Cnm_s_cache, sh_order, r0, target_freq):
+    """Used to interpolate for Cnm"""
+
+    freq_array = np.array(freqs)
+    Cnm_array = np.array(
+        [Cnm_s_cache[(i, sh_order, r0)] for i in range(len(freqs))]
+    )  # shape: (n_freq, N+1, 2N+1)
+
+    # Cubic spline interpolation; Cnm is complex, so interpolate real and imag separately
+    interp_real = interp1d(freq_array, Cnm_array.real, axis=0, kind="cubic")
+    interp_imag = interp1d(freq_array, Cnm_array.imag, axis=0, kind="cubic")
+
+    Cnm_interp = interp_real(target_freq) + 1j * interp_imag(target_freq)
+    return Cnm_interp
+
+
+def is_receiver_file(name: str) -> bool:
+    """Used to judge if the data file is receiver file"""
+    return name.endswith("_receiver.mat")
+
+
+def balloon_plot_with_slider(
+    source_dir,
+    receiver_dir,
+    sh_order=4,
+    initial_freq=500,
+    initial_r0_rec=0.5,
+    progress_window=None,
+    params=None,
+):
+    """
+    Interactive balloon plot with sliders to change frequency and r0_rec.
+
+    Parameters:
+    data_dir : str
+        Directory containing .mat files (must contain Psh, Dir_all, Freqs_mesh, r0)
+    sh_order : int
+        Spherical harmonics order
+    initial_freq : float
+        Initial frequency to display (Hz)
+    initial_r0_rec: float
+        Initial spherical radius during reconstruction
+
+    """
+    is_initial_draw = True
+    is_sofa_file = False
+    Psh_raw = None
+
+    # Show initialization window
+    progress_window.update_progress(25, "Initializing...", "Scanning files")
+    time.sleep(0.5)
+
+    # Find all source and receiver files in directory
+    abs_source_dir = os.path.abspath(source_dir)
+    abs_receiver_dir = os.path.abspath(receiver_dir)
+    abs_sofa_dir = os.path.abspath(
+        os.path.join("examples", "data", "sampled_directivity", "sofa")
+    )
+    ALLOWED_DIRS = {abs_source_dir, abs_receiver_dir, abs_sofa_dir}
+    BASE_DIR = os.path.commonpath(list(ALLOWED_DIRS))
+
+    def list_files(d, exts):
+        return [f for f in os.listdir(d) if f.lower().endswith(exts)]
+
+    source_files = [
+        f for f in list_files(abs_source_dir, (".mat",)) if f.endswith("_source.mat")
+    ]
+    receiver_files = [
+        f
+        for f in list_files(abs_receiver_dir, (".mat",))
+        if f.endswith("_receiver.mat")
+    ]
+    sofa_files = [f for f in list_files(abs_sofa_dir, (".sofa",))]
+
+    allowed_files = source_files + receiver_files + sofa_files
+
+    # basename -> full path
+    file_lookup = {}
+    for f in source_files:
+        file_lookup[f] = os.path.join(abs_source_dir, f)
+    for f in receiver_files:
+        file_lookup[f] = os.path.join(abs_receiver_dir, f)
+    for f in sofa_files:
+        file_lookup[f] = os.path.join(abs_sofa_dir, f)
+
+    if not allowed_files:
+        progress_window.close()
+        raise ValueError(f"No source/receiver files found.")
+
+    # Load first file to initialize data
+    first_name = source_files[0] if source_files else allowed_files[0]
+    initial_file = file_lookup[first_name]
+    progress_window.update_progress(
+        35, "Initializing...", f"Loading initial file: {first_name}"
+    )
+    time.sleep(0.5)
+
+    mat = loadmat(initial_file)
+    Psh = mat["Psh"]
+    Psh_raw = Psh.copy()  # keep pristine copy
+    Dir_all = mat["Dir_all"]
+    freqs = mat["freqs_mesh"].squeeze()
+    r0 = float(mat["r0"].squeeze())
+
+    # Use the first source file's directions as reference grid for SOFA interpolation
+    ref_dirs_source = Dir_all.copy()
+
+    max_sh_order = sh_order
+    k_all = 2 * np.pi * freqs / 343
+
+    current_file = initial_file
+    current_file_idx = allowed_files.index(first_name)
+    current_is_receiver = is_receiver_file(first_name)
+    S = params["pointSrcStrength"] if current_is_receiver else None
+
+    # Create figure with Audiolabs styling
+    plt.style.use("seaborn-v0_8")  # Start with a clean style    
+    fig = plt.figure(figsize=(6, 8), facecolor=AUDIOLABS_WHITE)  
+    plt.subplots_adjust(bottom=0.35, right=0.85)
+    
+    # status box
+    status_text = fig.text( 0.21, 0.02, "", ha="left", va="center", fontsize=9, color=AUDIOLABS_ORANGE, 
+                           bbox=dict(boxstyle="round", fc=AUDIOLABS_LIGHT_GRAY, ec=AUDIOLABS_ORANGE, alpha=0.8) )
+    def set_status(msg, color=AUDIOLABS_ORANGE):
+        """Display a status message at the bottom of the interface"""
+        status_text.set_text(msg)
+        status_text.set_color(color)
+        fig.canvas.draw_idle()
+
+    # Create axis for the 3D plot
+    ax_recon = fig.add_subplot(111, projection="3d")
+    ax_recon.view_init(elev=30, azim=45)  # Set the initial viewing angle
+    # Add phase legend
+    add_phase_legend(fig)
+    # Create control axes with Audiolabs styling ([left, bottom, width, height])
+    control_bg_color = AUDIOLABS_LIGHT_GRAY
+    ax_freq = plt.axes([0.2, 0.2, 0.6, 0.03], facecolor=control_bg_color)
+    ax_freq_left = plt.axes([0.812, 0.182, 0.02, 0.02], facecolor=control_bg_color)
+    ax_freq_right = plt.axes([0.832, 0.182, 0.02, 0.02], facecolor=control_bg_color)
+    ax_r0 = plt.axes([0.2, 0.15, 0.6, 0.03], facecolor=control_bg_color)
+    ax_sh = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
+    ax_browse = plt.axes([0.2, 0.25, 0.6, 0.05], facecolor=control_bg_color)
+
+    ax_freq_input = plt.axes([0.81, 0.25, 0.085, 0.03])
+    fmt = lambda f: f"{f:.1f}"
+    text_box_freq = mpl.widgets.TextBox(ax_freq_input, "", initial=fmt(initial_freq))
+    fig.text(0.895, 0.257, "Hz", fontsize=10, color=AUDIOLABS_BLACK)
+    # Display frequency range
+    fmm_text = fig.text(
+        0.81, 0.235,  # a bit under the textbox; tweak if you like
+        f"[{fmt(freqs.min())}, {fmt(freqs.max())}]",
+        fontsize=9, color=AUDIOLABS_GRAY, ha="left", va="center"
+    )
+
+    # Add checkbox for receiver directivity normalization
+    ax_norm = plt.axes([0.2, 0.04, 0.31, 0.035], facecolor=AUDIOLABS_LIGHT_GRAY)
+    norm_checkbox = mpl.widgets.CheckButtons(
+        ax_norm, ["Normalize Receiver"], [bool(params.get("ifReceiverNormalize", 0))]
+    )  
+    # Add checkbox for the reciprocal relation 
+    ax_recip = plt.axes([0.53, 0.04, 0.20, 0.035], facecolor=AUDIOLABS_LIGHT_GRAY)
+    recip_checkbox = mpl.widgets.CheckButtons(
+        ax_recip, ["Reciprocity"], [bool(params.get("ifReciprocal", 0))]
+    )
+
+    # Make sure artists have valid positions
+    fig.canvas.draw()  # important before reading bbox
+
+    # Move the label text left/right in the checkbox axes (0..1 coordinates)
+    LABEL_X = 0.18  
+    for txt in norm_checkbox.labels:
+        # ensure we place in axes coordinates (not data)
+        txt.set_transform(ax_norm.transAxes)
+        x_old, y_old = txt.get_position()
+        txt.set_position((LABEL_X, y_old))
+        txt.set_ha("left")
+        txt.set_va("center")
+        txt.set_clip_on(False)
+
+    for txt in recip_checkbox.labels:
+        txt.set_transform(ax_recip.transAxes)
+        x_old, y_old = txt.get_position()
+        txt.set_position((LABEL_X, y_old))
+        txt.set_ha("left")
+        txt.set_va("center")
+        txt.set_clip_on(False)
+    
+    ax_help = plt.axes([0.475, 0.055, 0.005, 0.005])
+    ax_help2 = plt.axes([0.7, 0.055, 0.005, 0.005])
+    ax_help.axis("off")  # makes the axes just a blank container
+    ax_help2.axis("off")
+    ax_help.text(
+        0.5,
+        0.5,
+        "?",
+        ha="center",
+        va="center",
+        fontsize=10,
+        bbox=dict(boxstyle="circle", facecolor=AUDIOLABS_DARK_GRAY, alpha=0.8),
+        color="white",
+    )
+    ax_help2.text(
+        0.5,
+        0.5,
+        "?",
+        ha="center",
+        va="center",
+        fontsize=10,
+        bbox=dict(boxstyle="circle", facecolor=AUDIOLABS_DARK_GRAY, alpha=0.8),
+        color="white",
+    )
+    tooltip = ax_help.annotate(
+        "Normalize Receiver:\nDivide receiver Psh by point-source strength S(f)\n"
+        "Only for FEM-based receiver data; ignored for SOFA.\n"
+        "'x' means normalization",
+        xy=(0.5, 0.5),  # center of the ? symbol
+        xycoords="axes fraction",  # important: relative to ax_help
+        xytext=(20, 20),
+        textcoords="offset points",
+        ha="left",
+        va="bottom",
+        bbox=dict(boxstyle="round", fc="w", ec=AUDIOLABS_GRAY, alpha=0.95),
+        arrowprops=dict(arrowstyle="->", color=AUDIOLABS_GRAY),
+        visible=False,
+    )
+    tooltip2 = ax_help2.annotate(
+        "Reciprocity:\n"
+        "Toggle using the reciprocal relation\n"
+        "for computing the directivity coefficients.\n"
+        "Affects all file types.",
+        xy=(0.5, 0.5),  # center of the ? symbol
+        xycoords="axes fraction",  # important: relative to ax_help
+        xytext=(20, 20),
+        textcoords="offset points",
+        ha="left",
+        va="bottom",
+        bbox=dict(boxstyle="round", fc="w", ec=AUDIOLABS_GRAY, alpha=0.95),
+        arrowprops=dict(arrowstyle="->", color=AUDIOLABS_GRAY),
+        visible=False,
+    )
+    
+    def on_move(event):
+        if event.inaxes is ax_help:
+            tooltip.set_visible(True)
+        else:
+            tooltip.set_visible(False)
+
+        if event.inaxes is ax_help2:
+            tooltip2.set_visible(True)
+        else:
+            tooltip2.set_visible(False)
+        
+        event.canvas.draw_idle()
+
+    fig.canvas.mpl_connect("motion_notify_event", on_move)
+
+    def compute_and_store_cnm(freq_idx, order, Psh_use):
+        """
+            Depending on the switch selection, determine whether to apply the reciprocal relation.
+            Regardless of file type (SOFA/MAT, source/receiver)
+            Compute Pnm and Cnm
+        """
+
+        full_Pnm_cache[(freq_idx, order)] = SHCs_from_pressure_LS(
+            Psh_use.reshape(1, -1), Dir_all, order, np.array([freqs[freq_idx]])
+        )
+        k = k_all[freq_idx]
+
+        if params.get("ifReciprocal", 0):
+            Cnm_s_cache[(freq_idx, order, r0)] = get_directivity_coefs_sofa(
+                k, order, full_Pnm_cache[(freq_idx, order)], r0
+            )
+        else:
+            Cnm_s_cache[(freq_idx, order, r0)] = get_directivity_coefs(
+                k, order, full_Pnm_cache[(freq_idx, order)], r0
+            )
+
+    def toggle_recip(label):
+        """Toggle reciprocal relation：effective for all file types; rebuilding Cnm_s_cache upon toggling"""
+        nonlocal full_Pnm_cache, Cnm_s_cache
+
+        params["ifReciprocal"] = 1 - params.get("ifReciprocal", 0)
+
+        win = InitializationWindow("Applying reciprocal relation..." if params["ifReciprocal"]
+                                else "Removing reciprocal relation...")
+        win.update_progress(0, "Rebuilding caches...", "")
+
+        full_Pnm_cache.clear()
+        Cnm_s_cache.clear()
+
+        for freq_idx in range(len(freqs)):
+            
+            Psh_use = Psh[freq_idx]
+
+            compute_and_store_cnm(freq_idx, sh_order, Psh_use)
+
+            win.update_progress(
+                5 + 90 * (freq_idx + 1) / len(freqs),
+                f"Rebuilding at {freqs[freq_idx]:.0f} Hz",
+                "computing Psh, Pnm & Cnm",
+            )
+
+        win.update_progress(100, "Done!", "")
+        time.sleep(0.2); win.close()
+        update(None)
+        set_status("Reciprocal relation: ON" if params["ifReciprocal"] else "Reciprocal relation: OFF")
+
+    recip_checkbox.on_clicked(toggle_recip)
+
+
+    def toggle_normalize(label):
+        """Used to judge if Psh should be normalized"""
+        nonlocal Psh, full_Pnm_cache, Cnm_s_cache, is_sofa_file
+
+        if is_sofa_file:
+            fig.canvas.draw_idle()
+            return
+
+        # Flip flag
+        params["ifReceiverNormalize"] = 1 - params.get("ifReceiverNormalize", 0)
+
+        # Only meaningful for receiver files
+        if not current_is_receiver:
+            fig.canvas.draw_idle()
+            return
+
+        # Progress Bar
+        if params["ifReceiverNormalize"]:
+            win = InitializationWindow("Normalizing receiver…")
+        else:
+            win = InitializationWindow("Denormalizing receiver…")
+        win.update_progress(0, "Starting...", "")
+
+        # Rebuild caches from pristine Psh_raw to avoid double-dividing
+        Psh = Psh_raw.copy()
+
+        # Handle S as scalar or per-frequency array
+        S_val = params.get("pointSrcStrength", 1.0)
+        S_arr = np.array(S_val).squeeze()
+
+        full_Pnm_cache.clear()
+        Cnm_s_cache.clear()
+
+        for freq_idx in range(len(freqs)):
+            # Apply normalization only if flag is ON
+            if params.get("ifReceiverNormalize", 0):
+                if S_arr.ndim == 0:
+                    Psh_use = Psh[freq_idx] / S_arr
+                else:
+                    Psh_use = Psh[freq_idx] / S_arr[freq_idx]
+            else:
+                Psh_use = Psh[freq_idx]
+
+            compute_and_store_cnm(freq_idx, sh_order, Psh_use)
+
+            win.update_progress(
+                5 + 90 * (freq_idx + 1) / len(freqs),
+                f"Rebuilding at {freqs[freq_idx]:.0f} Hz",
+                "computing Psh, Pnm & Cnm",
+            )
+
+        win.update_progress(100, "Recomputation Complete!", "")
+        time.sleep(0.3)
+        win.close()
+
+        update(None)  # now the redraw uses the rebuilt caches
+
+        if params.get("ifReceiverNormalize", 0):
+            set_status("Receiver normalization.")
+        else:
+            set_status("Receiver denormalization.")
+
+
+    norm_checkbox.on_clicked(toggle_normalize)
+
+    # When enter a number in the input box and press Enter, this callback function is called
+    def on_text_submit(text):
+        try:
+            val = float(text)
+            fmin = float(freqs.min())
+            fmax = float(freqs.max())
+            if fmin <= val <= fmax:
+                freq_slider.set_val(val)  # trigger update()
+                set_status(f"Frequency set to {val:.1f} Hz")
+            else:
+                set_status(f"Out of range: [{fmin:.1f}, {fmax:.1f}] Hz", color="crimson")
+                # Write back to the nearest boundary, providing immediate feedback
+                text_box_freq.set_val(f"{np.clip(val, fmin, fmax):.1f}")
+        except Exception:
+            set_status("Please input a valid number for frequency.", color="crimson")
+
+    text_box_freq.on_submit(on_text_submit)
+
+    # Resolution for the plots
+    res = 50
+    # Construct a spherical angle grid (azimuth and elevation) to prepare sampling points for drawing
+    az = np.linspace(0, 2 * np.pi, 2 * res + 1)  # 2*res evenly spaced samples
+    el = np.linspace(0, np.pi, res)
+    az_m, el_m = np.meshgrid(az, el)  # az_m:(res, 2*res+1), el_m:(res, 2*res+1)
+    # Expand the spherical angles into an array of angles (n_pts, 2), with each row containing one [φ, θ]
+    # [phi, theta] each row represents point on the sphere, (res)*(2*res+1) points in total
+    dirs = np.stack([az_m.ravel(), el_m.ravel()], axis=1)
+
+    # precomputation of Ynm, hn, Pnm and Cnm
+    start_step = time.perf_counter()
+    Ynm_cache = {}
+    for n in range(sh_order + 1):
+        for m in range(-n, n + 1):
+            Ynm_cache[(n, m)] = sph_harm(m, n, dirs[:, 0], dirs[:, 1])
+    ynm_max_order = sh_order
+    elapsed_step = time.perf_counter() - start_step
+    progress_window.update_progress(45, "Precomputing Ynm...", f"{elapsed_step:.3f} s")
+    time.sleep(0.5)
+
+    start_step = time.perf_counter()
+    hn_cache = {}
+    kr_values = [
+        k_all[i] * r for i in range(len(freqs)) for r in np.arange(r0, 2.0 + 0.001, 0.1)
+    ]  # range of rec_r0 : r0 to 2.0, step 0.1
+    kr_values = list(set([round(v, 6) for v in kr_values]))
+    for n in range(sh_order + 1):
+        for kr in kr_values:
+            hn_cache[(n, kr)] = sphankel2(n, kr)
+    elapsed_step = time.perf_counter() - start_step
+    progress_window.update_progress(55, "Precomputing hn...", f"{elapsed_step:.3f} s")
+    time.sleep(0.5)
+
+    full_Pnm_cache = {}  # {(freq_idx, sh_order): full_Pnm}
+    Cnm_s_cache = {}  # {(freq_idx, sh_order, r0): Cnm_s}
+    for freq_idx in range(len(freqs)):
+        start_step = time.perf_counter()
+
+        if current_is_receiver and params.get("ifReceiverNormalize", 0):
+            S_val = params.get("pointSrcStrength", 1.0)
+            S_arr = np.array(S_val).squeeze()
+            if S_arr.ndim == 0:
+                Psh_use = Psh_raw[freq_idx] / S_arr
+            else:
+                Psh_use = Psh_raw[freq_idx] / S_arr[freq_idx]
+        else:
+            Psh_use = Psh_raw[freq_idx]
+
+        compute_and_store_cnm(freq_idx, sh_order, Psh_use)
+
+        elapsed_step = time.perf_counter() - start_step
+        progress_window.update_progress(
+            65 + freq_idx / len(freqs) * 30,
+            f"Precomputing Pnm & Cnm: freq {freqs[freq_idx]:.1f} Hz...",
+            f"{elapsed_step:.3f} s",
+        )
+
+    # Close initialization window when done
+    progress_window.update_progress(
+        100, "Precomputation complete!", "Initialization complete!"
+    )
+    time.sleep(0.5)
+    progress_window.close()
+
+    set_status(f"Frequency range: {fmt(freqs.min())}–{fmt(freqs.max())} Hz")
+
+    def browse_file(event):
+        # Create the Tkinter root window object
+        root = tk.Tk()
+        root.withdraw()
+        # macOS compatible
+        root.lift()
+        root.focus_force()
+
+        try:
+            # Open the file selection dialog box and configure the parameters:
+            file_path = filedialog.askopenfilename(
+                # parent=root,
+                initialdir=BASE_DIR,
+                title="Select MAT/SOFA file",
+                filetypes=[
+                    ("MAT/SOFA files", "*.mat *.sofa"),
+                    ("MAT files", "*.mat"),
+                    ("SOFA files", "*.sofa"),
+                ],
+            )
+            if file_path:
+                # Normalized path format
+                selected_dir = os.path.normpath(os.path.dirname(file_path))
+
+                # Verify that the selected file is in the specified directory
+                if selected_dir not in ALLOWED_DIRS:
+                    print("Please select a file under one of these directories:")
+                    print(" -", abs_source_dir)
+                    print(" -", abs_receiver_dir)
+                    return
+
+                # Extract the pure file name (without path)
+                filename = os.path.basename(file_path)
+                # Check if the file is in the list of allowed files
+                if filename in allowed_files:
+                    file_idx = allowed_files.index(filename)
+                    load_file(file_idx)
+                else:
+                    print(f"Invalid file: {filename}")
+        finally:
+            # Destroy Tkinter window object to avoid memory leak
+            root.destroy()
+
+    def on_freq_left(event):
+        new_val = freq_slider.val - 2
+        if new_val >= freq_slider.valmin:
+            freq_slider.set_val(new_val)
+
+    def on_freq_right(event):
+        new_val = freq_slider.val + 2
+        if new_val <= freq_slider.valmax:
+            freq_slider.set_val(new_val)
+
+    # Create buttons with Audiolabs styling
+    btn_browse = Button(
+        ax=ax_browse,
+        label=f"Current: {os.path.basename(current_file)}",
+        color=AUDIOLABS_LIGHT_GRAY,
+        hovercolor=AUDIOLABS_ORANGE,
+    )
+    btn_browse.on_clicked(browse_file)
+
+    # update displayed text (on mouse hover)
+    def on_hover(event):
+        if ax_browse.contains(event)[0]:
+            ax_browse.patch.set_facecolor(AUDIOLABS_ORANGE)
+            btn_browse.label.set_text("Browse...")
+        else:
+            ax_browse.patch.set_facecolor(AUDIOLABS_LIGHT_GRAY)
+            btn_browse.label.set_text(f"Current: {os.path.basename(current_file)}")
+        ax_browse.figure.canvas.draw_idle()
+
+    # Listening for mouse movement events
+    btn_browse.ax.figure.canvas.mpl_connect("motion_notify_event", on_hover)
+
+    btn_freq_left = Button(
+        ax_freq_left, label="<", color=AUDIOLABS_GRAY, hovercolor=AUDIOLABS_ORANGE
+    )
+    btn_freq_right = Button(
+        ax_freq_right, label=">", color=AUDIOLABS_GRAY, hovercolor=AUDIOLABS_ORANGE
+    )
+    btn_freq_left.on_clicked(on_freq_left)
+    btn_freq_right.on_clicked(on_freq_right)
+
+    # Create sliders with Audiolabs styling
+    slider_params = {
+        "facecolor": AUDIOLABS_ORANGE,
+        "track_color": AUDIOLABS_LIGHT_GRAY,
+        "edgecolor": AUDIOLABS_GRAY,
+        "alpha": 0.8,
+    }
+
+    freq_slider = Slider(
+        ax=ax_freq,
+        label="",
+        valmin=freqs.min(),
+        valmax=freqs.max(),
+        valinit=initial_freq,
+        valstep=2,
+        **slider_params,
+    )
+    fig.text(
+        0.2,
+        0.197,
+        "Frequency (Hz)",
+        ha="left",
+        va="top",
+        fontsize=10,
+        color=AUDIOLABS_BLACK,
+    )
+
+    r0_slider = Slider(
+        ax=ax_r0,
+        label="",
+        valmin=r0,
+        valmax=2.0,
+        valinit=max(r0, initial_r0_rec),
+        valstep=0.1,
+        **slider_params,
+    )
+    fig.text(
+        0.2,
+        0.147,
+        "Reconstruction Radius (m)",
+        ha="left",
+        va="top",
+        fontsize=10,
+        color=AUDIOLABS_BLACK,
+    )
+
+    sh_slider = Slider(
+        ax=ax_sh,
+        label="",
+        valmin=0,
+        valmax=max_sh_order,
+        valinit=sh_order,
+        valstep=1,
+        **slider_params,
+    )
+    fig.text(
+        0.2,
+        0.097,
+        "Spherical Harmonics Order",
+        ha="left",
+        va="top",
+        fontsize=10,
+        color=AUDIOLABS_BLACK,
+    )
+
+    # Add Audiolabs logo to the figure
+    try:
+        logo_img = load_audiolabs_logo()
+        logo_width, logo_height = logo_img.size
+        logo_display_height = 0.06
+        logo_display_width = logo_display_height * (logo_width / logo_height)
+
+        logo_ax = fig.add_axes([0.02, 0.85, logo_display_width, logo_display_height])
+        logo_ax.imshow(logo_img)
+        logo_ax.axis("off")
+    except Exception as e:
+        print(f"Could not load logo: {e}")
+
+    def load_file(file_idx):
+        nonlocal current_file, current_file_idx, r0, freqs, k_all, Psh, Dir_all, hn_cache, Ynm_cache, full_Pnm_cache
+        nonlocal Cnm_s_cache, current_is_receiver, S, Psh_raw, is_initial_draw, max_sh_order, ynm_max_order, is_sofa_file
+
+        current_file = file_lookup[allowed_files[file_idx]]
+        current_file_idx = file_idx
+        is_sofa_file = os.path.splitext(current_file)[1].lower() == ".sofa"
+        is_initial_draw = True
+        current_sofa_is_receiver = False
+
+        # Create progress window
+        progress_win = InitializationWindow("Loading File Progress")
+        progress_win.update_progress(
+            0, "Starting...", f"Loading new file: {allowed_files[file_idx]}"
+        )
+        time.sleep(0.5)
+
+        # Clear old cache
+        full_Pnm_cache.clear()
+        Cnm_s_cache.clear()
+
+        # load new datas
+        ext = os.path.splitext(current_file)[1].lower()
+        if ext == ".sofa":
+            # SOFA branch
+            # ds = Dataset(current_file, "r")
+            # try:
+            #     current_sofa_is_receiver = is_sofa_receiver_file(ds)
+            # finally:
+            #     ds.close()
+            Psh, Dir_all, freqs, r0 = sofa_to_internal(
+                current_file, ear="L", ref_dirs=ref_dirs_source
+            )
+            Psh_raw = Psh.copy()
+            k_all = 2 * np.pi * freqs / 343.0
+            current_is_receiver = True
+            params["ifReceiverNormalize"] = 0
+
+            max_sh_order = 6
+
+            # update cap of sh_slider
+            sh_slider.valmax = max_sh_order
+            sh_slider.ax.set_xlim(0, max_sh_order)
+            if sh_slider.val > max_sh_order:
+                sh_slider.set_val(max_sh_order)
+
+            # recalculate hn function
+            hn_cache.clear()
+            kr_values = [
+                (k_all[i]) * r
+                for i in range(len(freqs))
+                for r in np.arange(r0, 2.0 + 1e-6, 0.1)
+            ]
+            kr_values = list(set([round(v, 6) for v in kr_values]))
+            for n in range(max_sh_order + 1):
+                for kr in kr_values:
+                    hn_cache[(n, kr)] = sphankel2(n, kr)
+
+            if max_sh_order > ynm_max_order:
+                # Only fill in the new order to avoid repeated calculations
+                for n in range(ynm_max_order + 1, max_sh_order + 1):
+                    for m in range(-n, n + 1):
+                        Ynm_cache[(n, m)] = sph_harm(m, n, dirs[:, 0], dirs[:, 1])
+                ynm_max_order = max_sh_order
+        else:
+            # MAT branch
+            mat = loadmat(current_file)
+            Psh = mat["Psh"]
+            Psh_raw = Psh.copy()
+            Dir_all = mat["Dir_all"]
+            freqs = mat["freqs_mesh"].squeeze()
+            r0 = float(mat["r0"].squeeze())
+            k_all = 2 * np.pi * freqs / 343.0
+            current_is_receiver = is_receiver_file(allowed_files[file_idx])
+            S = params["pointSrcStrength"] if current_is_receiver else None
+
+        # precomputation of Psh and Cnm_s
+        for freq_idx in range(len(freqs)):
+            start_step = time.perf_counter()
+            if current_is_receiver and params.get("ifReceiverNormalize", 0):
+                S_val = params.get("pointSrcStrength", 1.0)
+                S_arr = np.array(S_val).squeeze()
+                if S_arr.ndim == 0:
+                    Psh_use = Psh_raw[freq_idx] / S_arr
+                else:
+                    Psh_use = Psh_raw[freq_idx] / S_arr[freq_idx]
+            else:
+                Psh_use = Psh_raw[freq_idx]
+
+            compute_and_store_cnm(freq_idx, sh_order, Psh_use)
+
+            elapsed_step = time.perf_counter() - start_step
+            progress_win.update_progress(
+                35 + freq_idx / len(freqs) * 60,
+                f"Precomputing Pnm & Cnm: freq {freqs[freq_idx]:.1f} Hz...",
+                f"{elapsed_step:.3f} s",
+            )
+
+        progress_win.update_progress(
+            95,
+            "Updating parameters on the interface...",
+            "updating sliders and buttons",
+        )
+        # Update frequency slider
+        freq_slider.valmin = freqs.min()
+        freq_slider.valmax = freqs.max()
+        freq_slider.ax.set_xlim(freqs.min(), freqs.max())
+        fmm_text.set_text(f"[{fmt(freqs.min())}, {fmt(freqs.max())}]")
+        set_status(f"Frequency range: {fmt(freqs.min())}–{fmt(freqs.max())} Hz")
+        # Set to middle frequency
+        freq_slider.set_val(freqs[len(freqs) // 2])
+        # Update r0 slider
+        r0_slider.set_val(max(r0, initial_r0_rec))
+        # Update button label
+        btn_browse.label.set_text(f"Current: {os.path.basename(current_file)}")
+        time.sleep(0.5)
+
+        progress_win.update_progress(100, "Ready!", "File loading complete!")
+        time.sleep(0.5)
+        progress_win.close()
+
+        update(None)
+
+    def update(val):
+        nonlocal is_initial_draw
+
+        if current_file is None:
+            return
+
+        # get current freq, r0 and sh_order
+        freq = freq_slider.val
+        r0_rec = r0_slider.val
+        current_sh_order = int(sh_slider.val)
+
+        freq_idx = np.argmin(np.abs(freqs - freq))
+
+        # Clear previous plot
+        ax_recon.cla()
+
+        if is_initial_draw:
+            # get Cnm_s from Cnm_s_cache
+            Cnm_s = Cnm_s_cache[(freq_idx, max_sh_order, r0)][
+                :, : current_sh_order + 1, :
+            ]
+        else:
+            # get Cnm_s with interpolation, (1, sh_order + 1, 2 * sh_order + 1)
+            Cnm_s = interpolate_Cnm(freqs, Cnm_s_cache, max_sh_order, r0, freq)
+            Cnm_s = Cnm_s[:, : current_sh_order + 1, :]
+
+        # Reconstruct with current r0_rec
+        # Recalculate the new Pnm using r0_rec according to formula: Pnm = Cnm_s * hn_r0
+        Pnm_rec = np.zeros(
+            (1, current_sh_order + 1, 2 * current_sh_order + 1), dtype=complex
+        )
+        k = k_all[freq_idx]
+
+        with np.errstate(invalid="raise", divide="raise", over="raise"):
+            try:
+                for n in range(current_sh_order + 1):
+                    _key = (int(n), round(float(k * r0_rec), 6))
+                    hn_r0_rec = hn_cache.get(_key)
+                    if hn_r0_rec is None:
+                        hn_r0_rec = sphankel2(int(n), float(_key[1]))
+                        hn_cache[_key] = hn_r0_rec
+                    for m in range(-n, n + 1):
+                        Pnm_rec[:, n, m + n] = Cnm_s[:, n, m] * hn_r0_rec
+            except FloatingPointError:
+                set_status("Numerical instability at current (frequency, radius, order). Try lower order or larger radius.", color="crimson")
+                ax_recon.cla()
+                fig.canvas.draw_idle()
+                return
+
+        # Plot reconstructed
+        plot_balloon_rec(
+            ax_recon,
+            current_sh_order,
+            Pnm_rec[0],
+            dirs,
+            az_m,
+            el_m,
+            f"Reconstructed balloon plot",
+            Ynm_cache,
+        )
+
+        # Request to refresh the images when the GUI is idle to improve interaction efficiency
+        fig.canvas.draw_idle()
+        # Synchronize text box value
+        text_box_freq.set_val(fmt(freq))
+
+        is_initial_draw = False
+
+    # Connect events
+    freq_slider.on_changed(update)
+    r0_slider.on_changed(update)
+    sh_slider.on_changed(update)
+
+    # Draw initial plot
+    update(None)
+
+    plt.show()
+
+
+def add_phase_legend(fig):
+    """Add phase colorbar legend to the figure"""
+    # Create a colormap object representing the HSV hue mapping
+    cmap = plt.get_cmap("twilight")
+
+    # Create a new axis to display the color bar
+    cbar_ax = fig.add_axes([0.85, 0.3, 0.02, 0.6])
+    norm = mpl.colors.Normalize(vmin=-np.pi, vmax=np.pi)
+    cb = mpl.colorbar.ColorbarBase(
+        cbar_ax, cmap=cmap, norm=norm, orientation="vertical"
+    )
+
+    cb.set_label("Phase (radians)", color=AUDIOLABS_BLACK)
+    cb.set_ticks([-np.pi, -np.pi / 2, 0, np.pi / 2, np.pi])
+    cb.set_ticklabels(["-π", "-π/2", "0", "π/2", "π"])
+
+    # Set colorbar styling
+    cbar_ax.tick_params(colors=AUDIOLABS_BLACK)
+    cbar_ax.yaxis.label.set_color(AUDIOLABS_BLACK)
+    cbar_ax.spines["top"].set_color(AUDIOLABS_GRAY)
+    cbar_ax.spines["bottom"].set_color(AUDIOLABS_GRAY)
+    cbar_ax.spines["left"].set_color(AUDIOLABS_GRAY)
+    cbar_ax.spines["right"].set_color(AUDIOLABS_GRAY)
+
+
+def plot_balloon_rec(ax, order, Pnm, dirs, az_m, el_m, title, Ynm_cache):
+    """plot a reconstructed balloon plot with Audiolabs styling"""
+    # Initialize the direction response vector D
+    D = np.zeros(dirs.shape[0], dtype=complex)
+
+    # Iterate over each degree and order n, m; compute Ynm spherical harmonics function; Weight it using the SHCs; Obtain the directional response D (sound field) for all directions
+    for n in range(order + 1):
+        for m in range(-n, n + 1):
+            Ynm = Ynm_cache[(n, m)]
+            D += Pnm[n, m + n] * Ynm  # size = (res)*(2*res+1)
+
+    # Magnitude
+    D_abs = np.abs(D)
+    # (elevation, azimuth), D_abs is one-dimensional, reshape to 2D (res, 2*res+1)
+    D_plot = D_abs.reshape(el_m.shape)
+    # Phase (in radians, unwrapped), the range of np.angle(D) is [-π, π]
+    D_phase = np.angle(D)
+    D_phase_plot = D_phase.reshape(el_m.shape)
+
+    # Amplitude and phase normalized to [0,1]
+    maxval = D_plot.max()
+    if maxval < 1e-12:  # zero guard to avoid 0/0 → NaN
+        maxval = 1.0
+    norm_amp = D_plot / maxval
+    norm_phase = (D_phase_plot + np.pi) / (2 * np.pi)
+
+    # Spherical coordinates -> Cartesian coordinates
+    x = norm_amp * np.sin(el_m) * np.cos(az_m)
+    y = norm_amp * np.sin(el_m) * np.sin(az_m)
+    z = norm_amp * np.cos(el_m)
+
+    # color mapping
+    cmap = plt.get_cmap("twilight")
+    colors = cmap(norm_phase)
+
+    # Plot; Set the tick range and labels
+    lim = 1
+    ax.set_xlim([-lim, lim])
+    ax.set_ylim([-lim, lim])
+    ax.set_zlim([-lim, lim])
+    ticks = np.linspace(-lim, lim, 3)
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+    ax.set_zticks(ticks)
+
+    ax.set_xlabel("X", color=AUDIOLABS_BLACK)
+    ax.set_ylabel("Y", color=AUDIOLABS_BLACK)
+    ax.set_zlabel("Z", color=AUDIOLABS_BLACK)
+
+    ax.set_facecolor(AUDIOLABS_WHITE)
+    for pane in [ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane]:
+        pane.set_facecolor(AUDIOLABS_LIGHT_GRAY)
+        pane.set_edgecolor(AUDIOLABS_GRAY)
+
+    ax.plot_surface(
+        x,
+        y,
+        z,
+        facecolors=colors,
+        rstride=1,
+        cstride=1,
+        linewidth=0,
+        antialiased=True,
+        alpha=0.95,
+    )
+    ax.set_title(title, fontsize=10, color=AUDIOLABS_BLACK)
+    ax.set_box_aspect([1, 1, 1])
+
+    # Add axes indicators
+    arrow_len = 1.2
+    for vec, label in zip(
+        [(arrow_len, 0, 0), (0, arrow_len, 0), (0, 0, arrow_len)], ["x", "y", "z"]
+    ):
+        arrow = Arrow3D(
+            [0, vec[0]],
+            [0, vec[1]],
+            [0, vec[2]],
+            mutation_scale=20,
+            lw=2,
+            arrowstyle="-|>",
+            color=AUDIOLABS_GRAY,
+        )
+        ax.add_artist(arrow)
+        ax.text(
+            vec[0] * 1.05,
+            vec[1] * 1.05,
+            vec[2] * 1.05,
+            label,
+            color=AUDIOLABS_BLACK,
+            fontsize=12,
+        )
+
+    # Use orthographic projection
+    ax.set_proj_type("ortho")
+
+
+if __name__ == "__main__":
+    # Create the main Tk window and hide it
+    root = tk.Tk()
+    root.withdraw()
+
+    params, cmdArgs = cmdArgsToDict()
+
+    # Create progress window
+    init_window = InitializationWindow("Initialization Progress")
+    init_window.update_progress(
+        0, "Starting initialization...", "configure global styles"
+    )
+    time.sleep(0.5)
+
+    configure_global_styles()
+
+    balloon_plot_with_slider(
+        source_dir=os.path.join("examples", "data", "sampled_directivity", "source"),
+        receiver_dir=os.path.join(
+            "examples", "data", "sampled_directivity", "receiver"
+        ),
+        sh_order=6,
+        initial_freq=500,
+        initial_r0_rec=0.6,
+        progress_window=init_window,
+        params=params,
+    )
