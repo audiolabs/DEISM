@@ -1064,7 +1064,7 @@ def cmdArgsToDict(mode="RTF", roomtype="shoebox"):
     # replace the corresponding variables in configsInYaml with the values entered from the command line
     params = loadSingleParam(configsInYaml, cmdArgs, mode, roomtype)
     # Compute the rest of the parameters
-    # params = compute_rest_params(params)
+    params = compute_rest_params(params)
 
     return params, cmdArgs
 
