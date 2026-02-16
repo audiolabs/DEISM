@@ -691,7 +691,7 @@ class DEISM:
                 p = self.apply_highpass_filter(
                     p, self.params["sampleRate"], cut_freq, zero_phase
                 )
-            p = p / np.max(np.abs(p))
+            # p = p / np.max(np.abs(p))
             # Adjust rir length using the RIRLength parameter (truncate after IFFT)
             nSamples = int(self.params["RIRLength"] * self.params["sampleRate"])
             if len(p) < nSamples:
