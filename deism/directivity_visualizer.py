@@ -329,14 +329,112 @@ class Dir_Visualizer:
         """Check if the data file is a receiver file"""
         return name.endswith("_receiver.mat")
 
+    def _point_src_strength_array(self):
+        """Return `pointSrcStrength` as a squeezed numpy array (scalar or 1D)."""
+        S_val = self.params.get("pointSrcStrength", 1.0)
+        return np.array(S_val).squeeze()
+
+    def _psh_use_for_freq(self, freq_idx: int):
+        """
+        Return the pressure field used for SH fitting at `freq_idx`.
+
+        - Uses pristine `self.Psh_raw`
+        - Applies receiver normalization when enabled (ignored for SOFA)
+        """
+        if self.Psh_raw is None:
+            raise ValueError("Psh_raw is not initialized.")
+
+        if self.is_sofa_file:
+            return self.Psh_raw[freq_idx]
+
+        if self.current_is_receiver and self.params.get("ifReceiverNormalize", 0):
+            S_arr = self._point_src_strength_array()
+            if S_arr.ndim == 0:
+                return self.Psh_raw[freq_idx] / S_arr
+            return self.Psh_raw[freq_idx] / S_arr[freq_idx]
+
+        return self.Psh_raw[freq_idx]
+
+    def _rebuild_directivity_caches(
+        self,
+        order: int,
+        progress_window=None,
+        progress_start: float = 0.0,
+        progress_span: float = 100.0,
+        message_prefix: str = "Precomputing Pnm & Cnm",
+    ):
+        """(Re)compute `full_Pnm_cache` and `Cnm_s_cache` for all frequencies."""
+        self.full_Pnm_cache.clear()
+        self.Cnm_s_cache.clear()
+
+        n_freq = len(self.freqs)
+        for freq_idx in range(n_freq):
+            start_step = time.perf_counter()
+            Psh_use = self._psh_use_for_freq(freq_idx)
+            self._compute_and_store_cnm(freq_idx, order, Psh_use)
+
+            if progress_window is not None:
+                elapsed_step = time.perf_counter() - start_step
+                progress_window.update_progress(
+                    progress_start + (freq_idx + 1) / n_freq * progress_span,
+                    f"{message_prefix}: {self.freqs[freq_idx]:.1f} Hz...",
+                    f"{elapsed_step:.3f} s",
+                )
+
+    @staticmethod
+    def _list_files(directory, exts):
+        return [f for f in os.listdir(directory) if f.lower().endswith(exts)]
+
+    def _discover_allowed_files(self, source_dir, receiver_dir):
+        """
+        Discover available MAT (source/receiver) and SOFA files and build a basename->path lookup.
+
+        Returns:
+            allowed_files: list[str]
+            file_lookup: dict[str,str]
+            first_name: str
+        """
+        abs_source_dir = os.path.abspath(source_dir)
+        abs_receiver_dir = os.path.abspath(receiver_dir)
+        abs_sofa_dir = os.path.abspath(
+            os.path.join("examples", "data", "sampled_directivity", "sofa")
+        )
+
+        source_files = [
+            f
+            for f in self._list_files(abs_source_dir, (".mat",))
+            if f.endswith("_source.mat")
+        ]
+        receiver_files = [
+            f
+            for f in self._list_files(abs_receiver_dir, (".mat",))
+            if f.endswith("_receiver.mat")
+        ]
+        sofa_files = [f for f in self._list_files(abs_sofa_dir, (".sofa",))]
+
+        allowed_files = source_files + receiver_files + sofa_files
+        if not allowed_files:
+            raise ValueError("No source/receiver/SOFA files found.")
+
+        file_lookup = {}
+        for f in source_files:
+            file_lookup[f] = os.path.join(abs_source_dir, f)
+        for f in receiver_files:
+            file_lookup[f] = os.path.join(abs_receiver_dir, f)
+        for f in sofa_files:
+            file_lookup[f] = os.path.join(abs_sofa_dir, f)
+
+        # Prefer MAT on first load (so we always have a reference grid for later SOFA interpolation)
+        first_name = (source_files or receiver_files or sofa_files)[0]
+        return allowed_files, file_lookup, first_name
+
     def balloon_plot_with_slider(
         self,
-        source_dir,
-        receiver_dir,
-        sh_order=4,
+        source_dir=os.path.join("examples", "data", "sampled_directivity", "source"),
+        receiver_dir=os.path.join("examples", "data", "sampled_directivity", "receiver"),
+        sh_order=6,
         initial_freq=500,
-        initial_r0_rec=0.5,
-        progress_window=None,
+        initial_r0_rec=0.6,
         params=None,
     ):
         """
@@ -354,59 +452,37 @@ class Dir_Visualizer:
             Initial frequency to display (Hz)
         initial_r0_rec: float
             Initial spherical radius during reconstruction
-        progress_window : InitializationWindow
-            Progress window for initialization
         params : dict
             Parameters dictionary
-        """
+        """        
+        # Create progress window
+        progress_window = self.InitializationWindow("Initialization Progress")
+        progress_window.update_progress(
+            0, "Starting initialization...", "configure global styles"
+        )
+        time.sleep(0.5)
+
+        # get parameters from cmdArgsToDict 
+        if params is None:
+            params, cmdArgs = cmdArgsToDict()
+        self.params = params
+
         self.is_initial_draw = True
         self.is_sofa_file = False
         self.Psh_raw = None
         self.initial_r0_rec = initial_r0_rec
+        self.initial_sh_order = int(sh_order)
 
         # Show initialization window
         progress_window.update_progress(25, "Initializing...", "Scanning files")
         time.sleep(0.5)
 
-        # Find all source and receiver files in directory
-        abs_source_dir = os.path.abspath(source_dir)
-        abs_receiver_dir = os.path.abspath(receiver_dir)
-        abs_sofa_dir = os.path.abspath(
-            os.path.join("examples", "data", "sampled_directivity", "sofa")
+        # Find all source/receiver MAT files and SOFA files
+        allowed_files, file_lookup, first_name = self._discover_allowed_files(
+            source_dir, receiver_dir
         )
-        ALLOWED_DIRS = {abs_source_dir, abs_receiver_dir, abs_sofa_dir}
-        BASE_DIR = os.path.commonpath(list(ALLOWED_DIRS))
-
-        def list_files(d, exts):
-            return [f for f in os.listdir(d) if f.lower().endswith(exts)]
-
-        source_files = [
-            f for f in list_files(abs_source_dir, (".mat",)) if f.endswith("_source.mat")
-        ]
-        receiver_files = [
-            f
-            for f in list_files(abs_receiver_dir, (".mat",))
-            if f.endswith("_receiver.mat")
-        ]
-        sofa_files = [f for f in list_files(abs_sofa_dir, (".sofa",))]
-
-        allowed_files = source_files + receiver_files + sofa_files
-
-        # basename -> full path
-        file_lookup = {}
-        for f in source_files:
-            file_lookup[f] = os.path.join(abs_source_dir, f)
-        for f in receiver_files:
-            file_lookup[f] = os.path.join(abs_receiver_dir, f)
-        for f in sofa_files:
-            file_lookup[f] = os.path.join(abs_sofa_dir, f)
-
-        if not allowed_files:
-            progress_window.close()
-            raise ValueError(f"No source/receiver files found.")
 
         # Load first file to initialize data
-        first_name = source_files[0] if source_files else allowed_files[0]
         self.current_file = file_lookup[first_name]
         progress_window.update_progress(
             35, "Initializing...", f"Loading initial file: {first_name}"
@@ -588,9 +664,9 @@ class Dir_Visualizer:
         self.ynm_max_order = sh_order
 
         # Continue with precomputation
-        self._continue_initialization(progress_window, sh_order, file_lookup, allowed_files)
+        self._continue_initialization(progress_window, sh_order)
 
-    def _continue_initialization(self, progress_window, sh_order, file_lookup, allowed_files):
+    def _continue_initialization(self, progress_window, sh_order):
         """Continue initialization after UI setup"""
         # precomputation of Ynm, hn, Pnm and Cnm
         start_step = time.perf_counter()
@@ -613,27 +689,14 @@ class Dir_Visualizer:
         progress_window.update_progress(55, "Precomputing hn...", f"{elapsed_step:.3f} s")
         time.sleep(0.5)
 
-        for freq_idx in range(len(self.freqs)):
-            start_step = time.perf_counter()
-
-            if self.current_is_receiver and self.params.get("ifReceiverNormalize", 0):
-                S_val = self.params.get("pointSrcStrength", 1.0)
-                S_arr = np.array(S_val).squeeze()
-                if S_arr.ndim == 0:
-                    Psh_use = self.Psh_raw[freq_idx] / S_arr
-                else:
-                    Psh_use = self.Psh_raw[freq_idx] / S_arr[freq_idx]
-            else:
-                Psh_use = self.Psh_raw[freq_idx]
-
-            self._compute_and_store_cnm(freq_idx, sh_order, Psh_use)
-
-            elapsed_step = time.perf_counter() - start_step
-            progress_window.update_progress(
-                65 + freq_idx / len(self.freqs) * 30,
-                f"Precomputing Pnm & Cnm: freq {self.freqs[freq_idx]:.1f} Hz...",
-                f"{elapsed_step:.3f} s",
-            )
+        # Precompute caches at `self.max_sh_order` for consistent lookup/slicing later
+        self._rebuild_directivity_caches(
+            order=self.max_sh_order,
+            progress_window=progress_window,
+            progress_start=65,
+            progress_span=30,
+            message_prefix="Precomputing Pnm & Cnm",
+        )
 
         # Close initialization window when done
         progress_window.update_progress(
@@ -645,7 +708,7 @@ class Dir_Visualizer:
         self.set_status(f"Frequency range: {self.freqs.min():.1f}–{self.freqs.max():.1f} Hz")
 
         # Setup UI elements
-        self._setup_ui_elements(file_lookup, allowed_files, sh_order)
+        self._setup_ui_elements()
 
         # Draw initial plot
         self.update(None)
@@ -674,168 +737,155 @@ class Dir_Visualizer:
                 k, order, self.full_Pnm_cache[(freq_idx, order)], self.r0
             )
 
-    def _setup_ui_elements(self, file_lookup, allowed_files, sh_order):
+    def _ui_on_text_submit(self, text):
+        """Callback function for the frequency input box"""
+        # Enter a number in the input box and press Enter
+        try:
+            val = float(text)
+            fmin = float(self.freqs.min())
+            fmax = float(self.freqs.max())
+            if fmin <= val <= fmax:
+                self.freq_slider.set_val(val)  # triggers update()
+                self.set_status(f"Frequency set to {val:.1f} Hz")
+            else:
+                self.set_status(
+                    f"Out of range: [{fmin:.1f}, {fmax:.1f}] Hz", color="crimson"
+                )
+                self.text_box_freq.set_val(f"{np.clip(val, fmin, fmax):.1f}")
+        except Exception:
+            self.set_status("Please input a valid number for frequency.", color="crimson")
+
+    def _ui_toggle_recip(self, label):
+        """Toggle reciprocal relation (all file types) and rebuild caches."""
+        self.params["ifReciprocal"] = 1 - self.params.get("ifReciprocal", 0)
+
+        win = self.InitializationWindow(
+            "Applying reciprocal relation..."
+            if self.params["ifReciprocal"]
+            else "Removing reciprocal relation..."
+        )
+        win.update_progress(0, "Rebuilding caches...", "")
+
+        self._rebuild_directivity_caches(
+            order=self.max_sh_order,
+            progress_window=win,
+            progress_start=5,
+            progress_span=90,
+            message_prefix="Rebuilding caches",
+        )
+
+        win.update_progress(100, "Done!", "")
+        time.sleep(0.2)
+        win.close()
+        self.update(None)
+        self.set_status(
+            "Reciprocal relation: ON"
+            if self.params["ifReciprocal"]
+            else "Reciprocal relation: OFF"
+        )
+
+    def _ui_toggle_normalize(self, label):
+        """Toggle receiver normalization (MAT receiver only) and rebuild caches."""
+
+        # Flip flag
+        self.params["ifReceiverNormalize"] = 1 - self.params.get("ifReceiverNormalize", 0)
+
+        # Only meaningful for receiver files
+        if self.is_sofa_file or not self.current_is_receiver:
+            self.fig.canvas.draw_idle()
+            return
+
+        win = self.InitializationWindow(
+            "Normalizing receiver…"
+            if self.params["ifReceiverNormalize"]
+            else "Denormalizing receiver…"
+        )
+        win.update_progress(0, "Starting...", "")
+
+        self._rebuild_directivity_caches(
+            order=self.max_sh_order,
+            progress_window=win,
+            progress_start=5,
+            progress_span=90,
+            message_prefix="Rebuilding caches",
+        )
+
+        win.update_progress(100, "Recomputation Complete!", "")
+        time.sleep(0.3)
+        win.close()
+
+        self.update(None)
+        self.set_status(
+            "Receiver normalization."
+            if self.params.get("ifReceiverNormalize", 0)
+            else "Receiver denormalization."
+        )
+
+    def _ui_browse_file(self, event):
+        file_path = filedialog.askopenfilename(
+            initialdir=os.path.commonpath(
+                [
+                    os.path.abspath(
+                        os.path.join("examples", "data", "sampled_directivity", "source")
+                    ),
+                    os.path.abspath(
+                        os.path.join(
+                            "examples", "data", "sampled_directivity", "receiver"
+                        )
+                    ),
+                    os.path.abspath(
+                        os.path.join("examples", "data", "sampled_directivity", "sofa")
+                    ),
+                ]
+            ),
+            title="Select MAT/SOFA file",
+            filetypes=[
+                ("MAT/SOFA files", "*.mat *.sofa"),
+                ("MAT files", "*.mat"),
+                ("SOFA files", "*.sofa"),
+            ],
+        )
+        if not file_path:
+            return
+
+        filename = os.path.basename(file_path)
+        if filename in self.allowed_files:
+            file_idx = self.allowed_files.index(filename)
+            self.load_file(file_idx)
+        else:
+            print(f"Invalid file: {filename}")
+
+    def _ui_on_freq_left(self, event):
+        new_val = self.freq_slider.val - 2
+        if new_val >= self.freq_slider.valmin:
+            self.freq_slider.set_val(new_val)
+
+    def _ui_on_freq_right(self, event):
+        new_val = self.freq_slider.val + 2
+        if new_val <= self.freq_slider.valmax:
+            self.freq_slider.set_val(new_val)
+
+    def _ui_on_hover(self, event):
+        if self.ax_browse.contains(event)[0]:
+            self.ax_browse.patch.set_facecolor(self.AUDIOLABS_ORANGE)
+            self.btn_browse.label.set_text("Browse...")
+        else:
+            self.ax_browse.patch.set_facecolor(self.AUDIOLABS_LIGHT_GRAY)
+            self.btn_browse.label.set_text(
+                f"Current: {os.path.basename(self.current_file)}"
+            )
+        self.ax_browse.figure.canvas.draw_idle()
+
+    def _ui_on_move(self, event):
+        self.tooltip.set_visible(event.inaxes is self.ax_help)
+        self.tooltip2.set_visible(event.inaxes is self.ax_help2)
+        event.canvas.draw_idle()
+
+    def _setup_ui_elements(self):
         """Setup UI elements and event handlers"""
-        # When enter a number in the input box and press Enter, this callback function is called
-        def on_text_submit(text):
-            try:
-                val = float(text)
-                fmin = float(self.freqs.min())
-                fmax = float(self.freqs.max())
-                if fmin <= val <= fmax:
-                    self.freq_slider.set_val(val)  # trigger update()
-                    self.set_status(f"Frequency set to {val:.1f} Hz")
-                else:
-                    self.set_status(f"Out of range: [{fmin:.1f}, {fmax:.1f}] Hz", color="crimson")
-                    # Write back to the nearest boundary, providing immediate feedback
-                    self.text_box_freq.set_val(f"{np.clip(val, fmin, fmax):.1f}")
-            except Exception:
-                self.set_status("Please input a valid number for frequency.", color="crimson")
-
-        self.text_box_freq.on_submit(on_text_submit)
-
-        def toggle_recip(label):
-            """Toggle reciprocal relation：effective for all file types; rebuilding Cnm_s_cache upon toggling"""
-            self.params["ifReciprocal"] = 1 - self.params.get("ifReciprocal", 0)
-
-            win = self.InitializationWindow("Applying reciprocal relation..." if self.params["ifReciprocal"]
-                                        else "Removing reciprocal relation...")
-            win.update_progress(0, "Rebuilding caches...", "")
-
-            self.full_Pnm_cache.clear()
-            self.Cnm_s_cache.clear()
-
-            # Obtain normalized parameters in advance
-            S_arr = None
-            if self.current_is_receiver and self.params.get("ifReceiverNormalize", 0):
-                S_val = self.params.get("pointSrcStrength", 1.0)
-                S_arr = np.array(S_val).squeeze()
-
-            for freq_idx in range(len(self.freqs)):
-                # Recalculate Psh_use based on the raw data and the current normalized state
-                # This ensures that even if the self.Psh state is out of sync, the calculation is based on the current settings.
-                if self.current_is_receiver and self.params.get("ifReceiverNormalize", 0):
-                    if S_arr.ndim == 0:
-                        Psh_use = self.Psh_raw[freq_idx] / S_arr
-                    else:
-                        Psh_use = self.Psh_raw[freq_idx] / S_arr[freq_idx]
-                else:
-                    Psh_use = self.Psh_raw[freq_idx]
-                
-                self._compute_and_store_cnm(freq_idx, sh_order, Psh_use)
-
-                win.update_progress(
-                    5 + 90 * (freq_idx + 1) / len(self.freqs),
-                    f"Rebuilding at {self.freqs[freq_idx]:.0f} Hz",
-                    "computing Psh, Pnm & Cnm",
-                )
-
-            win.update_progress(100, "Done!", "")
-            time.sleep(0.2); win.close()
-            self.update(None)
-            self.set_status("Reciprocal relation: ON" if self.params["ifReciprocal"] else "Reciprocal relation: OFF")
-
-        self.recip_checkbox.on_clicked(toggle_recip)
-
-        def toggle_normalize(label):
-            """Judge if Psh should be normalized"""
-            if self.is_sofa_file:
-                self.fig.canvas.draw_idle()
-                return
-
-            # Flip flag
-            self.params["ifReceiverNormalize"] = 1 - self.params.get("ifReceiverNormalize", 0)
-
-            # Only meaningful for receiver files
-            if not self.current_is_receiver:
-                self.fig.canvas.draw_idle()
-                return
-
-            # Progress Bar
-            if self.params["ifReceiverNormalize"]:
-                win = self.InitializationWindow("Normalizing receiver…")
-            else:
-                win = self.InitializationWindow("Denormalizing receiver…")
-            win.update_progress(0, "Starting...", "")
-
-            # Rebuild caches from pristine Psh_raw to avoid double-dividing
-            self.Psh = self.Psh_raw.copy()
-
-            # Handle S as scalar or per-frequency array
-            S_val = self.params.get("pointSrcStrength", 1.0)
-            S_arr = np.array(S_val).squeeze()
-
-            self.full_Pnm_cache.clear()
-            self.Cnm_s_cache.clear()
-
-            for freq_idx in range(len(self.freqs)):
-                # Apply normalization only if flag is ON
-                if self.params.get("ifReceiverNormalize", 0):
-                    if S_arr.ndim == 0:
-                        Psh_use = self.Psh[freq_idx] / S_arr
-                    else:
-                        Psh_use = self.Psh[freq_idx] / S_arr[freq_idx]
-                else:
-                    Psh_use = self.Psh[freq_idx]
-
-                self._compute_and_store_cnm(freq_idx, sh_order, Psh_use)
-
-                win.update_progress(
-                    5 + 90 * (freq_idx + 1) / len(self.freqs),
-                    f"Rebuilding at {self.freqs[freq_idx]:.0f} Hz",
-                    "computing Psh, Pnm & Cnm",
-                )
-
-            win.update_progress(100, "Recomputation Complete!", "")
-            time.sleep(0.3)
-            win.close()
-
-            self.update(None)  # now the redraw uses the rebuilt caches
-
-            if self.params.get("ifReceiverNormalize", 0):
-                self.set_status("Receiver normalization.")
-            else:
-                self.set_status("Receiver denormalization.")
-
-        self.norm_checkbox.on_clicked(toggle_normalize)
-
-        def browse_file(event):
-            try:
-                # Open the file selection dialog box
-                file_path = filedialog.askopenfilename(
-                    initialdir=os.path.commonpath(list({
-                        os.path.abspath(os.path.join("examples", "data", "sampled_directivity", "source")),
-                        os.path.abspath(os.path.join("examples", "data", "sampled_directivity", "receiver")),
-                        os.path.abspath(os.path.join("examples", "data", "sampled_directivity", "sofa"))
-                    })),
-                    title="Select MAT/SOFA file",
-                    filetypes=[
-                        ("MAT/SOFA files", "*.mat *.sofa"),
-                        ("MAT files", "*.mat"),
-                        ("SOFA files", "*.sofa"),
-                    ],
-                )
-                if file_path:
-                    # Extract the pure file name (without path)
-                    filename = os.path.basename(file_path)
-                    # Check if the file is in the list of allowed files
-                    if filename in allowed_files:
-                        file_idx = allowed_files.index(filename)
-                        self.load_file(file_idx)
-                    else:
-                        print(f"Invalid file: {filename}")
-            finally:
-                pass
-
-        def on_freq_left(event):
-            new_val = self.freq_slider.val - 2
-            if new_val >= self.freq_slider.valmin:
-                self.freq_slider.set_val(new_val)
-
-        def on_freq_right(event):
-            new_val = self.freq_slider.val + 2
-            if new_val <= self.freq_slider.valmax:
-                self.freq_slider.set_val(new_val)
+        self.text_box_freq.on_submit(self._ui_on_text_submit)
+        self.recip_checkbox.on_clicked(self._ui_toggle_recip)
+        self.norm_checkbox.on_clicked(self._ui_toggle_normalize)
 
         # Create buttons with Audiolabs styling
         self.btn_browse = Button(
@@ -844,20 +894,10 @@ class Dir_Visualizer:
             color=self.AUDIOLABS_LIGHT_GRAY,
             hovercolor=self.AUDIOLABS_ORANGE,
         )
-        self.btn_browse.on_clicked(browse_file)
-
-        # update displayed text (on mouse hover)
-        def on_hover(event):
-            if self.ax_browse.contains(event)[0]:
-                self.ax_browse.patch.set_facecolor(self.AUDIOLABS_ORANGE)
-                self.btn_browse.label.set_text("Browse...")
-            else:
-                self.ax_browse.patch.set_facecolor(self.AUDIOLABS_LIGHT_GRAY)
-                self.btn_browse.label.set_text(f"Current: {os.path.basename(self.current_file)}")
-            self.ax_browse.figure.canvas.draw_idle()
+        self.btn_browse.on_clicked(self._ui_browse_file)
 
         # Listening for mouse movement events
-        self.btn_browse.ax.figure.canvas.mpl_connect("motion_notify_event", on_hover)
+        self.btn_browse.ax.figure.canvas.mpl_connect("motion_notify_event", self._ui_on_hover)
 
         self.btn_freq_left = Button(
             self.ax_freq_left, label="<", color=self.AUDIOLABS_GRAY, hovercolor=self.AUDIOLABS_ORANGE
@@ -865,8 +905,8 @@ class Dir_Visualizer:
         self.btn_freq_right = Button(
             self.ax_freq_right, label=">", color=self.AUDIOLABS_GRAY, hovercolor=self.AUDIOLABS_ORANGE
         )
-        self.btn_freq_left.on_clicked(on_freq_left)
-        self.btn_freq_right.on_clicked(on_freq_right)
+        self.btn_freq_left.on_clicked(self._ui_on_freq_left)
+        self.btn_freq_right.on_clicked(self._ui_on_freq_right)
 
         # Create sliders with Audiolabs styling
         slider_params = {
@@ -919,7 +959,7 @@ class Dir_Visualizer:
             label="",
             valmin=0,
             valmax=self.max_sh_order,
-            valinit=sh_order,
+            valinit=self.initial_sh_order,
             valstep=1,
             **slider_params,
         )
@@ -952,20 +992,7 @@ class Dir_Visualizer:
         self.sh_slider.on_changed(self.update)
 
         # Connect mouse movement for tooltips
-        def on_move(event):
-            if event.inaxes is self.ax_help:
-                self.tooltip.set_visible(True)
-            else:
-                self.tooltip.set_visible(False)
-
-            if event.inaxes is self.ax_help2:
-                self.tooltip2.set_visible(True)
-            else:
-                self.tooltip2.set_visible(False)
-            
-            event.canvas.draw_idle()
-
-        self.fig.canvas.mpl_connect("motion_notify_event", on_move)
+        self.fig.canvas.mpl_connect("motion_notify_event", self._ui_on_move)
 
     def load_file(self, file_idx):
         """Load a new file and update the visualization"""
@@ -1037,27 +1064,14 @@ class Dir_Visualizer:
             self.current_is_receiver = self.is_receiver_file(self.allowed_files[file_idx])
             self.S = self.params["pointSrcStrength"] if self.current_is_receiver else None
 
-        # precomputation of Psh and Cnm_s
-        for freq_idx in range(len(self.freqs)):
-            start_step = time.perf_counter()
-            if self.current_is_receiver and self.params.get("ifReceiverNormalize", 0):
-                S_val = self.params.get("pointSrcStrength", 1.0)
-                S_arr = np.array(S_val).squeeze()
-                if S_arr.ndim == 0:
-                    Psh_use = self.Psh_raw[freq_idx] / S_arr
-                else:
-                    Psh_use = self.Psh_raw[freq_idx] / S_arr[freq_idx]
-            else:
-                Psh_use = self.Psh_raw[freq_idx]
-
-            self._compute_and_store_cnm(freq_idx, int(self.sh_slider.val), Psh_use)
-
-            elapsed_step = time.perf_counter() - start_step
-            progress_win.update_progress(
-                35 + freq_idx / len(self.freqs) * 60,
-                f"Precomputing Pnm & Cnm: freq {self.freqs[freq_idx]:.1f} Hz...",
-                f"{elapsed_step:.3f} s",
-            )
+        # Precompute caches at `self.max_sh_order` (lookup expects max order then slice)
+        self._rebuild_directivity_caches(
+            order=self.max_sh_order,
+            progress_window=progress_win,
+            progress_start=35,
+            progress_span=60,
+            message_prefix="Precomputing Pnm & Cnm",
+        )
 
         progress_win.update_progress(
             95,
@@ -1273,3 +1287,380 @@ class Dir_Visualizer:
 
         # Use orthographic projection
         self.ax_recon.set_proj_type("ortho")
+
+    # ==============================================================================
+    # Comparison & Analysis Methods (Integrated strictly from comparison_analysis.py)
+    # ==============================================================================
+
+    @staticmethod
+    def mat_to_internal(mat_path):
+        """Convert *_source.mat / *_receiver.mat to (Psh, Dir_all, freqs, r0)"""
+        mat = loadmat(mat_path)
+        Psh = mat["Psh"]
+        Dir_all = mat["Dir_all"]
+        freqs = mat["freqs_mesh"].squeeze()
+        r0 = float(mat["r0"].squeeze())
+        return Psh, Dir_all, freqs, r0
+
+    @classmethod
+    def load_directivity(cls, path, ear="L"):
+        """Unified interface for .sofa or .mat"""
+        if path.lower().endswith(".sofa"):
+            initial_file = os.path.join(
+                "examples",
+                "data",
+                "sampled_directivity",
+                "source",
+                "Speaker_cuboid_cyldriver_source.mat",
+            )
+            mat = loadmat(initial_file)
+            Dir_all = mat["Dir_all"]
+            ref_dirs_source = Dir_all.copy()
+
+            Psh, Dir_all, freqs, r0 = cls.sofa_to_internal(
+                path, ear=ear, ref_dirs=ref_dirs_source
+            )
+            Psh = np.asarray(Psh)
+            if Psh.shape[0] != len(freqs):  # In case shape is (J, F) instead of (F, J)
+                Psh = Psh.T
+        elif path.lower().endswith(".mat"):
+            Psh, Dir_all, freqs, r0 = cls.mat_to_internal(path)
+        else:
+            raise ValueError(f"Unsupported file type: {path}")
+            
+        return Psh, Dir_all, freqs, r0
+
+    @classmethod
+    def build_cnm_cache(cls, Psh, Dir_all, freqs, r0, max_order, use_reciprocal):
+        """For the current file, compute a Cnm_s_cache copy over all frequencies"""
+        k_all = 2 * np.pi * freqs / 343.0  # c = 343 m/s
+        cache = {}
+
+        for fi, k in enumerate(k_all):
+            Psh_use = Psh[fi]
+
+            Pnm = SHCs_from_pressure_LS(
+                Psh_use.reshape(1, -1),
+                Dir_all,
+                max_order,
+                np.array([freqs[fi]]),
+            )
+
+            if use_reciprocal:
+                Cnm = cls.get_directivity_coefs_sofa(k, max_order, Pnm, r0)
+            else:
+                Cnm = get_directivity_coefs(k, max_order, Pnm, r0)
+
+            cache[(fi, max_order, r0)] = Cnm
+
+        return cache, k_all
+
+    @staticmethod
+    def reconstruct_pressure_field(Cnm_cache, k_all, dirs, r0, r0_rec, max_order):
+        """Reconstruct 3D pressure field on discrete directions from Cnm_cache"""
+        n_freq = len(k_all)
+        n_dir = dirs.shape[0]
+        P_field = np.zeros((n_freq, n_dir), dtype=complex)
+
+        az = dirs[:, 0]
+        inc = dirs[:, 1]
+        Ynm_cache = {}
+
+        for n in range(max_order + 1):
+            for m in range(-n, n + 1):
+                Ynm_cache[(n, m)] = sph_harm(m, n, az, inc)
+
+        for fi, k in enumerate(k_all):
+            Cnm_s = Cnm_cache[(fi, max_order, r0)]
+
+            Pnm_rec = np.zeros((1, max_order + 1, 2 * max_order + 1), dtype=complex)
+            for n in range(max_order + 1):
+                kr = k * r0_rec
+                hn_r0_rec = sphankel2(int(n), float(kr))
+                for m in range(-n, n + 1):
+                    Pnm_rec[:, n, m + n] = Cnm_s[:, n, m] * hn_r0_rec
+
+            D = np.zeros(n_dir, dtype=complex)
+            for n in range(max_order + 1):
+                for m in range(-n, n + 1):
+                    Ynm = Ynm_cache[(n, m)]
+                    D += Pnm_rec[0, n, m + n] * Ynm
+
+            P_field[fi, :] = D
+
+        return P_field
+
+    @classmethod
+    def build_pressure_field_with_reciprocity(cls, path, ear="L", max_order=6, r0_rec=None):
+        """Load directivity, build cache with reciprocity, and reconstruct 3D field"""
+        print(f"Loading file: {path}")
+        Psh, Dir_all, freqs, r0 = cls.load_directivity(path, ear=ear)
+        if r0_rec is None:
+            r0_rec = r0
+
+        print("  Building Cnm cache with reciprocity ...")
+        cnm_rec, k_all = cls.build_cnm_cache(
+            Psh, Dir_all, freqs, r0, max_order, use_reciprocal=True
+        )
+
+        print("  Reconstructing pressure field ...")
+        P_field = cls.reconstruct_pressure_field(cnm_rec, k_all, Dir_all, r0, r0_rec, max_order)
+
+        return P_field, Dir_all, freqs
+
+    @staticmethod
+    def load_olhead_eq_response(eq_sofa_path, ear, freqs_target):
+        """Read single-ear EQ IR, compute H_eq(f), and interpolate onto freqs_target"""
+        ds = Dataset(eq_sofa_path, "r")
+        ir_all = ds.variables["Data.IR"][:]
+        shape = ir_all.shape
+
+        ear_idx = 0 if ear.upper() == "L" else 1
+
+        if len(shape) == 3:
+            ir = ir_all[0, ear_idx, :]
+        elif len(shape) == 2:
+            ir = ir_all[ear_idx, :]
+        else:
+            ds.close()
+            raise RuntimeError(f"Unexpected Data.IR shape {shape} in {eq_sofa_path}")
+
+        if "Data.SamplingRate" in ds.variables:
+            fs = float(ds.variables["Data.SamplingRate"][:].squeeze())
+        else:
+            fs = float(ds.getncattr("Data.SamplingRate"))
+
+        ds.close()
+
+        ir = np.asarray(ir, dtype=float)
+        N = len(ir)
+        N_fft = 2 ** int(np.ceil(np.log2(N * 2)))
+        H_full = np.fft.rfft(ir, n=N_fft)
+        freqs_full = np.fft.rfftfreq(N_fft, d=1.0 / fs)
+
+        H_real = np.interp(freqs_target, freqs_full, H_full.real)
+        H_imag = np.interp(freqs_target, freqs_full, H_full.imag)
+        H_eq = H_real + 1j * H_imag
+
+        return H_eq
+
+    @classmethod
+    def build_pressure_field_olhead(cls, case, hrir_path, ff_eq_path, diff_eq_path, ear="L", max_order=6, r0_rec=None):
+        """Build pressure field with optional Olhead EQ"""
+        Psh_raw, Dir_all, freqs, r0 = cls.load_directivity(hrir_path, ear=ear)
+        if r0_rec is None:
+            r0_rec = r0
+
+        if case.lower() == "raw":
+            Psh_use = Psh_raw
+        elif case.lower() == "free":
+            H_eq = cls.load_olhead_eq_response(ff_eq_path, ear, freqs)
+            Psh_use = Psh_raw * H_eq[:, np.newaxis]
+        elif case.lower() == "diff":
+            H_eq = cls.load_olhead_eq_response(diff_eq_path, ear, freqs)
+            Psh_use = Psh_raw * H_eq[:, np.newaxis]
+        else:
+            raise ValueError(f"Unknown case '{case}'")
+
+        print(f"  Building Cnm cache with reciprocity for case '{case}' ...")
+        cnm_cache, k_all = cls.build_cnm_cache(
+            Psh_use, Dir_all, freqs, r0, max_order, use_reciprocal=True
+        )
+
+        print("  Reconstructing pressure field ...")
+        P_field = cls.reconstruct_pressure_field(
+            cnm_cache, k_all, Dir_all, r0, r0_rec, max_order
+        )
+
+        return P_field, Dir_all, freqs
+
+    @staticmethod
+    def compute_field_differences(P_ref, P_cmp):
+        """Compute magnitude and phase differences between two fields"""
+        mag_ref = np.abs(P_ref)
+        mag_cmp = np.abs(P_cmp)
+        dmag = np.abs(mag_cmp - mag_ref)
+
+        phase_ref = np.angle(P_ref)
+        phase_cmp = np.angle(P_cmp)
+        dphase = phase_cmp - phase_ref
+        dphase_abs = dphase
+
+        mean_dmag = dmag.mean(axis=1)
+        mean_dphase = dphase_abs.mean(axis=1)
+
+        return dmag, dphase_abs, mean_dmag, mean_dphase
+
+    @staticmethod
+    def plot_differences(freqs, Dir_all, dmag, dphase_abs, mean_dmag, mean_dphase, title_prefix=""):
+        """Plot frequency vs mean differences and 2D scatter mollweide plots"""
+        fig1, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(6, 5))
+        ax1.plot(freqs, mean_dmag)
+        ax1.set_ylabel("Mean |ΔP|")
+        ax1.grid(True, alpha=0.3)
+
+        ax2.plot(freqs, mean_dphase)
+        ax2.set_ylabel("Mean |Δphase| [rad]")
+        ax2.set_xlabel("Frequency [Hz]")
+        ax2.grid(True, alpha=0.3)
+
+        fig1.suptitle(f"{title_prefix} (mean differences)")
+
+        az = Dir_all[:, 0]
+        inc = Dir_all[:, 1]
+        lat = np.pi / 2 - inc
+        lon = az - np.pi
+
+        example_freqs = [2000, 4000, 8000, 12000]
+        idxs = [int(np.argmin(np.abs(freqs - f))) for f in example_freqs]
+
+        n_cols = len(idxs)
+        fig2 = plt.figure(figsize=(3.4 * n_cols, 6.5), constrained_layout=True)
+        gs = fig2.add_gridspec(2, n_cols, hspace=0.015, wspace=0.15)
+        fig2.suptitle(f"{title_prefix} (selected frequencies)")
+
+        lon_ticks_deg = np.arange(-135, 136, 45)
+        lat_ticks_deg = np.arange(-60, 61, 30)
+
+        def _style_mollweide(ax):
+            ax.set_xticks(np.deg2rad(lon_ticks_deg))
+            ax.set_xticklabels([f"{deg:d}°" for deg in lon_ticks_deg], fontsize=9)
+            ax.set_yticks(np.deg2rad(lat_ticks_deg))
+            ax.set_yticklabels([f"{deg:d}°" for deg in lat_ticks_deg], fontsize=9)
+            ax.tick_params(axis="both", pad=6, colors="black", labelcolor="black")
+            ax.grid(True, alpha=0.25, linestyle="--", linewidth=0.6)
+            ax.set_xlabel("")
+            ax.set_ylabel("")
+
+        for col, (fi, f_target) in enumerate(zip(idxs, example_freqs)):
+            ax_mag = fig2.add_subplot(gs[0, col], projection="mollweide")
+            sc1 = ax_mag.scatter(lon, lat, c=dmag[fi, :], s=15, cmap="plasma")
+            ax_mag.set_title(f"{f_target:.0f} Hz |ΔP|")
+            _style_mollweide(ax_mag)
+            fig2.colorbar(sc1, ax=ax_mag, orientation="horizontal", pad=0.08, fraction=0.05, aspect=30)
+
+            ax_ph = fig2.add_subplot(gs[1, col], projection="mollweide")
+            sc2 = ax_ph.scatter(lon, lat, c=dphase_abs[fi, :], s=15, vmin=0, vmax=np.pi, cmap="plasma")
+            ax_ph.set_title(f"{f_target:.0f} Hz |Δphase|")
+            _style_mollweide(ax_ph)
+            fig2.colorbar(sc2, ax=ax_ph, orientation="horizontal", pad=0.08, fraction=0.05, aspect=30)
+
+        fig1.tight_layout()
+
+    @classmethod
+    def analyze_reciprocity(cls, path, ear="L", max_order=6, r0_rec=None):
+        """Compare reciprocity on/off for a given file"""
+        print(f"Loading file: {path}")
+        Psh, Dir_all, freqs, r0 = cls.load_directivity(path, ear=ear)
+        if r0_rec is None:
+            r0_rec = r0
+
+        print("Building Cnm caches ...")
+        cnm_off, k_all = cls.build_cnm_cache(Psh, Dir_all, freqs, r0, max_order, use_reciprocal=False)
+        cnm_on, _ = cls.build_cnm_cache(Psh, Dir_all, freqs, r0, max_order, use_reciprocal=True)
+
+        print("Reconstructing pressure fields ...")
+        P_off = cls.reconstruct_pressure_field(cnm_off, k_all, Dir_all, r0, r0_rec, max_order)
+        P_on = cls.reconstruct_pressure_field(cnm_on, k_all, Dir_all, r0, r0_rec, max_order)
+
+        dmag, dphase_abs, mean_dmag, mean_dphase = cls.compute_field_differences(P_off, P_on)
+        cls.plot_differences(freqs, Dir_all, dmag, dphase_abs, mean_dmag, mean_dphase, title_prefix="reciprocity on vs off")
+
+    @classmethod
+    def compare_two_files(cls, path_ref, path_cmp, label_ref, label_cmp, ear="L", max_order=6, r0_rec=None):
+        """Compare two files under reciprocity-on condition"""
+        print("=" * 80)
+        print(f"Reference: {label_ref}")
+        P_ref, Dir_ref, freqs_ref = cls.build_pressure_field_with_reciprocity(
+            path_ref, ear=ear, max_order=max_order, r0_rec=r0_rec
+        )
+
+        print(f"Compared : {label_cmp}")
+        P_cmp, Dir_cmp, freqs_cmp = cls.build_pressure_field_with_reciprocity(
+            path_cmp, ear=ear, max_order=max_order, r0_rec=r0_rec
+        )
+        # 1) Direction grids must be identical (otherwise the difference is not interpretable)
+        if Dir_ref.shape != Dir_cmp.shape or not np.allclose(Dir_ref, Dir_cmp):
+            raise ValueError("Direction grids of the two files do not match!")
+        # 2) Align frequency axis: only compare on common frequency bins
+        freqs_ref = np.asarray(freqs_ref).ravel()
+        freqs_cmp = np.asarray(freqs_cmp).ravel()
+
+        common_freqs = np.intersect1d(freqs_ref, freqs_cmp)
+        if common_freqs.size == 0:
+            raise ValueError("No overlapping frequencies between the two files!")
+
+        idx_ref = np.nonzero(np.isin(freqs_ref, common_freqs))[0]
+        idx_cmp = np.nonzero(np.isin(freqs_cmp, common_freqs))[0]
+        # Aligned frequency axis and pressure fields
+        freqs_use = freqs_ref[idx_ref]
+        P_ref_use = P_ref[idx_ref, :]
+        P_cmp_use = P_cmp[idx_cmp, :]
+
+        print(f"  Using {len(freqs_use)} common frequency bins from {freqs_use[0]:.1f} Hz to {freqs_use[-1]:.1f} Hz")
+
+        dmag, dphase_abs, mean_dmag, mean_dphase = cls.compute_field_differences(P_ref_use, P_cmp_use)
+        title = f"{label_cmp} vs. {label_ref}"
+        cls.plot_differences(freqs_use, Dir_ref, dmag, dphase_abs, mean_dmag, mean_dphase, title_prefix=title)
+
+    @classmethod
+    def compare_olhead_eq(cls, hrir_path, ff_eq_path, diff_eq_path, ear="L", max_order=6, r0_rec=None):
+        """Compare Raw, Free-field, and Diffuse-field cases for Olhead"""
+        print("=" * 80)
+        print("Case: RAW")
+        P_raw, Dir_all, freqs = cls.build_pressure_field_olhead("raw", hrir_path, ff_eq_path, diff_eq_path, ear=ear, max_order=max_order, r0_rec=r0_rec)
+
+        print("=" * 80)
+        print("Case: FREE-FIELD")
+        P_free, Dir2, freqs2 = cls.build_pressure_field_olhead("free", hrir_path, ff_eq_path, diff_eq_path, ear=ear, max_order=max_order, r0_rec=r0_rec)
+
+        print("=" * 80)
+        print("Case: DIFFUSE-FIELD")
+        P_diff, Dir3, freqs3 = cls.build_pressure_field_olhead("diff", hrir_path, ff_eq_path, diff_eq_path, ear=ear, max_order=max_order, r0_rec=r0_rec)
+
+        assert np.allclose(Dir_all, Dir2) and np.allclose(Dir_all, Dir3)
+        assert np.allclose(freqs, freqs2) and np.allclose(freqs, freqs3)
+
+        dmag_rf, dph_rf, mean_mag_rf, mean_ph_rf = cls.compute_field_differences(P_raw, P_free)
+        cls.plot_differences(freqs, Dir_all, dmag_rf, dph_rf, mean_mag_rf, mean_ph_rf, title_prefix="Free-field vs Raw")
+
+        dmag_rd, dph_rd, mean_mag_rd, mean_ph_rd = cls.compute_field_differences(P_raw, P_diff)
+        cls.plot_differences(freqs, Dir_all, dmag_rd, dph_rd, mean_mag_rd, mean_ph_rd, title_prefix="Diffuse-field vs Raw")
+
+    @classmethod
+    def experiment1(cls):
+        """
+        Experiment 1:
+        - any SOFA file
+        - Analyze reciprocity on/off
+        """
+        path = os.path.join("examples", "data", "sampled_directivity", "sofa", "P0001_FreeFieldComp_48kHz.sofa")
+        cls.analyze_reciprocity(path, ear="L", max_order=6, r0_rec=None)
+
+    @classmethod
+    def experiment2(cls):
+        """
+        Experiment 2:
+        - SONICOM Raw vs Free-field
+        - SONICOM Raw vs Free-field MinPhase
+        """
+        base = os.path.join("examples", "data", "sampled_directivity", "sofa")
+        raw_path = os.path.join(base, "P0001_Raw_48kHz.sofa")
+        ff_path = os.path.join(base, "P0001_FreeFieldComp_48kHz.sofa")
+        ff_min_path = os.path.join(base, "P0001_FreeFieldCompMinPhase_48kHz.sofa")
+        
+        cls.compare_two_files(raw_path, ff_path, label_ref="Raw", label_cmp="Free-field", ear="L", max_order=6, r0_rec=None)
+        cls.compare_two_files(raw_path, ff_min_path, label_ref="Raw", label_cmp="Free-field MinPhase", ear="L", max_order=6, r0_rec=None)
+
+    @classmethod
+    def experiment3(cls):
+        """
+        Experiment 3:
+        - OlHeaD BuK-ED:
+            Raw vs Free-field & Diffuse-field
+        """
+        base = os.path.join("examples", "data", "sampled_directivity", "sofa")
+        raw_path = os.path.join(base, "BuK-ED_hrir.sofa")
+        ff_path = os.path.join(base, "BuK-ED_freefield.sofa")
+        diff_path = os.path.join(base, "BuK-ED_difffield.sofa")
+        cls.compare_olhead_eq(raw_path, ff_path, diff_path, ear="L", max_order=6, r0_rec=None)

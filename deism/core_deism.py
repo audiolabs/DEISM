@@ -33,9 +33,6 @@ try:
 except (ImportError, RuntimeError):
     CPP_COUNTING_AVAILABLE = False
 
-# for directivity visualizer:
-# from deism.vis_deism import Dir_Visualizer
-
 # -------------------------------
 # About new features
 # -------------------------------
