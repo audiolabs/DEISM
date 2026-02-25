@@ -619,15 +619,11 @@ def balloon_plot_with_slider(
         """Used to judge if Psh should be normalized"""
         nonlocal Psh, full_Pnm_cache, Cnm_s_cache, is_sofa_file
 
-        if is_sofa_file:
-            fig.canvas.draw_idle()
-            return
-
         # Flip flag
         params["ifReceiverNormalize"] = 1 - params.get("ifReceiverNormalize", 0)
 
         # Only meaningful for receiver files
-        if not current_is_receiver:
+        if is_sofa_file or not current_is_receiver:
             fig.canvas.draw_idle()
             return
 
