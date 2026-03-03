@@ -36,7 +36,7 @@ class Dir_Visualizer:
     AUDIOLABS_BLACK = "#000000"
 
     @staticmethod
-    def sofa_to_internal(sofa_path, ear="L", ref_dirs=None):
+    def sofa_to_internal(sofa_path, ear="L", ref_dirs=None, if_fill_missing_dirs=True):
         """
         Convert a SOFA HRTF/HRIR file to the internal (Psh, Dir_all, freqs, r0) format
 
@@ -100,7 +100,7 @@ class Dir_Visualizer:
         freqs = f_sofa
         Psh = H_FJ  # naming aligned
 
-        if ref_dirs is not None:
+        if ref_dirs is not None and if_fill_missing_dirs:
             # ref_dirs: (J_ref, 2) az/inc from source.mat (uniform sphere)
             Dir_ref = ref_dirs.astype(float)
             az_ref = Dir_ref[:, 0]
@@ -1017,7 +1017,7 @@ class Dir_Visualizer:
         if ext == ".sofa":
             # SOFA branch
             Psh, Dir_all, freqs, r0 = self.sofa_to_internal(
-                self.current_file, ear="L", ref_dirs=self.ref_dirs_source
+                self.current_file, ear="L", ref_dirs=self.ref_dirs_source, if_fill_missing_dirs=True
             )
             self.Psh_raw = Psh.copy()
             self.freqs = freqs
@@ -1289,7 +1289,7 @@ class Dir_Visualizer:
         self.ax_recon.set_proj_type("ortho")
 
     # ==============================================================================
-    # Comparison & Analysis Methods (Integrated strictly from comparison_analysis.py)
+    # Comparison & Analysis Methods (Integrated from comparison_analysis.py)
     # ==============================================================================
 
     @staticmethod
@@ -1303,7 +1303,7 @@ class Dir_Visualizer:
         return Psh, Dir_all, freqs, r0
 
     @classmethod
-    def load_directivity(cls, path, ear="L"):
+    def load_directivity(cls, path, ear="L", if_fill_missing_dirs=True):
         """Unified interface for .sofa or .mat"""
         if path.lower().endswith(".sofa"):
             initial_file = os.path.join(
@@ -1318,7 +1318,7 @@ class Dir_Visualizer:
             ref_dirs_source = Dir_all.copy()
 
             Psh, Dir_all, freqs, r0 = cls.sofa_to_internal(
-                path, ear=ear, ref_dirs=ref_dirs_source
+                path, ear=ear, ref_dirs=ref_dirs_source, if_fill_missing_dirs=if_fill_missing_dirs
             )
             Psh = np.asarray(Psh)
             if Psh.shape[0] != len(freqs):  # In case shape is (J, F) instead of (F, J)
@@ -1391,10 +1391,10 @@ class Dir_Visualizer:
         return P_field
 
     @classmethod
-    def build_pressure_field_with_reciprocity(cls, path, ear="L", max_order=6, r0_rec=None):
+    def build_pressure_field_with_reciprocity(cls, path, ear="L", max_order=6, r0_rec=None, if_fill_missing_dirs=True):
         """Load directivity, build cache with reciprocity, and reconstruct 3D field"""
         print(f"Loading file: {path}")
-        Psh, Dir_all, freqs, r0 = cls.load_directivity(path, ear=ear)
+        Psh, Dir_all, freqs, r0 = cls.load_directivity(path, ear=ear, if_fill_missing_dirs=if_fill_missing_dirs)
         if r0_rec is None:
             r0_rec = r0
 
@@ -1445,9 +1445,9 @@ class Dir_Visualizer:
         return H_eq
 
     @classmethod
-    def build_pressure_field_olhead(cls, case, hrir_path, ff_eq_path, diff_eq_path, ear="L", max_order=6, r0_rec=None):
+    def build_pressure_field_olhead(cls, case, hrir_path, ff_eq_path, diff_eq_path, ear="L", max_order=6, r0_rec=None, if_fill_missing_dirs=True):
         """Build pressure field with optional Olhead EQ"""
-        Psh_raw, Dir_all, freqs, r0 = cls.load_directivity(hrir_path, ear=ear)
+        Psh_raw, Dir_all, freqs, r0 = cls.load_directivity(hrir_path, ear=ear, if_fill_missing_dirs=if_fill_missing_dirs)
         if r0_rec is None:
             r0_rec = r0
 
@@ -1548,10 +1548,10 @@ class Dir_Visualizer:
         fig1.tight_layout()
 
     @classmethod
-    def analyze_reciprocity(cls, path, ear="L", max_order=6, r0_rec=None):
+    def analyze_reciprocity(cls, path, ear="L", max_order=6, r0_rec=None, if_fill_missing_dirs=True):
         """Compare reciprocity on/off for a given file"""
         print(f"Loading file: {path}")
-        Psh, Dir_all, freqs, r0 = cls.load_directivity(path, ear=ear)
+        Psh, Dir_all, freqs, r0 = cls.load_directivity(path, ear=ear, if_fill_missing_dirs=if_fill_missing_dirs)
         if r0_rec is None:
             r0_rec = r0
 
@@ -1567,17 +1567,17 @@ class Dir_Visualizer:
         cls.plot_differences(freqs, Dir_all, dmag, dphase_abs, mean_dmag, mean_dphase, title_prefix="reciprocity on vs off")
 
     @classmethod
-    def compare_two_files(cls, path_ref, path_cmp, label_ref, label_cmp, ear="L", max_order=6, r0_rec=None):
+    def compare_two_files(cls, path_ref, path_cmp, label_ref, label_cmp, ear="L", max_order=6, r0_rec=None, if_fill_missing_dirs=True):
         """Compare two files under reciprocity-on condition"""
         print("=" * 80)
         print(f"Reference: {label_ref}")
         P_ref, Dir_ref, freqs_ref = cls.build_pressure_field_with_reciprocity(
-            path_ref, ear=ear, max_order=max_order, r0_rec=r0_rec
+            path_ref, ear=ear, max_order=max_order, r0_rec=r0_rec, if_fill_missing_dirs=if_fill_missing_dirs
         )
 
         print(f"Compared : {label_cmp}")
         P_cmp, Dir_cmp, freqs_cmp = cls.build_pressure_field_with_reciprocity(
-            path_cmp, ear=ear, max_order=max_order, r0_rec=r0_rec
+            path_cmp, ear=ear, max_order=max_order, r0_rec=r0_rec, if_fill_missing_dirs=if_fill_missing_dirs
         )
         # 1) Direction grids must be identical (otherwise the difference is not interpretable)
         if Dir_ref.shape != Dir_cmp.shape or not np.allclose(Dir_ref, Dir_cmp):
@@ -1604,19 +1604,19 @@ class Dir_Visualizer:
         cls.plot_differences(freqs_use, Dir_ref, dmag, dphase_abs, mean_dmag, mean_dphase, title_prefix=title)
 
     @classmethod
-    def compare_olhead_eq(cls, hrir_path, ff_eq_path, diff_eq_path, ear="L", max_order=6, r0_rec=None):
+    def compare_olhead_eq(cls, hrir_path, ff_eq_path, diff_eq_path, ear="L", max_order=6, r0_rec=None, if_fill_missing_dirs=True):
         """Compare Raw, Free-field, and Diffuse-field cases for Olhead"""
         print("=" * 80)
         print("Case: RAW")
-        P_raw, Dir_all, freqs = cls.build_pressure_field_olhead("raw", hrir_path, ff_eq_path, diff_eq_path, ear=ear, max_order=max_order, r0_rec=r0_rec)
+        P_raw, Dir_all, freqs = cls.build_pressure_field_olhead("raw", hrir_path, ff_eq_path, diff_eq_path, ear=ear, max_order=max_order, r0_rec=r0_rec, if_fill_missing_dirs=if_fill_missing_dirs)
 
         print("=" * 80)
         print("Case: FREE-FIELD")
-        P_free, Dir2, freqs2 = cls.build_pressure_field_olhead("free", hrir_path, ff_eq_path, diff_eq_path, ear=ear, max_order=max_order, r0_rec=r0_rec)
+        P_free, Dir2, freqs2 = cls.build_pressure_field_olhead("free", hrir_path, ff_eq_path, diff_eq_path, ear=ear, max_order=max_order, r0_rec=r0_rec, if_fill_missing_dirs=if_fill_missing_dirs)
 
         print("=" * 80)
         print("Case: DIFFUSE-FIELD")
-        P_diff, Dir3, freqs3 = cls.build_pressure_field_olhead("diff", hrir_path, ff_eq_path, diff_eq_path, ear=ear, max_order=max_order, r0_rec=r0_rec)
+        P_diff, Dir3, freqs3 = cls.build_pressure_field_olhead("diff", hrir_path, ff_eq_path, diff_eq_path, ear=ear, max_order=max_order, r0_rec=r0_rec, if_fill_missing_dirs=if_fill_missing_dirs)
 
         assert np.allclose(Dir_all, Dir2) and np.allclose(Dir_all, Dir3)
         assert np.allclose(freqs, freqs2) and np.allclose(freqs, freqs3)
@@ -1628,39 +1628,37 @@ class Dir_Visualizer:
         cls.plot_differences(freqs, Dir_all, dmag_rd, dph_rd, mean_mag_rd, mean_ph_rd, title_prefix="Diffuse-field vs Raw")
 
     @classmethod
-    def experiment1(cls):
-        """
-        Experiment 1:
-        - any SOFA file
-        - Analyze reciprocity on/off
-        """
-        path = os.path.join("examples", "data", "sampled_directivity", "sofa", "P0001_FreeFieldComp_48kHz.sofa")
-        cls.analyze_reciprocity(path, ear="L", max_order=6, r0_rec=None)
+    def experiments(cls, exp, *filenames, if_fill_missing_dirs=True):
 
-    @classmethod
-    def experiment2(cls):
-        """
-        Experiment 2:
-        - SONICOM Raw vs Free-field
-        - SONICOM Raw vs Free-field MinPhase
-        """
         base = os.path.join("examples", "data", "sampled_directivity", "sofa")
-        raw_path = os.path.join(base, "P0001_Raw_48kHz.sofa")
-        ff_path = os.path.join(base, "P0001_FreeFieldComp_48kHz.sofa")
-        ff_min_path = os.path.join(base, "P0001_FreeFieldCompMinPhase_48kHz.sofa")
+        paths = [os.path.join(base, f) for f in filenames]
+
+        if exp == "if_reciprocity":
+            """
+            Experiment 1:
+            - any SOFA file
+            - Analyze reciprocity on/off
+            """
+            cls.analyze_reciprocity(paths[0], ear="L", max_order=6, r0_rec=None, if_fill_missing_dirs=if_fill_missing_dirs)
+            plt.show()
+            
+        elif exp == "compare_2files":
+            """
+            Experiment 2:
+            - Compare 2 SOFA files
+            e.g.- SONICOM Raw vs Free-field
+                - SONICOM Raw vs Free-field MinPhase
+            """
+            cls.compare_two_files(paths[0], paths[1], label_ref="Raw", label_cmp="Free-field", ear="L", max_order=6, r0_rec=None, if_fill_missing_dirs=if_fill_missing_dirs)
+            plt.show()
+
+        elif exp == "compare_olhead":
+            """
+            Experiment 3:
+            - OlHeaD BuK-ED:
+                Raw vs Free-field & Diffuse-field
+            """
+            cls.compare_olhead_eq(paths[0], paths[1], paths[2], ear="L", max_order=6, r0_rec=None, if_fill_missing_dirs=if_fill_missing_dirs)
+            plt.show()
+
         
-        cls.compare_two_files(raw_path, ff_path, label_ref="Raw", label_cmp="Free-field", ear="L", max_order=6, r0_rec=None)
-        cls.compare_two_files(raw_path, ff_min_path, label_ref="Raw", label_cmp="Free-field MinPhase", ear="L", max_order=6, r0_rec=None)
-
-    @classmethod
-    def experiment3(cls):
-        """
-        Experiment 3:
-        - OlHeaD BuK-ED:
-            Raw vs Free-field & Diffuse-field
-        """
-        base = os.path.join("examples", "data", "sampled_directivity", "sofa")
-        raw_path = os.path.join(base, "BuK-ED_hrir.sofa")
-        ff_path = os.path.join(base, "BuK-ED_freefield.sofa")
-        diff_path = os.path.join(base, "BuK-ED_difffield.sofa")
-        cls.compare_olhead_eq(raw_path, ff_path, diff_path, ear="L", max_order=6, r0_rec=None)

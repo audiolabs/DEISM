@@ -11,12 +11,13 @@ if __name__ == "__main__":
     # visualizer.balloon_plot_with_slider()
 
     # Comparison & Analysis for sofa files
-    # Dir_Visualizer.experiment1()
-    # Dir_Visualizer.experiment2()
-    # Dir_Visualizer.experiment3()
+    # exp = if_reciprocity, one filename, for olhead files, only BuK-ED_hrir works
+    # exp = compare_2files, two filenames
+    # exp = compare_olhead, three filenames, specific for olhead files
     Dir_Visualizer.experiments(
-        exp="if_reciprocity",
-        filename="P0001_FreeFieldComp_48kHz.sofa",
-        if_fill_missing_dirs=True,
+        "compare_2files",
+        "mit_kemar_large_pinna.sofa",
+        "mit_kemar_normal_pinna.sofa",
+        if_fill_missing_dirs=True
     )
-    plt.show()
+
