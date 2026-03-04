@@ -1628,7 +1628,7 @@ class Dir_Visualizer:
         cls.plot_differences(freqs, Dir_all, dmag_rd, dph_rd, mean_mag_rd, mean_ph_rd, title_prefix="Diffuse-field vs Raw")
 
     @classmethod
-    def experiments(cls, exp, *filenames, if_fill_missing_dirs=True):
+    def experiments(cls, exp=None, filenames=None, if_fill_missing_dirs=True):
 
         base = os.path.join("examples", "data", "sampled_directivity", "sofa")
         paths = [os.path.join(base, f) for f in filenames]
