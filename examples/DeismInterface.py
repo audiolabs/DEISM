@@ -243,7 +243,7 @@ def deism_method(json_file_path=None):
         deism.params["posReceiver"] = np.array(coord_rec)
         deism.update_source_receiver()
         deism.update_directivities()
-        deism.run_DEISM()
+        deism.run_DEISM(if_clean_up=True, if_shutdown_ray=True)
         rir = deism.get_results()
         # -----------------------------------------------------------
         # Save the simulation results

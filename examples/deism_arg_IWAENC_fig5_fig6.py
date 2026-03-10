@@ -4,31 +4,34 @@ Z. Xu, E. A. P. Habets and A. G. Prinn,
 "Simulating Sound Fields in Rooms with Arbitrary Geometries Using the Diffraction-Enhanced Image Source Method,"
 2024 18th International Workshop on Acoustic Signal Enhancement (IWAENC), Aalborg, Denmark, 2024, pp. 284-288,
 doi: 10.1109/IWAENC61483.2024.10693991.
-The following scnario is considered in Figure 5:
-1. A room with tilted ceiling compared to a shoebox room
-2.
+Figure 5: room with tilted ceiling (8 vertices).
+Figure 6: similar room with slightly different ceiling height.
+Uses the DEISM class with convex (ARG) workflow.
 """
 
-import time
 import os
 import psutil
 import numpy as np
 import ray
+import matplotlib.pyplot as plt
 
-from deism.core_deism import *
-from deism.core_deism_arg import *
-from deism.data_loader import *
-from deism.utilities import plot_RTFs
+from deism.core_deism import DEISM
+from deism.core_deism_arg import find_wall_centers
+from deism.data_loader import (
+    load_RTF_data,
+    detect_conflicts,
+    ConflictChecks,
+)
+from deism.utilities import get_SPL
 
 
 def init_parameters_convex_fig5(params):
-    # reflection order
+    """Convex room and setup for IWAENC Figure 5 (tilted ceiling)."""
     params["maxReflOrder"] = 15
-    # A simple room with 8 vertices
     params["vertices"] = np.array(
         [
-            [0, 0, 0],  # Origin, but it does not have to be the origin
-            [0, 0, 3.5],  # [x, y, z] coordinates of the room vertices
+            [0, 0, 0],
+            [0, 0, 3.5],
             [0, 3, 2.5],
             [0, 3, 0],
             [4, 0, 0],
@@ -37,31 +40,26 @@ def init_parameters_convex_fig5(params):
             [4, 3, 0],
         ]
     )
+    params["wallCenters"] = find_wall_centers(params["vertices"])
     params["if_rotate_room"] = 0
-    # Source and receiver positions
+    params["ifRotateRoom"] = 0
     params["posSource"] = np.array([1.1, 1.1, 1.3])
     params["posReceiver"] = np.array([2.9, 1.9, 1.3])
-    # Orientations of the sources and receivers
-    params["orientSources"] = np.array([0, 0, 0])
+    params["orientSource"] = np.array([0, 0, 0])
     params["orientReceiver"] = np.array([180, 0, 0])
-    # Radius of the spheres in meters
     params["radiusSource"] = 0.2
     params["radiusReceiver"] = 0.25
-    # Source and receiver directivity profiles
     params["sourceType"] = "Speaker_small_sph_cyldriver_source"
     params["receiverType"] = "Speaker_small_sph_cyldriver_receiver"
-    # Compute the rest of the parameters
-    params = compute_rest_params(params)
     return params
 
 
 def init_parameters_convex_fig6(params):
-    # reflection order
+    """Convex room and setup for IWAENC Figure 6."""
     params["maxReflOrder"] = 15
-    # A simple room with 8 vertices
     params["vertices"] = np.array(
         [
-            [0, 0, 0],  # Origin
+            [0, 0, 0],
             [0, 0, 3.25],
             [0, 3, 2.75],
             [0, 3, 0],
@@ -71,28 +69,24 @@ def init_parameters_convex_fig6(params):
             [4, 3, 0],
         ]
     )
+    params["wallCenters"] = find_wall_centers(params["vertices"])
     params["if_rotate_room"] = 0
-    # Source and receiver positions
+    params["ifRotateRoom"] = 0
     params["posSource"] = np.array([1.1, 1.1, 1.3])
     params["posReceiver"] = np.array([2.9, 1.9, 1.3])
-    # Orientations of the sources and receivers
-    params["orientSources"] = np.array([0, 0, 0])
+    params["orientSource"] = np.array([0, 0, 0])
     params["orientReceiver"] = np.array([180, 0, 0])
-    # Radius of the spheres in meters
     params["radiusSource"] = 0.2
     params["radiusReceiver"] = 0.25
-    # Source and receiver directivity profiles
     params["sourceType"] = "Speaker_small_sph_cyldriver_source"
     params["receiverType"] = "Speaker_small_sph_cyldriver_receiver"
     return params
 
 
 def plot_DEISM_ARG_FEM(P_DEISM_ARG, P_FEM, freqs, save_path, fig_name):
-    plt.rcParams["text.usetex"] = True
-    # Get the SPL of the DEISM-ARG and FEM results
+    """Plot DEISM-ARG vs FEM SPL and save figure."""
     SPL_DEISM_ARG = get_SPL(P_DEISM_ARG)
     SPL_FEM = get_SPL(P_FEM)
-    # Calculate RMS-LSD
     RMS_LSD = np.sqrt(
         np.sum(np.abs(10 * np.log10((np.abs(P_DEISM_ARG) / np.abs(P_FEM)) ** 2)) ** 2)
         / len(P_DEISM_ARG)
@@ -104,95 +98,84 @@ def plot_DEISM_ARG_FEM(P_DEISM_ARG, P_FEM, freqs, save_path, fig_name):
         freqs, SPL_DEISM_ARG, label="DEISM-ARG", color="red", linestyle="-", linewidth=3
     )
     ax.set_xlim([freqs[0], freqs[-1]])
-    # ax.set_ylim([20, 100])
-    ax.set_xlabel(r"\bf{Frequency (Hz)}")
-    ax.set_ylabel(r"\bf{SPL (dB)}")
-    ax.xaxis.label.set_size(40)
-    ax.yaxis.label.set_size(40)
+    # Use plain labels with fontweight so plot works without a TeX installation
+    ax.set_xlabel("Frequency (Hz)", fontsize=40, fontweight="bold")
+    ax.set_ylabel("SPL (dB)", fontsize=40, fontweight="bold")
     ax.xaxis.set_tick_params(labelsize=50)
     ax.yaxis.set_tick_params(labelsize=50)
-    # Empty plot to add the RMS LSD as a extra line of text to the legend, keep 3 digits after the decimal point
-    # Don't show the line
     ax.plot([], [], label="LSD: {:.2f} dB".format(RMS_LSD), color="white")
-    # ax.set_xscale("log")
     ax.legend(fontsize=35, loc="best", bbox_to_anchor=(0.6, 0.4))
     plt.grid(axis="both", which="both", linestyle=":")
     fig.tight_layout()
-    fig_name = "{}/IWAENC_{}_SPL.png".format(save_path, fig_name)
-    plt.savefig(fig_name, dpi=300)
+    path = os.path.join(save_path, "IWAENC_{}_SPL.png".format(fig_name))
+    plt.savefig(path, dpi=300)
+    plt.close()
 
 
 def main():
-    # Choose plot figure 5 or 6
     fig = "fig6"  # "fig5" or "fig6"
-    # Load the parameters from the configSingleParam_ARG.yaml file amd command line
-    params, cmdArgs = cmdArgsToDict_ARG("configSingleParam_arg.yml")
-    # Initialize some additional parameters for DEISM-ARG
-    # For example, room vertices, room rotation, etc.
+
+    # Load base params via DEISM class (uses configSingleParam_ARG_RTF.yml)
+    deism = DEISM("RTF", "convex")
+
     if fig == "fig5":
-        params = init_parameters_convex_fig5(params)
-    elif fig == "fig6":
-        params = init_parameters_convex_fig6(
-            params
-        )  # init_parameters_fig5 or init_parameters_fig6
-    # detect conflicts
+        params = init_parameters_convex_fig5(deism.params)
+    else:
+        params = init_parameters_convex_fig6(deism.params)
+
+    # IWAENC fig5/fig6: frequencies 20–1000 Hz, 2 Hz spacing
+    params["startFreq"] = 20
+    params["endFreq"] = 1000
+    params["freqStep"] = 2
+
+    # Non-monopole directivities: ensure orders and normalization (fig5 init doesn't set these)
+    if params.get("sourceType") != "monopole":
+        params["sourceOrder"] = 5
+    if params.get("receiverType") != "monopole":
+        params["receiverOrder"] = 5
+        params["ifReceiverNormalize"] = 1
+
+    # Apply Conflict Checks
+    ConflictChecks.check_all_conflicts(params)
     detect_conflicts(params)
-    # print the parameters or not
-    if cmdArgs.quiet:
-        params["silentMode"] = 1
-    printDict(params)
-    # -------------------------------------------------------
-    # Shared parameters for all modes, ORG, LC, MIX
-    # -------------------------------------------------------
-    params = init_receiver_directivities_ARG(params, params["if_rotate_room"])
-    # Using DESIM-ARG with c++ libroom_deism to find the visible images and reflection matrices, attenuations
-    # initialize Room_deism
-    room_pra_deism = Room_deism_cpp(params)
-    # Or you can use the Python version, which is much slower in generating the images
-    # room_pra_deism = Room_deism_python(params)
-    # Plot the room and the images
-    # room_pra_deism.plot_room()
-    # get the reflection paths
-    params = get_ref_paths_ARG(params, room_pra_deism)
-    # Calculating the reflected source directivity coefficients
-    params = init_source_directivities_ARG(
-        params, params["if_rotate_room"], params["reflection_matrix"]
+
+    deism.params = params
+
+    # Convex workflow: room, materials, freqs, then source/receiver before directivities
+    deism.update_room(
+        roomDimensions=params["vertices"],
+        wallCenters=params["wallCenters"],
     )
-    # Use the DEISM-ARG version
-    Wigner = pre_calc_Wigner(params)
-    # -------------------------------------------------------
-    # Run DEISM-ARG parallel processing using Ray
-    # -------------------------------------------------------
-    # Initialize Ray
-    num_cpus = psutil.cpu_count(logical=False)
+    deism.update_wall_materials()
+    deism.update_freqs()
+    deism.update_source_receiver()
+    deism.update_directivities()
+
+    # Limit Ray CPUs and run
+    num_cpus = min(psutil.cpu_count(logical=False) or 4, 8)
     if not ray.is_initialized():
         ray.init(num_cpus=num_cpus)
-        print("\n")
-    # Run DEISM-ARG for specified mode
-    P_DEISM_ARG = ray_run_DEISM_ARG_ORG(params, params["images"], Wigner)
-    # Shutdown Ray
-    ray.shutdown()
-    # -------------------------------------------------------
-    # Load FEM data
-    # -------------------------------------------------------
+
+    deism.run_DEISM(if_clean_up=True, if_shutdown_ray=True)
+
+    P_DEISM_ARG = deism.params["RTF"]
+
+    # Load FEM reference
     if fig == "fig5":
         freqs_FEM, P_FEM, mic_pos = load_RTF_data(
-            params["silentMode"], "Room_iwaenc_fig5"
+            deism.params["silentMode"], "Room_iwaenc_fig5"
         )
-    elif fig == "fig6":
+    else:
         freqs_FEM, P_FEM, mic_pos = load_RTF_data(
-            params["silentMode"], "Room_iwaenc_fig6"
-        )  # "Room_iwaenc_fig5" or "Room_iwaenc_fig6"
-    # -------------------------------------------------------
-    # Plot the RTFs
-    # -------------------------------------------------------
+            deism.params["silentMode"], "Room_iwaenc_fig6"
+        )
+
     save_path = "./outputs/figures"
-    # check if the save path exists
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
-    plot_DEISM_ARG_FEM(P_DEISM_ARG, P_FEM.flatten(), params["freqs"], save_path, fig)
+    os.makedirs(save_path, exist_ok=True)
+    plot_DEISM_ARG_FEM(
+        P_DEISM_ARG, P_FEM.flatten(), deism.params["freqs"], save_path, fig
+    )
 
 
-# -------------------------------------------------------
 if __name__ == "__main__":
     main()

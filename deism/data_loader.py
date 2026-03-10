@@ -292,76 +292,78 @@ def compute_rest_params(params):
 
 def detect_conflicts(params):
     """
-    This function detects conflicts between the parameters, you don't have to use it
-    But you can place it after you initialize all the parameters before you run the any functional algorithms including:
-    - pre_calc_images_src_rec
-    - run_DEISM
-    - pre_calc_Wigner
-    - init_source_directivity
-    - init_receiver_directivity
-    - And also the other functions used in DEISM-ARG
+    Print warnings for parameter conflicts. Does not modify params and does not raise.
+
+    Use this for diagnostics only. For enforcement (modify params for monopole,
+    raise on invalid config), use ConflictChecks.check_all_conflicts(params) instead.
+
+    Suggested placement: after initializing all parameters, before running
+    pre_calc_images_src_rec, run_DEISM, pre_calc_Wigner, init_source_directivity,
+    init_receiver_directivity, or other DEISM-ARG functions.
     """
-    # If monopole is used, set spherical harmonic order to 0 for source and receiver
-    if params["sourceType"] == "monopole":
-        params["sourceOrder"] = 0
+    # Directivity: warn if orders or normalization look inconsistent
+    if params["sourceType"] == "monopole" and params.get("sourceOrder", 0) != 0:
+        print(
+            "[Warning] Source type is monopole but sourceOrder is not 0; consider setting sourceOrder=0.\n"
+        )
     if params["receiverType"] == "monopole":
-        params["receiverOrder"] = 0
-        params["ifReceiverNormalize"] = 0
-    # If not monopole, raise a warning if the spherical harmonic order is also 0
-    if params["sourceType"] != "monopole" and params["sourceOrder"] == 0:
+        if params.get("receiverOrder", 0) != 0:
+            print(
+                "[Warning] Receiver type is monopole but receiverOrder is not 0; consider setting receiverOrder=0.\n"
+            )
+        if params.get("ifReceiverNormalize", 0) != 0:
+            print(
+                "[Warning] Receiver type is monopole but ifReceiverNormalize is not 0; consider setting ifReceiverNormalize=0.\n"
+            )
+    if params["sourceType"] != "monopole" and params.get("sourceOrder", 0) == 0:
         print(
-            "[Warning] Spherical harmonic order is set to 0 for source, but source type is not monopole! \n"
+            "[Warning] Spherical harmonic order is set to 0 for source, but source type is not monopole!\n"
         )
-    if params["receiverType"] != "monopole" and params["receiverOrder"] == 0:
+    if params["receiverType"] != "monopole" and params.get("receiverOrder", 0) == 0:
         print(
-            "[Warning] Spherical harmonic order is set to 0 for receiver, but receiver type is not monopole! \n"
+            "[Warning] Spherical harmonic order is set to 0 for receiver, but receiver type is not monopole!\n"
         )
-    if params["receiverType"] != "monopole" and params["ifReceiverNormalize"] == 0:
+    if params["receiverType"] != "monopole" and params.get("ifReceiverNormalize", 0) == 0:
         print(
-            "[Warning] Receiver normalization is set to 0 for non-monopole receiver, make sure you know what you are doing! \n"
+            "[Warning] Receiver normalization is set to 0 for non-monopole receiver, make sure you know what you are doing!\n"
         )
-    # If either source or receiver is not monopole, check the distance between source and receiver such that
-    # The distance is larger than the radius of the source or receiver
+    # Distance / radius
     if params["sourceType"] != "monopole":
-        if params["radiusSource"] is None:
-            raise ValueError("Source radius is not set for non-monopole source")
-        # If distance between source and receiver is smaller than the source radius, raise a warning
-        if (
+        if params.get("radiusSource") is None:
+            print("[Warning] Source radius is not set for non-monopole source.\n")
+        elif (
             np.linalg.norm(params["posSource"] - params["posReceiver"])
             < params["radiusSource"]
         ):
             print(
-                "[Warning] Distance between source and receiver is smaller than the source radius! \n"
+                "[Warning] Distance between source and receiver is smaller than the source radius!\n"
             )
     if params["receiverType"] != "monopole":
-        if params["radiusReceiver"] is None:
-            raise ValueError("Receiver radius is not set for non-monopole receiver")
-        # If distance between source and receiver is smaller than the receiver radius, raise a warning
-        if (
+        if params.get("radiusReceiver") is None:
+            print("[Warning] Receiver radius is not set for non-monopole receiver.\n")
+        elif (
             np.linalg.norm(params["posSource"] - params["posReceiver"])
             < params["radiusReceiver"]
         ):
             print(
-                "[Warning] Distance between source and receiver is smaller than the receiver radius! \n"
+                "[Warning] Distance between source and receiver is smaller than the receiver radius!\n"
             )
-    # If both source and receiver are not monopole, check the distance between source and receiver such that
-    # The distance is larger than the radius of the source and receiver
     if params["sourceType"] != "monopole" and params["receiverType"] != "monopole":
         if (
-            np.linalg.norm(params["posSource"] - params["posReceiver"])
+            params.get("radiusSource") is not None
+            and params.get("radiusReceiver") is not None
+            and np.linalg.norm(params["posSource"] - params["posReceiver"])
             < params["radiusSource"] + params["radiusReceiver"]
         ):
             print(
-                "[Warning] Distance between source and receiver is smaller than the sum of the source and receiver radius! \n"
+                "[Warning] Distance between source and receiver is smaller than the sum of the source and receiver radius!\n"
             )
-
-    # To be continued...
-    # ------------------------------------------------------------
-    # Check definitions of wall materials
-    if len(params["givenMaterials"]) > 1:
-        raise ValueError(
-            "The user can only define one of the following three parameters: impedance, absorption coefficient, or reverberation time. The following parameters are defined: "
+    # Wall materials
+    if len(params.get("givenMaterials", [])) > 1:
+        print(
+            "[Warning] More than one material type defined (impedance, absorption coefficient, or reverberation time): "
             + ", ".join(params["givenMaterials"])
+            + ". Use only one.\n"
         )
 
 
@@ -795,7 +797,7 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
         params["wallCenters"] = np.array(list(configs["Dimensions"]["wallCenters"]))
         params["ifRotateRoom"] = configs["Dimensions"]["ifRotateRoom"]
         params["roomRotation"] = np.array(
-            configs["Dimensions"]["roomRotation"].values()
+            list(configs["Dimensions"]["roomRotation"].values())
         )
         params["convexRoom"] = args.ifconvex or configs["Dimensions"]["ifConvexRoom"]
 
