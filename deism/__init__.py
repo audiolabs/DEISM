@@ -3,3 +3,4 @@ from .data_loader import *
 from .utilities import *
 from .core_deism_arg import *
 from .room_check import *
+from .accelerated import *

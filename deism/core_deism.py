@@ -74,6 +74,9 @@ class DEISM:
                 for key in params.keys():
                     # Add the function name "cmdArgsToDict" to the updated_where dictionary, and the key name as the new key, and the value is a list containing the function name "cmdArgsToDict"
                     params["updated_where"][key] = ["init_params"]
+            from deism.accelerated.pipeline import ensure_acceleration_defaults
+
+            params = ensure_acceleration_defaults(params)
             self.params = params
 
     # def est_max_reflection_order(self):
@@ -101,7 +104,9 @@ class DEISM:
         # -----------------------------------------------------------
         # Calculate images
         if self.roomtype == "shoebox":
-            self.params["images"] = pre_calc_images_src_rec_optimized_nofs(self.params)
+            from deism.accelerated.pipeline import build_shoebox_images
+
+            self.params["images"] = build_shoebox_images(self.params)
             # Add the function name "update_source_receiver" to the updated_where dictionary
             for key in ["posSource", "posReceiver", "images"]:
                 self._update_where_tracking(key, "update_source_receiver")
@@ -117,9 +122,30 @@ class DEISM:
                 self._update_where_tracking(key, "update_source_receiver")
 
         # -----------------------------------------------------------
-        # If use DEISM-ORG or DEISM-LC, merge images
-        if self.params["DEISM_method"] == "ORG" or self.params["DEISM_method"] == "LC":
-            self.params["images"] = merge_images(self.params["images"])
+        # If use DEISM-ORG or DEISM-LC, merge split early/late images when available.
+        if self.roomtype == "shoebox" and self.params["DEISM_method"] in {"ORG", "LC"}:
+            images = self.params.get("images", {})
+            merge_keys = {
+                "A_early",
+                "A_late",
+                "R_sI_r_all_early",
+                "R_sI_r_all_late",
+                "R_s_rI_all_early",
+                "R_s_rI_all_late",
+                "R_r_sI_all_early",
+                "R_r_sI_all_late",
+                "atten_all_early",
+                "atten_all_late",
+            }
+            if isinstance(images, dict) and merge_keys.issubset(images.keys()):
+                self.params["images"] = merge_images(images)
+        from deism.accelerated.pipeline import attach_imageset
+
+        try:
+            attach_imageset(self.params, self.roomtype)
+        except Exception:
+            # Keep legacy behavior even if image-set normalization fails for uncommon layouts.
+            pass
         # -----------------------------------------------------------
 
     def _update_where_tracking(self, parameter_name, function_name):
@@ -574,10 +600,19 @@ class DEISM:
         if not ray.is_initialized():
             ray.init(num_cpus=num_cpus)
             print("\n")
+        from deism.accelerated.pipeline import ensure_acceleration_defaults, run_arg, run_shoebox
+
+        self.params = ensure_acceleration_defaults(self.params)
         if self.roomtype == "shoebox":
-            self.params["RTF"] = run_DEISM(self.params)
+            if self.params.get("accelEnabled", False):
+                self.params["RTF"] = run_shoebox(self.params)
+            else:
+                self.params["RTF"] = run_DEISM(self.params)
         elif self.roomtype == "convex":
-            self.params["RTF"] = run_DEISM_ARG(self.params)
+            if self.params.get("accelEnabled", False):
+                self.params["RTF"] = run_arg(self.params)
+            else:
+                self.params["RTF"] = run_DEISM_ARG(self.params)
         # Shutdown Ray
         if if_shutdown_ray:
             ray.shutdown()
@@ -3880,6 +3915,11 @@ def run_DEISM(params):
     """
     Initialize some parameters and run DEISM codes
     """
+    from deism.accelerated.pipeline import ensure_acceleration_defaults, run_shoebox
+
+    params = ensure_acceleration_defaults(params)
+    if params.get("accelEnabled", False):
+        return run_shoebox(params)
     # Run DEISM, first decide which mode to use
     if params["DEISM_method"] == "ORG":
         # Run DEISM-ORG
@@ -4296,6 +4336,11 @@ def run_DEISM_ARG(params):
     """
     Run DEISM-ARG for different modes
     """
+    from deism.accelerated.pipeline import ensure_acceleration_defaults, run_arg
+
+    params = ensure_acceleration_defaults(params)
+    if params.get("accelEnabled", False):
+        return run_arg(params)
     if params["DEISM_method"] == "ORG":
         # Run DEISM-ARG ORG
         P = ray_run_DEISM_ARG_ORG(params, params["images"], params["Wigner"])
