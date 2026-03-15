@@ -7,6 +7,7 @@ import ray
 
 from deism.accelerated.imageset import ImageSet
 from deism.accelerated.image_generation_shoebox import (
+    choose_shoebox_image_chunk_size,
     generate_shoebox_images_legacy_compatible,
 )
 from deism.accelerated.ray_batch import (
@@ -124,14 +125,25 @@ def build_shoebox_images(params: Dict) -> Dict:
         _set_backend(params, "image", "legacy", impl=impl)
     else:
         backend = "torch" if impl == "rewrite_torch" else "cpu"
+        effective_chunk_size = choose_shoebox_image_chunk_size(
+            requested_chunk_size=int(params.get("accelShoeboxImageChunkSize", 512)),
+            num_freqs=int(np.asarray(params["impedance"]).shape[1]),
+            angle_dependent=int(params["angDepFlag"]) == 1,
+        )
         try:
             images = generate_shoebox_images_legacy_compatible(
                 params,
                 backend=backend,
-                chunk_size=int(params.get("accelShoeboxImageChunkSize", 512)),
+                chunk_size=effective_chunk_size,
             )
             _validate_shoebox_images(images)
-            _set_backend(params, "image", f"rewrite_{backend}", impl=impl)
+            _set_backend(
+                params,
+                "image",
+                f"rewrite_{backend}",
+                impl=impl,
+                chunk_size_effective=effective_chunk_size,
+            )
         except Exception:
             # Hard safety fallback: preserve old behavior on any mismatch/failure.
             images = pre_calc_images_src_rec_optimized_nofs(params)

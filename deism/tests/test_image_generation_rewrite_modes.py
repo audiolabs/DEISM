@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from deism.accelerated.image_generation_shoebox import (
+    choose_shoebox_image_chunk_size,
     generate_shoebox_images_legacy_compatible,
 )
 from deism.core_deism import pre_calc_images_src_rec_optimized_nofs
@@ -53,6 +54,13 @@ def test_rewrite_cpu_matches_legacy_angle_independent_case():
     params = _small_params()
     params["angDepFlag"] = 0
     _assert_rewrite_matches_legacy(params)
+
+
+def test_choose_shoebox_image_chunk_size_adapts_for_angle_dependent_high_freqs():
+    assert choose_shoebox_image_chunk_size(512, num_freqs=1000, angle_dependent=True) == 32
+    assert choose_shoebox_image_chunk_size(512, num_freqs=200, angle_dependent=True) == 128
+    assert choose_shoebox_image_chunk_size(512, num_freqs=2, angle_dependent=True) == 512
+    assert choose_shoebox_image_chunk_size(512, num_freqs=1000, angle_dependent=False) == 512
 
 
 @pytest.mark.skipif(not _TORCH_AVAILABLE, reason="PyTorch not available")

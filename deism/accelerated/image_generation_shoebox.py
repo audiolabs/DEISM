@@ -9,6 +9,24 @@ def _ref_coef(theta, zeta):
     return (zeta * np.cos(theta) - 1) / (zeta * np.cos(theta) + 1)
 
 
+def choose_shoebox_image_chunk_size(
+    requested_chunk_size: int,
+    num_freqs: int,
+    angle_dependent: bool,
+) -> int:
+    requested = max(int(requested_chunk_size), 1)
+    if not angle_dependent or num_freqs <= 0:
+        return requested
+
+    # Keep angle-dependent chunks small enough to avoid spending most time
+    # materializing large [chunk, freq] temporary arrays.
+    target = max(1, 32768 // int(num_freqs))
+    if target >= 32:
+        target = 1 << (target.bit_length() - 1)
+        target = max(32, target)
+    return max(1, min(requested, target))
+
+
 def _enumerate_qxyz_for_ref_order(p_x: int, p_y: int, p_z: int, ref_order: int) -> List[Tuple[int, int, int]]:
     out: List[Tuple[int, int, int]] = []
     for i_abs in range(ref_order + 1):
@@ -54,6 +72,15 @@ def _cart2sph_batch(v: np.ndarray) -> np.ndarray:
     return np.stack([az, theta, r], axis=1)
 
 
+def _negated_cart2sph_from_sph(sph: np.ndarray) -> np.ndarray:
+    out = np.empty_like(sph)
+    out[:, 0] = sph[:, 0] + np.pi
+    out[:, 0] = np.where(out[:, 0] > np.pi, out[:, 0] - 2.0 * np.pi, out[:, 0])
+    out[:, 1] = np.pi - sph[:, 1]
+    out[:, 2] = sph[:, 2]
+    return out
+
+
 def _atten_numpy(
     r_vec: np.ndarray,
     q: np.ndarray,
@@ -61,6 +88,7 @@ def _atten_numpy(
     z_s: np.ndarray,
     angle_dependent: bool,
     power_tables: Dict[str, np.ndarray] | None = None,
+    r_norm: np.ndarray | None = None,
 ) -> np.ndarray:
     n = q.shape[0]
     num_freqs = z_s.shape[1]
@@ -85,7 +113,9 @@ def _atten_numpy(
         ).astype(np.complex128, copy=False)
 
     if angle_dependent:
-        r_norm = np.maximum(np.linalg.norm(r_vec, axis=1), 1e-12)
+        if r_norm is None:
+            r_norm = np.linalg.norm(r_vec, axis=1)
+        r_norm = np.maximum(r_norm, 1e-12)
         cos_x = np.clip(np.abs(r_vec[:, 0]) / r_norm, 0.0, 1.0)
         cos_y = np.clip(np.abs(r_vec[:, 1]) / r_norm, 0.0, 1.0)
         cos_z = np.clip(np.abs(r_vec[:, 2]) / r_norm, 0.0, 1.0)
@@ -217,6 +247,11 @@ def generate_shoebox_images_legacy_compatible(
     max_dist_sq = float(params["soundSpeed"] * params["reverberationTime"]) ** 2
     angle_dependent = int(params["angDepFlag"]) == 1
     num_freqs = int(z_s.shape[1])
+    chunk_size = choose_shoebox_image_chunk_size(
+        requested_chunk_size=chunk_size,
+        num_freqs=num_freqs,
+        angle_dependent=angle_dependent,
+    )
     power_tables = None
     if not angle_dependent:
         power_tables = _build_angle_independent_power_tables(
@@ -260,6 +295,7 @@ def generate_shoebox_images_legacy_compatible(
                         p = p[keep]
                         i_s = i_s[keep]
                         r_si_r = r_si_r[keep]
+                        r_norm = np.sqrt(dist_sq[keep])
 
                         i_calc = 2 * q - p
                         cross = np.where((i_calc % 2) == 0, -i_calc, i_calc).astype(np.int32)
@@ -270,11 +306,10 @@ def generate_shoebox_images_legacy_compatible(
                         )
 
                         r_s_ri = i_r - x_s[None, :]
-                        r_r_si = i_s - x_r[None, :]
 
                         sph_sir = _cart2sph_batch(r_si_r)
                         sph_sri = _cart2sph_batch(r_s_ri)
-                        sph_rsi = _cart2sph_batch(r_r_si)
+                        sph_rsi = _negated_cart2sph_from_sph(sph_sir)
 
                         if backend == "torch" and angle_dependent:
                             atten = _atten_torch(r_si_r, q, p, z_s)
@@ -286,6 +321,7 @@ def generate_shoebox_images_legacy_compatible(
                                 z_s,
                                 angle_dependent=angle_dependent,
                                 power_tables=power_tables,
+                                r_norm=r_norm,
                             )
 
                         a_chunk = np.concatenate([q, p], axis=1).astype(np.int32, copy=False)

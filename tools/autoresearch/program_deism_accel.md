@@ -66,6 +66,18 @@ Small integration edits are allowed in:
 
 Only when needed to wire or guard accelerated paths.
 
+## Git Branch Rule
+
+Do acceleration work on this branch:
+
+- `codex/acceleration`
+
+Before starting a new acceleration iteration:
+
+1. Confirm the current branch is `codex/acceleration`.
+2. If not, switch to `codex/acceleration` before editing or evaluating.
+3. Keep acceleration experiments and supporting evaluation updates on this branch until they are intentionally merged or moved elsewhere.
+
 ## Four Evaluation Components
 
 ### 1. Image generation only
@@ -214,14 +226,46 @@ Record one row per evaluated candidate in:
 
 - `tools/autoresearch/results.tsv`
 
+## Commit Rule
+
+When an improvement is implemented and validated well enough to keep, create a new git commit on `codex/acceleration`.
+
+Each such commit should capture the improvement as one step in the acceleration history, not as an anonymous checkpoint.
+
+Include in the commit message:
+
+- what strategy was used
+- which part of the pipeline was targeted
+- what improvement was achieved
+- any important guardrail, limitation, or correctness note
+
+Preferred commit-message shape:
+
+```text
+<short subject naming the acceleration change>
+
+Strategy: <what was changed and why>
+Scope: <images | algorithms | fullchain | matrix tooling>
+Evidence: <speedup / correctness / robustness result>
+Notes: <limitations, fallback behavior, or environment caveats>
+```
+
+Examples of good evidence lines:
+
+- `Evidence: image generation speedup 1.53x on tools/deism_evaluation.py images smoke case`
+- `Evidence: strict equivalence passed; 0 image-count change`
+- `Evidence: matrix failures unchanged; threshold_breached=false`
+
 ## Minimal Workflow
 
 1. Make one small acceleration change.
 2. Verify the Python environment guard above if the shell or machine context changed.
-3. Run the most relevant component first.
-4. If promising, run `fullchain`.
-5. If still promising, run `matrix`.
-6. Record the result in `results.tsv`.
+3. Confirm the current branch is `codex/acceleration`.
+4. Run the most relevant component first.
+5. If promising, run `fullchain`.
+6. If still promising, run `matrix`.
+7. Record the result in `results.tsv`.
+8. If the change is worth keeping, create a git commit with the strategy and achieved improvement summarized clearly.
 
 ## Principle
 

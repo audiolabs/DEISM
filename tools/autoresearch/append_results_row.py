@@ -89,11 +89,18 @@ def _summarize_matrix(report: Dict[str, Any]) -> Dict[str, Any]:
         for r in rows
         if isinstance(r, dict) and r.get("run_speedup") is not None
     ]
+    image_speedups = [
+        float(r["image_gen_speedup"])
+        for r in rows
+        if isinstance(r, dict) and r.get("image_gen_speedup") is not None
+    ]
     med_speedup = ""
     if total_speedups:
         med_speedup = _safe_float(median(total_speedups))
     elif run_speedups:
         med_speedup = _safe_float(median(run_speedups))
+    elif image_speedups:
+        med_speedup = _safe_float(median(image_speedups))
 
     med_errs = [
         float(r["median_rel_error"])
@@ -112,12 +119,28 @@ def _summarize_matrix(report: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(r, dict) and r.get("accel_backend")
         }
     )
+    if not backends:
+        backends = sorted(
+            {
+                str(r.get("candidate_image_backend"))
+                for r in rows
+                if isinstance(r, dict) and r.get("candidate_image_backend")
+            }
+        )
     accuracy_ok = None
     if med_errs or p95_errs:
         accuracy_ok = (
             (max(med_errs) if med_errs else 0.0) <= 1e-3
             and (max(p95_errs) if p95_errs else 0.0) <= 1e-2
         )
+    else:
+        strict_eq_values = [
+            bool(r["strict_equivalence_passed"])
+            for r in rows
+            if isinstance(r, dict) and r.get("strict_equivalence_passed") is not None
+        ]
+        if strict_eq_values:
+            accuracy_ok = all(strict_eq_values)
 
     eval_passed = (
         int(report.get("n_cases", 0) or 0) > 0
