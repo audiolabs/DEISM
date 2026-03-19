@@ -22,18 +22,302 @@ In DEISM-ARG, we can model the room transfer function between transducers mounte
 
 # Preparation and installing
 
-## Build locally
+DEISM supports Python versions 3.9, 3.10, and 3.11, and works on Windows, macOS, and Linux. You can install DEISM using either **Python virtual environments** or **Conda**.
 
-- In you encounter **errors** like "unrecognized arguments: deism_envs_exact.yml", please type the following commands manuelly in the command line. 
-- Clone or download the repository to your local directory
-- Use the command `conda env create -f deism_env.yml` to create a Conda environment for the DEISM algorithms. If this does not work, try `conda env create -f deism_env_exact.yml` as the file **deism_envs_exact.yml** records the versions of all packages.
-- Activate the created environment by "conda activate DEISM"
-- Running `pip install -e .` will build the deism package including the c++ extensions locally. You can also modify the sources codes and check out the effects. In case you receiver errors like "ModuleNotFoundError: No module named 'pybind11" even after activated the conda environment, you can use `python -m pip install -e .` to try install again. 
-- Run scripts in the **examples** folder. 
+## Check Python Version
 
-## Using pip to install remotely
+First, verify you have Python 3.9, 3.10, or 3.11 installed. Click on your operating system below:
 
-- Run `pip install deism` to install deism. 
+<details>
+<summary><b>macOS</b></summary>
+
+Open the Terminal by pressing 'Command+Spacebar' and searching for 'Terminal'. Once the Terminal is open, type:
+
+```bash
+python3 --version
+```
+
+> **Tip:** If you have not used the terminal before, you may be prompted to install Xcode Command Line Tools. Follow the prompts to install the package, then try the command again.
+
+If you don't have Python or have an older version, download and install Python from [python.org](https://www.python.org/downloads/).
+
+</details>
+
+<details>
+<summary><b>Linux/WSL</b></summary>
+
+In your shell, run:
+
+```bash
+python3 --version
+```
+
+To check available Python versions for your distribution:
+
+```bash
+sudo apt update
+apt show python3
+```
+
+If you need to install Python, run:
+
+```bash
+sudo apt install python3 python3-pip python3-venv
+```
+
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+Open PowerShell by typing "PowerShell" in the Windows search bar. Once inside PowerShell, type:
+
+```powershell
+python3 --version
+```
+
+Alternatively, you can type `python` and press Enter to open the Microsoft Store's installation page for Python.
+
+If you don't have Python or have an older version, download and install Python from [python.org](https://www.python.org/downloads/).
+
+</details>
+
+---
+
+## Installation Method 1: Python Virtual Environment
+
+### Install DEISM (End Users)
+
+<details>
+<summary><b>macOS</b></summary>
+
+In the terminal, run:
+
+```bash
+# Create virtual environment (recommended location)
+python3 -m venv ~/.venv/deism
+source ~/.venv/deism/bin/activate
+
+# Install DEISM
+pip install --upgrade pip
+pip install deism
+```
+
+</details>
+
+<details>
+<summary><b>Linux/WSL</b></summary>
+
+In your shell, run:
+
+```bash
+# Create virtual environment (recommended location)
+python3 -m venv ~/.venv/deism
+source ~/.venv/deism/bin/activate
+
+# Install DEISM
+pip install --upgrade pip
+pip install deism
+```
+
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+In PowerShell, run:
+
+```powershell
+# Create virtual environment (recommended location)
+python -m venv C:\Users\<YourUsername>\venvs\deism
+C:\Users\<YourUsername>\venvs\deism\Scripts\Activate.ps1
+
+# Install DEISM
+python -m pip install --upgrade pip
+pip install deism
+```
+
+> **Tip:** If you get an execution policy error, run PowerShell as Administrator and execute:
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
+
+</details>
+
+### Install DEISM (Developers)
+
+<details>
+<summary><b>macOS</b></summary>
+
+In the terminal, run:
+
+```bash
+# Clone repository
+git clone https://github.com/audiolabs/DEISM.git
+cd DEISM
+
+# Create virtual environment (recommended location)
+python3 -m venv ~/.venv/deism_dev
+source ~/.venv/deism_dev/bin/activate
+
+# Install in editable mode
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install -e .
+```
+
+</details>
+
+<details>
+<summary><b>Linux/WSL</b></summary>
+
+In your shell, run:
+
+```bash
+# Clone repository
+git clone https://github.com/audiolabs/DEISM.git
+cd DEISM
+
+# Create virtual environment (recommended location)
+python3 -m venv ~/.venv/deism_dev
+source ~/.venv/deism_dev/bin/activate
+
+# Install in editable mode
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install -e .
+```
+
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+In PowerShell, run:
+
+```powershell
+# Clone repository
+git clone https://github.com/audiolabs/DEISM.git
+cd DEISM
+
+# Create virtual environment (recommended location)
+python -m venv C:\Users\<YourUsername>\venvs\deism_dev
+C:\Users\<YourUsername>\venvs\deism_dev\Scripts\Activate.ps1
+
+# Install in editable mode
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+pip install -e .
+```
+
+</details>
+
+---
+
+## Installation Method 2: Conda Environment
+
+### Install DEISM (End Users)
+
+**All Platforms:**
+```bash
+# Create conda environment
+conda create -n deism python=3.9
+conda activate deism
+
+# Install DEISM
+pip install --upgrade pip
+pip install deism
+```
+
+### Install DEISM (Developers)
+
+**All Platforms:**
+```bash
+# Clone repository
+git clone https://github.com/audiolabs/DEISM.git
+cd DEISM
+
+# Create conda environment from file
+conda env create -f deism_env.yml
+conda activate DEISM
+
+# Install in editable mode
+pip install -e .
+```
+
+**Alternative:** If `deism_env.yml` doesn't work, try the exact versions file:
+```bash
+conda env create -f deism_env_exact.yml
+conda activate DEISM
+pip install -e .
+```
+
+---
+
+## Build Tools Requirements
+
+DEISM compiles C++ extensions during installation. You'll need a C++ compiler. Click on your operating system:
+
+<details>
+<summary><b>macOS</b></summary>
+
+Install Xcode Command Line Tools:
+
+```bash
+xcode-select --install
+```
+
+</details>
+
+<details>
+<summary><b>Linux/WSL</b></summary>
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get update
+sudo apt-get install build-essential g++ python3-dev
+```
+
+**RHEL/CentOS/Fedora:**
+```bash
+sudo yum install gcc-c++ python3-devel
+```
+
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+**Option 1:** Install [MinGW-w64](https://www.mingw-w64.org/downloads/) and add to PATH
+
+**Option 2:** Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) (select "C++ build tools" during installation)
+
+</details>
+
+> **Note:** If the compiler is missing, DEISM will still install but the optional `count_reflections` C++ library won't be compiled (Python fallback will be used).
+
+---
+
+## Troubleshooting
+
+**PowerShell execution policy error (Windows):**
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+**"g++: command not found" (Linux/macOS):**
+- Linux: `sudo apt-get install build-essential`
+- macOS: `xcode-select --install`
+
+**"ModuleNotFoundError: No module named 'pybind11'":**
+```bash
+pip install pybind11>=2.2
+pip install deism  # or pip install -e .
+```
+
+**Conda environment issues:**
+- If you encounter errors with `deism_env.yml`, try `deism_env_exact.yml` which contains exact package versions
+- Ensure conda is up to date: `conda update conda`
 
 ## Additional heads up
 - You would need to an external LaTeX installation to render text properly when running the examples, since we enable `plt.rcParams["text.usetex"] = True` when plotting the simulated room transfer functions. Please refer to this page for more information [Matplotlib usetex Documentation](https://matplotlib.org/stable/users/explain/text/usetex.html). 
@@ -125,6 +409,7 @@ For more information about directivity definition used in DEISM and DEISM-ARG, p
 - M. Sc. Hasan Nazım Biçer
 - Dr. Albert Prinn
 - Prof. Dr. ir. Emanuël Habets
+- Anjana Rajasekhar
 
  
 

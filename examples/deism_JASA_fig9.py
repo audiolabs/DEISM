@@ -18,16 +18,20 @@ Also notice that the frequencies are from 20 Hz to 1000 Hz, you probably need to
 # Authors: Zeyu Xu
 # Email: zeyu.xu@audiolabs-erlangen.de
 # -------------------------------------------------------
-import yaml
-import argparse
 import os
-import time
+import ray
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy import special as scy
-import ray
-import psutil
-from deism.core_deism import *
+from deism.core_deism import (
+    DEISM,
+    load_directpath_pressure,
+    load_RTF_data,
+)
+from deism.data_loader import (
+    cmdArgsToDict,
+    detect_conflicts,
+    printDict,
+)
 from deism.utilities import get_SPL
 from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
@@ -44,14 +48,15 @@ def init_parameters(params):
     )  # Not changing across speaker shapes
     # Note that the receiver position may be different for different shapes
     # Orientations of the sources and receivers
-    params["orientSources"] = np.array([0, 0, 0])
+    params["orientSource"] = np.array([0, 0, 0])
     params["orientReceiver"] = np.array([0, 0, 0])
+    # Pipeline uses singular keys for directivity rotation
     # Radius of the spheres in meters
     params["radiusSource"] = 0.4
     params["radiusReceiver"] = 0.5
-    # sph harmonic orders
-    params["nSourceOrder"] = 5
-    params["vReceiverOrder"] = 5
+    # Pipeline uses sourceOrder/receiverOrder for directivity
+    params["sourceOrder"] = 5
+    params["receiverOrder"] = 5
     # Directivity profiles of the source and receiver
     return params
 
@@ -387,150 +392,130 @@ def plot_shifted_Phases(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
 
 
 def main():
-    # Load the default parameters from the configSingleParam.yaml file
-    params, cmdArgs = cmdArgsToDict()
-    # Initialize the parameters related to fig. 9
-    params = init_parameters(params)
-    # detect conflicts
-    detect_conflicts(params)
-
+    # Use DEISM class and consistent run_DEISM(if_clean_up=..., if_shutdown_ray=...) pattern
+    # Limit Ray to a modest number of CPUs to reduce system load
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_cpus=4)
+    deism = DEISM("RTF", "shoebox")
+    init_parameters(deism.params)
+    detect_conflicts(deism.params)
+    # Fig. 9 uses non-monopole directivities (set in loop); detect_conflicts above
+    # set sourceOrder/receiverOrder to 0 because config has monopole. Re-apply order 5.
+    deism.params["sourceOrder"] = 5
+    deism.params["receiverOrder"] = 5
+    _, cmdArgs = cmdArgsToDict()
     if cmdArgs.quiet:
-        params["silentMode"] = 1
-    printDict(params)
-    # -------------------------------------------------------
-    # Run for shared calculation among different shapes
-    # -------------------------------------------------------
+        deism.params["silentMode"] = 1
+    printDict(deism.params)
 
-    # -------------------------------------------------------
-    # Run for Spherical shape
-    # -------------------------------------------------------
-    # Define the directivity profiles of the source and receiver
-    params["sourceType"] = "Speaker_sph_cyldriver_source"
-    params["receiverType"] = "Speaker_sph_cyldriver_receiver"
-    # Update the sph harmonic orders
-    params["nSourceOrder"] = 5
-    params["vReceiverOrder"] = 5
-    # Update the rest parameters
-    params["ifReceiverNormalize"] = 1
-    params = compute_rest_params(params)
-    # Precompute Wigner 3J matrices
-    Wigner = pre_calc_Wigner(params)
-    params["ifRemoveDirectPath"] = 1
-    # Initialize directivities
-    params = init_receiver_directivities(params)
-    params = init_source_directivities(params)
-    # Vectorize the directivity data, used for DEISM-LC
-    params = vectorize_C_nm_s(params)
-    params = vectorize_C_vu_r(params)
-    # Define the receiver position
-    params["posReceiver"] = np.array([1.05, 1.1, 1.3 + np.sqrt(3) / 10])
-    # Precompute reflection paths
-    images = pre_calc_images_src_rec(params)
-    images = merge_images(images)
-    # Initialize Ray
-    num_cpus = psutil.cpu_count(logical=False)
-    if not ray.is_initialized():
-        ray.init(num_cpus=num_cpus)
-        print("\n")
-    # Run DEISM-ORG
-    P_DEISM_Sph = ray_run_DEISM(params, images, Wigner)
-    # Run DEISM-LC
-    P_DEISM_LC_Sph = ray_run_DEISM_LC_matrix(params, images)
-    # Load direct path
-    freqs_FEM, P_direct, mic_pos = load_directpath_pressure(
-        params["silentMode"], "Speaker_sph_cyldriver_directpath"
+    # JASA Fig. 9: frequencies 20 Hz to 1 kHz (paper range)
+    deism.params["startFreq"] = 20
+    deism.params["endFreq"] = 1000
+    deism.params["freqStep"] = 2
+    deism.params["ifRemoveDirectPath"] = 1
+    # Set before update_freqs() so pointSrcStrength is initialized (used by receiver directivity normalization)
+    deism.params["ifReceiverNormalize"] = 1
+    # Direct path is excluded from DEISM images; we add FEM direct path per shape below
+    deism.update_wall_materials()
+    deism.update_freqs()
+
+    shape_configs = [
+        (
+            "Speaker_sph_cyldriver_source",
+            "Speaker_sph_cyldriver_receiver",
+            np.array([1.05, 1.1, 1.3 + np.sqrt(3) / 10]),
+            "Speaker_sph_cyldriver_directpath",
+            "Room_one_speaker_sph_cyldriver_pos_3",
+        ),
+        (
+            "Speaker_cuboid_cyldriver_source",
+            "Speaker_cuboid_cyldriver_receiver",
+            np.array([1.05, 1.1, 1.5]),
+            "Speaker_cuboid_cyldriver_directpath",
+            "Room_one_speaker_cuboid_cyldriver_pos_3",
+        ),
+        (
+            "Speaker_cyl_cyldriver_source",
+            "Speaker_cyl_cyldriver_receiver",
+            np.array([1.05, 1.1, 1.5]),
+            "Speaker_cyl_cyldriver_directpath",
+            "Room_one_speaker_cyl_cyldriver_pos_3",
+        ),
+    ]
+
+    P_DEISMs_list = []
+    P_DEISM_LCs_list = []
+    P_FEMs_list = []
+
+    for shape_i, (
+        source_type,
+        receiver_type,
+        pos_receiver,
+        directpath_name,
+        fem_room_name,
+    ) in enumerate(shape_configs):
+        deism.params["sourceType"] = source_type
+        deism.params["receiverType"] = receiver_type
+        deism.params["posReceiver"] = pos_receiver
+        deism.params["ifReceiverNormalize"] = 1
+        # update_freqs() must not be called here: it overwrites params["impedance"], so a
+        # second call breaks interpolate_materials. pointSrcStrength was set once above.
+
+        # Run DEISM-ORG
+        deism.params["DEISM_method"] = "ORG"
+        deism.update_directivities()
+        deism.update_source_receiver()
+        deism.run_DEISM(if_clean_up=True, if_shutdown_ray=False)
+        P_DEISM = deism.params["RTF"].copy()
+
+        # Run DEISM-LC
+        deism.params["DEISM_method"] = "LC"
+        deism.update_directivities()
+        deism.update_source_receiver()
+        deism.run_DEISM(if_clean_up=True, if_shutdown_ray=False)
+        P_DEISM_LC = deism.params["RTF"].copy()
+
+        # Load direct path and add to DEISM results
+        freqs_FEM, P_direct, mic_pos = load_directpath_pressure(
+            deism.params["silentMode"], directpath_name
+        )
+        P_direct = P_direct.flatten()
+        assert np.allclose(
+            mic_pos + deism.params["posSource"], deism.params["posReceiver"]
+        )
+        P_DEISM += P_direct
+        P_DEISM_LC += P_direct
+
+        # Load FEM solutions
+        freqs_FEM, P_FEM, mic_pos = load_RTF_data(
+            deism.params["silentMode"], fem_room_name
+        )
+        assert np.allclose(mic_pos, deism.params["posReceiver"])
+
+        P_DEISMs_list.append(P_DEISM)
+        P_DEISM_LCs_list.append(P_DEISM_LC)
+        P_FEMs_list.append(P_FEM)
+
+    P_DEISM_Sph, P_DEISM_Cuboid, P_DEISM_Cyl = (
+        P_DEISMs_list[0],
+        P_DEISMs_list[1],
+        P_DEISMs_list[2],
     )
-    P_direct = P_direct.flatten()
-    # Check if mic positions are the same as the receiver positions for configuration 3
-    assert np.allclose(mic_pos + params["posSource"], params["posReceiver"])
-    # add direct path to the DEISM results
-    P_DEISM_Sph += P_direct
-    P_DEISM_LC_Sph += P_direct
-    # Load FEM solutions
-    freqs_FEM, P_FEM_Sph, mic_pos = load_RTF_data(
-        params["silentMode"], "Room_one_speaker_sph_cyldriver_pos_3"
+    P_DEISM_LC_Sph, P_DEISM_LC_Cuboid, P_DEISM_LC_Cyl = (
+        P_DEISM_LCs_list[0],
+        P_DEISM_LCs_list[1],
+        P_DEISM_LCs_list[2],
     )
-    # Check if mic positions are the same as the receiver positions for configuration 1
-    assert np.allclose(mic_pos, params["posReceiver"])
-    # -------------------------------------------------------
-    # Run for Cuboidal shape
-    # -------------------------------------------------------
-    # Define the directivity profiles of the source and receiver
-    params["sourceType"] = "Speaker_cuboid_cyldriver_source"
-    params["receiverType"] = "Speaker_cuboid_cyldriver_receiver"
-    # Initialize directivities
-    params = init_receiver_directivities(params)
-    params = init_source_directivities(params)
-    # Vectorize the directivity data, used for DEISM-LC
-    params = vectorize_C_nm_s(params)
-    params = vectorize_C_vu_r(params)
-    # Define the receiver position
-    params["posReceiver"] = np.array([1.05, 1.1, 1.5])
-    # Precompute reflection paths
-    images = pre_calc_images_src_rec(params)
-    images = merge_images(images)
-    # Run DEISM-ORG
-    P_DEISM_Cuboid = ray_run_DEISM(params, images, Wigner)
-    # Run DEISM-LC
-    P_DEISM_LC_Cuboid = ray_run_DEISM_LC_matrix(params, images)
-    # Load direct path
-    freqs_FEM, P_direct, mic_pos = load_directpath_pressure(
-        params["silentMode"], "Speaker_cuboid_cyldriver_directpath"
+    P_FEM_Sph, P_FEM_Cuboid, P_FEM_Cyl = (
+        P_FEMs_list[0],
+        P_FEMs_list[1],
+        P_FEMs_list[2],
     )
-    P_direct = P_direct.flatten()
-    # Check if mic positions are the same as the receiver positions for configuration 3
-    assert np.allclose(mic_pos + params["posSource"], params["posReceiver"])
-    # add direct path to the DEISM results
-    P_DEISM_Cuboid += P_direct
-    P_DEISM_LC_Cuboid += P_direct
-    # Load FEM solutions
-    freqs_FEM, P_FEM_Cuboid, mic_pos = load_RTF_data(
-        params["silentMode"], "Room_one_speaker_cuboid_cyldriver_pos_3"
-    )
-    # Check if mic positions are the same as the receiver positions for configuration 2
-    assert np.allclose(mic_pos, params["posReceiver"])
-    # -------------------------------------------------------
-    # Run for Cylindrical shape
-    # -------------------------------------------------------
-    # Define the directivity profiles of the source and receiver
-    params["sourceType"] = "Speaker_cyl_cyldriver_source"
-    params["receiverType"] = "Speaker_cyl_cyldriver_receiver"
-    # Initialize directivities
-    params = init_receiver_directivities(params)
-    params = init_source_directivities(params)
-    # Vectorize the directivity data, used for DEISM-LC
-    params = vectorize_C_nm_s(params)
-    params = vectorize_C_vu_r(params)
-    # Define the receiver position
-    params["posReceiver"] = np.array([1.05, 1.1, 1.5])
-    # Precompute reflection paths
-    images = pre_calc_images_src_rec(params)
-    images = merge_images(images)
-    # Run DEISM-ORG
-    P_DEISM_Cyl = ray_run_DEISM(params, images, Wigner)
-    # Run DEISM-LC
-    P_DEISM_LC_Cyl = ray_run_DEISM_LC_matrix(params, images)
-    # Shut down Ray
-    ray.shutdown()
-    # Load direct path
-    freqs_FEM, P_direct, mic_pos = load_directpath_pressure(
-        params["silentMode"], "Speaker_cyl_cyldriver_directpath"
-    )
-    P_direct = P_direct.flatten()
-    # Check if mic positions are the same as the receiver positions for configuration 3
-    assert np.allclose(mic_pos + params["posSource"], params["posReceiver"])
-    # add direct path to the DEISM results
-    P_DEISM_Cyl += P_direct
-    P_DEISM_LC_Cyl += P_direct
-    # Load FEM solutions for configuration 3
-    freqs_FEM, P_FEM_Cyl, mic_pos = load_RTF_data(
-        params["silentMode"], "Room_one_speaker_cyl_cyldriver_pos_3"
-    )
-    # Check if mic positions are the same as the receiver positions for configuration 3
-    assert np.allclose(mic_pos, params["posReceiver"])
+    params = deism.params
+
     # -------------------------------------------------------
     # Plot the results
-    # -------------------------------------------------------
     P_DEISMs = [P_DEISM_Sph, P_DEISM_Cuboid, P_DEISM_Cyl]
     P_DEISM_LCs = [P_DEISM_LC_Sph, P_DEISM_LC_Cuboid, P_DEISM_LC_Cyl]
     P_FEMs = [P_FEM_Sph, P_FEM_Cuboid, P_FEM_Cyl]

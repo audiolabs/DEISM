@@ -1148,6 +1148,52 @@ def find_wall_centers(vertices, *choose_wall_centers):
     return np.array(wall_centers)
 
 
+def convex_room_volume_and_areas(vertices):
+    """
+    Compute room volume and per-face areas for a convex polyhedron from its vertices.
+
+    Uses the same face ordering as find_wall_centers (by unique outward normals),
+    so the returned areas align with wall centers from find_wall_centers(vertices).
+
+    Parameters
+    ----------
+    vertices : np.ndarray
+        (N, 3) array of 3D vertex coordinates defining the convex room.
+
+    Returns
+    -------
+    volume : float
+        Volume of the convex hull (m^3).
+    areas : np.ndarray
+        1D array of face areas (m^2), one per unique face, same order as find_wall_centers.
+
+    Notes
+    -----
+    For shoebox-like convex rooms (6 faces), convert_imp_abs_t60_shoebox expects
+    roomAreas of length 6; this function returns areas in the hull's face order.
+    """
+    vertices = np.asarray(vertices, dtype=float)
+    if vertices.ndim != 2 or vertices.shape[1] != 3:
+        raise ValueError("vertices must be (N, 3)")
+    hull = ConvexHull(vertices)
+    volume = float(hull.volume)
+    normals = [tuple(face) for face in np.round(hull.equations[:, :3], decimals=5)]
+    unique_normals = list(set(normals))
+    areas = []
+    for normal in unique_normals:
+        face_area = 0.0
+        for i, equation in enumerate(hull.equations):
+            if tuple(np.round(equation[:3], decimals=5)) != normal:
+                continue
+            tri = hull.points[hull.simplices[i]]
+            # Triangle area = 0.5 * ||cross(v1-v0, v2-v0)||
+            face_area += 0.5 * np.linalg.norm(
+                np.cross(tri[1] - tri[0], tri[2] - tri[0])
+            )
+        areas.append(face_area)
+    return volume, np.array(areas, dtype=float)
+
+
 def get_R_sI_to_r_from_room(receiver, sources):
     """
     Get the vectors from source images to receiver
