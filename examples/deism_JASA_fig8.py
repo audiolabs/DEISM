@@ -28,7 +28,12 @@ import matplotlib.pyplot as plt
 from scipy import special as scy
 import ray
 import psutil
-from deism.core_deism import *
+from deism.core_deism import (
+    DEISM,
+    load_directpath_pressure,
+    load_RTF_data,
+)
+from deism.data_loader import cmdArgsToDict, detect_conflicts, printDict
 from deism.utilities import get_SPL
 from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
@@ -76,9 +81,9 @@ def init_parameters(params):
     # Radius of the spheres in meters
     params["radiusSource"] = 0.2
     params["radiusReceiver"] = 0.25
-    # sph harmonic orders
-    params["nSourceOrder"] = 5
-    params["vReceiverOrder"] = 5
+    # sph harmonic orders (pipeline uses sourceOrder/receiverOrder)
+    params["sourceOrder"] = 5
+    params["receiverOrder"] = 5
     # Directivity profiles of the source and receiver
     params["sourceType"] = "Speaker_small_sph_cyldriver_source"
     params["receiverType"] = "Speaker_small_sph_cyldriver_receiver"
@@ -447,78 +452,75 @@ def plot_shifted_Phases(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
 
 
 def main():
-    # Load the default parameters from the configSingleParam.yaml file
-    params, cmdArgs = cmdArgsToDict()
-    # Initialize the parameters related to fig. 8
-    params = init_parameters(params)
-    # detect conflicts
-    detect_conflicts(params)
+    # Limit Ray to a modest number of CPUs to reduce system load
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_cpus=4)
+    # Use DEISM class and consistent run_DEISM(if_clean_up=..., if_shutdown_ray=...) pattern
+    deism = DEISM("RTF", "shoebox")
+    init_parameters(deism.params)
+    detect_conflicts(deism.params)
+    _, cmdArgs = cmdArgsToDict()
     if cmdArgs.quiet:
-        params["silentMode"] = 1
-    printDict(params)
-    # -------------------------------------------------------
-    # The following calculations are unchanged for all 3 configurations
-    # -------------------------------------
-    # Initialize directivities, remains unchanged in Fig. 8
-    params = init_receiver_directivities(params)
-    params = init_source_directivities(params)
-    # Vectorize the directivity data, used for DEISM-LC
-    params = vectorize_C_nm_s(params)
-    params = vectorize_C_vu_r(params)
-    # Since we compare DEISM (ORG), Wigner 3J matrices are needed
-    Wigner = pre_calc_Wigner(params)
-    # -------------------------------------------------------
-    # The following calculations are different for all 3 configurations
-    # -------------------------------------
-    # Configuration 1: source and receiver far apart
-    # Define positions, orientations for the source and receiver
-    params["posSource"] = params["posSources"][0, :]
-    params["posReceiver"] = params["posReceivers"][0, :]
-    params["orientSource"] = params["orientSources"][0, :]
-    params["orientReceiver"] = params["orientReceivers"][0, :]
-    # Precompute reflection paths
-    images = pre_calc_images_src_rec(params)
-    images = merge_images(images)
-    # Initialize Ray
-    num_cpus = psutil.cpu_count(logical=False)
-    if not ray.is_initialized():
-        ray.init(num_cpus=num_cpus)
-        print("\n")
-    # Run DEISM-ORG
-    P_DEISM_config1 = ray_run_DEISM(params, images, Wigner)
-    # Run DEISM-LC
-    P_DEISM_LC_config1 = ray_run_DEISM_LC_matrix(params, images)
-    # -------------------------------------
-    # Configuration 2: source and receiver closer
-    # Define positions, orientations for the source and receiver
-    params["posSource"] = params["posSources"][1, :]
-    params["posReceiver"] = params["posReceivers"][1, :]
-    params["orientSource"] = params["orientSources"][1, :]
-    params["orientReceiver"] = params["orientReceivers"][1, :]
-    # Precompute reflection paths
-    images = pre_calc_images_src_rec(params)
-    images = merge_images(images)
-    # Run DEISM-ORG
-    P_DEISM_config2 = ray_run_DEISM(params, images, Wigner)
-    # Run DEISM-LC
-    P_DEISM_LC_config2 = ray_run_DEISM_LC_matrix(params, images)
-    # -------------------------------------
-    # Configuration 3: source and receiver on the same loudspeaker
-    # Define positions, orientations for the source and receiver
-    params["posSource"] = params["posSources"][2, :]
-    params["posReceiver"] = params["posReceivers"][2, :]
-    params["orientSource"] = params["orientSources"][2, :]
-    params["orientReceiver"] = params["orientReceivers"][2, :]
-    # Precompute reflection paths excluding the direct path
-    params["ifRemoveDirectPath"] = 1
-    images = pre_calc_images_src_rec(params)
-    images = merge_images(images)
-    # Run DEISM-ORG
-    P_DEISM_config3 = ray_run_DEISM(params, images, Wigner)
-    # Run DEISM-LC
-    P_DEISM_LC_config3 = ray_run_DEISM_LC_matrix(params, images)
-    # Shut down ray
-    ray.shutdown()
+        deism.params["silentMode"] = 1
+    printDict(deism.params)
+
+    # JASA Fig. 8: frequencies 20 Hz to 1 kHz (paper range)
+    # The default config sets DEISM_specs.ifReceiverNormalize=1, but we enforce it here
+    # so that receiver directivity is normalized consistently with the paper setup.
+    deism.params["ifReceiverNormalize"] = 1
+    deism.params["startFreq"] = 20
+    deism.params["endFreq"] = 1000
+    deism.params["freqStep"] = 2
+
+    deism.update_wall_materials()
+    deism.update_freqs()
+
+    P_DEISMs_list = []
+    P_DEISM_LCs_list = []
+    num_configs = 3
+    for config_i in range(num_configs):
+        deism.params["posSource"] = deism.params["posSources"][config_i, :].copy()
+        deism.params["posReceiver"] = deism.params["posReceivers"][config_i, :].copy()
+        deism.params["orientSource"] = deism.params["orientSources"][config_i, :].copy()
+        deism.params["orientReceiver"] = deism.params["orientReceivers"][
+            config_i, :
+        ].copy()
+        # Config 3 only: remove direct path from images so we can add FEM direct path later
+        if config_i == 2:
+            deism.params["ifRemoveDirectPath"] = 1
+        else:
+            deism.params["ifRemoveDirectPath"] = 0
+
+        # Run DEISM-ORG
+        deism.params["DEISM_method"] = "ORG"
+        deism.update_directivities()
+        deism.update_source_receiver()
+        deism.run_DEISM(
+            if_clean_up=True,
+            if_shutdown_ray=False,
+        )
+        P_DEISMs_list.append(deism.params["RTF"].copy())
+
+        # Run DEISM-LC
+        deism.params["DEISM_method"] = "LC"
+        deism.update_directivities()
+        deism.update_source_receiver()
+        deism.run_DEISM(if_clean_up=True, if_shutdown_ray=False)
+        P_DEISM_LCs_list.append(deism.params["RTF"].copy())
+
+    P_DEISM_config1, P_DEISM_config2, P_DEISM_config3 = (
+        P_DEISMs_list[0],
+        P_DEISMs_list[1],
+        P_DEISMs_list[2],
+    )
+    P_DEISM_LC_config1, P_DEISM_LC_config2, P_DEISM_LC_config3 = (
+        P_DEISM_LCs_list[0],
+        P_DEISM_LCs_list[1],
+        P_DEISM_LCs_list[2],
+    )
+    params = deism.params
+
     # Load direct path from FEM
     freqs_FEM, P_direct, mic_pos = load_directpath_pressure(
         params["silentMode"], "Speaker_small_sph_cyldriver_directpath"
