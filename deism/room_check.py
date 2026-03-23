@@ -9,7 +9,7 @@ Zeyu Xu
 import json
 import os
 
-import gmsh
+# import gmsh
 
 import numpy as np
 from scipy.spatial import ConvexHull
