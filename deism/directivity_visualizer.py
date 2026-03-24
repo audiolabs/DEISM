@@ -9,6 +9,8 @@ from matplotlib.widgets import Slider, Button
 from matplotlib.patches import FancyArrowPatch
 from scipy.io import loadmat
 from scipy.special import sph_harm
+from scipy.interpolate import interp1d
+
 from deism.core_deism import *
 from deism.data_loader import *
 import tkinter as tk
@@ -17,7 +19,6 @@ import os
 import time
 from mpl_toolkits.mplot3d import proj3d
 from PIL import Image
-from scipy.interpolate import interp1d
 from netCDF4 import Dataset
 
 
@@ -180,6 +181,36 @@ class Dir_Visualizer:
                 # The source directivity coefficients
                 C_nm_s[:, n, m] = 1j * ((-1) ** m) / k * Pmnr0[:, n, m + n] / hn_r0_all
         return C_nm_s
+
+    @classmethod
+    def get_deism_sh_coeffs(cls, sofa_path, target_freqs, max_order=6, use_reciprocal=True):
+        """
+        interface for DEISM：
+        Convert the SOFA file into a C_nm coefficient matrix that can be used directly by DEISM
+        """
+        # Load SOFA original datas (Psh, Dir_all, f_sofa, r0)
+        # target_freqs is the freq defined by DEISM 
+        Psh, Dir_all, f_sofa, r0 = cls.load_directivity(sofa_path, if_fill_missing_dirs=True)
+        
+        # calculate Cnm
+        cache, _ = cls.build_cnm_cache(Psh, Dir_all, f_sofa, r0, max_order, use_reciprocal)
+        
+        # convert cache (dict) to numpy array (F_sofa, N+1, 2N+1)
+        cnm_sofa_array = np.array([cache[(i, max_order, r0)] for i in range(len(f_sofa))])
+        
+        # interpolate
+        f_interp_real = interp1d(f_sofa, cnm_sofa_array.real, axis=0, kind='cubic', fill_value="extrapolate")
+        f_interp_imag = interp1d(f_sofa, cnm_sofa_array.imag, axis=0, kind='cubic', fill_value="extrapolate")
+        
+        cnm_deism = f_interp_real(target_freqs) + 1j * f_interp_imag(target_freqs)
+
+        # confirm the result should be 3-dimensional (F, N+1, 2N+1)
+        if cnm_deism.ndim == 2:
+            cnm_deism = cnm_deism[np.newaxis, :, :]
+        elif cnm_deism.ndim == 4: 
+            cnm_deism = np.squeeze(cnm_deism, axis=-1)
+        
+        return cnm_deism.astype(np.complex64), r0
 
     def __init__(self):
         """Initialize the Dir_Visualizer class"""
@@ -1327,7 +1358,7 @@ class Dir_Visualizer:
             Psh, Dir_all, freqs, r0 = cls.mat_to_internal(path)
         else:
             raise ValueError(f"Unsupported file type: {path}")
-            
+
         return Psh, Dir_all, freqs, r0
 
     @classmethod

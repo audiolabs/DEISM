@@ -191,18 +191,24 @@ class DEISM:
                 self._update_where_tracking("wallCenters", "update_room")
             else:
                 pass
-            # TODO: Calculate volumn or areas for convex room?
-            # Input known volumn and areas
+            # Calculate volume and per-face areas for convex room when not provided
+            if roomVolumn is None or roomAreas is None:
+                if self.params.get("vertices") is not None:
+                    from deism.core_deism_arg import convex_room_volume_and_areas
+                    vol, areas = convex_room_volume_and_areas(self.params["vertices"])
+                    if roomVolumn is None:
+                        self.params["roomVolumn"] = vol
+                        self._update_where_tracking("roomVolumn", "update_room")
+                    if roomAreas is None:
+                        self.params["roomAreas"] = areas
+                        self._update_where_tracking("roomAreas", "update_room")
+            # Input known volume and areas when provided
             if roomVolumn is not None:
                 self.params["roomVolumn"] = roomVolumn
-                # Update the updated_where dictionary
                 self._update_where_tracking("roomVolumn", "update_room")
             if roomAreas is not None:
                 self.params["roomAreas"] = roomAreas
-                # Update the updated_where dictionary
                 self._update_where_tracking("roomAreas", "update_room")
-            else:
-                pass
         # For other rooms, raise an error
         else:
             raise ValueError("The room type is not supported")
@@ -690,7 +696,7 @@ class DEISM:
                 p = self.apply_highpass_filter(
                     p, self.params["sampleRate"], cut_freq, zero_phase
                 )
-            p = p / np.max(np.abs(p))
+            # p = p / np.max(np.abs(p))
             # Adjust rir length using the RIRLength parameter (truncate after IFFT)
             nSamples = int(self.params["RIRLength"] * self.params["sampleRate"])
             if len(p) < nSamples:
@@ -3315,13 +3321,30 @@ def pre_calc_images_src_rec(params):
 
 
 def merge_images(images):
-    """Combine the early and late reflections in params["images"]"""
+    """Combine the early and late reflections in params["images"].
+    Supports both list-based and array-based image structures (from
+    pre_calc_images_src_rec_original/optimized vs pre_calc_images_src_rec_optimized_nofs).
+    """
     merged = {}
-    merged["A"] = images["A_early"] + images["A_late"]
-    merged["R_sI_r_all"] = images["R_sI_r_all_early"] + images["R_sI_r_all_late"]
-    merged["R_s_rI_all"] = images["R_s_rI_all_early"] + images["R_s_rI_all_late"]
-    merged["R_r_sI_all"] = images["R_r_sI_all_early"] + images["R_r_sI_all_late"]
-    merged["atten_all"] = images["atten_all_early"] + images["atten_all_late"]
+
+    def concat_early_late(early, late):
+        early = np.asarray(early)
+        late = np.asarray(late)
+        return np.concatenate([early, late], axis=0)
+
+    merged["A"] = concat_early_late(images["A_early"], images["A_late"])
+    merged["R_sI_r_all"] = concat_early_late(
+        images["R_sI_r_all_early"], images["R_sI_r_all_late"]
+    )
+    merged["R_s_rI_all"] = concat_early_late(
+        images["R_s_rI_all_early"], images["R_s_rI_all_late"]
+    )
+    merged["R_r_sI_all"] = concat_early_late(
+        images["R_r_sI_all_early"], images["R_r_sI_all_late"]
+    )
+    merged["atten_all"] = concat_early_late(
+        images["atten_all_early"], images["atten_all_late"]
+    )
     return merged
 
 
@@ -3392,7 +3415,8 @@ def calc_DEISM_ORG_single_reflection(
 
     for n in range(N_src_dir + 1):
         for m in range(-n, n + 1):
-            mirror_effect = (-1) ** ((p_y + p_z) * m + p_z * n)
+            mirror_effect = (-1.0) ** ((p_y + p_z) * m + p_z * n)
+            # (p_x + p_y) is always 0, 1, or 2, so this stays an integer
             m_mod = (-1) ** (p_x + p_y) * m
             for v in range(V_rec_dir + 1):
                 # hn_rx0 = sphankel2(v,k*r_x0)
@@ -3420,7 +3444,7 @@ def calc_DEISM_ORG_single_reflection(
                                     * W_2_all[n, v, l, m_mod, u]
                                     * Xi
                                 )  # Version 2, precalculation of sphhankel2
-                    S_nv_mu = 4 * np.pi * (1j) ** (v - n) * (-1) ** m_mod * local_sum
+                    S_nv_mu = 4 * np.pi * (1j) ** (v - n) * (-1.0) ** m_mod * local_sum
                     P_single_reflection = (
                         P_single_reflection
                         + mirror_effect
@@ -3430,7 +3454,7 @@ def calc_DEISM_ORG_single_reflection(
                         * C_vu_r[:, v, -u]
                         * 1j
                         / k
-                        * (-1) ** u
+                        * (-1.0) ** u
                     )
 
     return P_single_reflection
@@ -3517,7 +3541,7 @@ def calc_DEISM_LC_single_reflection(
         for m in range(-n, n + 1):
             factor_nm = (
                 (1j) ** (-n)
-                * (-1) ** n
+                * (-1.0) ** n
                 * C_nm_s[:, n, m]
                 * scy.sph_harm(m, n, phi_R_s_rI, theta_R_s_rI)
             )
@@ -3923,7 +3947,7 @@ def calc_DEISM_ARG_single_reflection_matrix(
                                     * Xi
                                 )  # Version 2, precalculation of sphhankel2
                     S_nv_mu = (
-                        4 * np.pi * (1j) ** (v - n) * (-1) ** m * local_sum
+                        4 * np.pi * (1j) ** (v - n) * (-1.0) ** m * local_sum
                     )  # * np.exp(1j * 2 * u * phi_x0) # * 1j * (-1)**u * np.exp(1j * 2 * m * phi_x0)
                     P_single_reflection = (
                         P_single_reflection
@@ -3933,7 +3957,7 @@ def calc_DEISM_ARG_single_reflection_matrix(
                         * C_vu_r[:, v, -u]
                         * 1j
                         / k
-                        * (-1) ** u
+                        * (-1.0) ** u
                     )
     return P_single_reflection
 
@@ -4043,7 +4067,7 @@ def calc_DEISM_ARG_LC_single_reflection_matrix(
         R_sI_r[1],
     )
     # vector multiplication for source
-    source_vec = ((1j) ** (-n_all) * (-1) ** n_all * C_nm_s_vec) @ Y_sI_r
+    source_vec = ((1j) ** (-n_all) * (-1.0) ** n_all * C_nm_s_vec) @ Y_sI_r
     # receiver spherical harmonics
     Y_sI_r = scy.sph_harm(
         u_all,
@@ -4052,7 +4076,7 @@ def calc_DEISM_ARG_LC_single_reflection_matrix(
         R_sI_r[1],
     )
     # vector multiplication for receiver
-    receiver_vec = ((1j) ** v_all * (-1) ** v_all * C_vu_r_vec) @ Y_sI_r
+    receiver_vec = ((1j) ** v_all * (-1.0) ** v_all * C_vu_r_vec) @ Y_sI_r
     # bar.update.remote(1)  # update progress bar
     return (
         -1

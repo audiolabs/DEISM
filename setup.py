@@ -307,7 +307,7 @@ setup_kwargs = dict(
     description="An image source-based method used to simulate room transfer functions for arbitrary room shapes.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    author="Zeyu Xu, Songjiang Tan",
+    author="Zeyu Xu",
     author_email="zeyu.xu@audiolabs-erlangen.de",
     url="https://github.com/audiolabs/DEISM",
     # license="MIT", !!! Todo: add license
