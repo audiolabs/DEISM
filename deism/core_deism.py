@@ -40,9 +40,10 @@ except (ImportError, RuntimeError):
 # Create a class of DEISM for running every thing
 class DEISM:
     # Initialize the DEISM class
-    def __init__(self, mode, roomtype):
+    def __init__(self, mode, roomtype, silent=False):
         self.mode = mode
         self.roomtype = roomtype
+        self.silent = silent
         self.auto_update = True  # TODO, keep it or not?
         self.track_updated_where = True
         # Some notes for the auto_update feature:
@@ -57,7 +58,7 @@ class DEISM:
         params["roomType"] = self.roomtype
         params["mode"] = self.mode
         # print the parameters or not
-        if cmdArgs.quiet:
+        if cmdArgs.quiet or self.silent:
             params["silentMode"] = 1
         printDict(params)
         # If run DEISM function, run if --run flag is set in the cmd
@@ -117,8 +118,9 @@ class DEISM:
                 self._update_where_tracking(key, "update_source_receiver")
 
         # -----------------------------------------------------------
-        # If use DEISM-ORG or DEISM-LC, merge images
-        if self.params["DEISM_method"] == "ORG" or self.params["DEISM_method"] == "LC":
+        # If use DEISM-ORG or DEISM-LC in shoebox, merge early/late images
+        # (convex rooms don't split into early/late for ORG/LC)
+        if self.roomtype == "shoebox" and self.params["DEISM_method"] in ("ORG", "LC"):
             self.params["images"] = merge_images(self.params["images"])
         # -----------------------------------------------------------
 
@@ -1874,7 +1876,8 @@ def pre_calc_images_src_rec_original_nofs(params):
     RefCoef_angdep_flag = params["angDepFlag"]
     # If RefCoef_angdep_flag is 1
     if RefCoef_angdep_flag == 1:
-        print("using angle-dependent reflection coefficients, ", end="")
+        if not params["silentMode"]:
+            print("using angle-dependent reflection coefficients, ", end="")
     N_o = params["maxReflOrder"]
     Z_S = params["impedance"]
     T60 = params["reverberationTime"]
@@ -1945,31 +1948,12 @@ def pre_calc_images_src_rec_original_nofs(params):
                                 if np.linalg.norm(I_s - x_r) - (c * T60) > 0:
                                     continue
 
-                                # Receiver images
-                                # R_p_r = np.array([x_r[0] - 2*p_x*x_r[0], x_r[1] - 2*p_y*x_r[1], x_r[2] - 2*p_z*x_r[2]])
-                                # I_r = R_p_r + R_q
-                                [i, j, k] = [
-                                    2 * q_x - p_x,
-                                    2 * q_y - p_y,
-                                    2 * q_z - p_z,
-                                ]
-                                cross_i = int(np.cos(int((i % 2) == 0) * np.pi) * i)
-                                cross_j = int(np.cos(int((j % 2) == 0) * np.pi) * j)
-                                cross_k = int(np.cos(int((k % 2) == 0) * np.pi) * k)
-                                # v_ijk = (
-                                #     T_x(i, LL[0])
-                                #     @ T_y(j, LL[1])
-                                #     @ T_z(k, LL[2])
-                                #     @ v_src
-                                # )
-                                r_ijk = (
-                                    T_x(cross_i, LL[0])
-                                    @ T_y(cross_j, LL[1])
-                                    @ T_z(cross_k, LL[2])
-                                    @ v_rec
-                                )
-                                I_r = r_ijk[0:3] + LL / 2
-                                # I_r_all.append(I_r)
+                                # Receiver images (closed-form, replaces recursive T_x @ T_y @ T_z)
+                                I_r = np.array([
+                                    (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
+                                    (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
+                                    (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
+                                ])
 
                                 # Vector from source images to receiver
                                 R_sI_r = x_r - I_s
@@ -2201,7 +2185,8 @@ def pre_calc_images_src_rec_optimized_nofs(params):
     RefCoef_angdep_flag = int(params["angDepFlag"])
 
     if RefCoef_angdep_flag == 1:
-        print("using angle-dependent reflection coefficients, ", end="")
+        if not params["silentMode"]:
+            print("using angle-dependent reflection coefficients, ", end="")
 
     N_o = params["maxReflOrder"]
     Z_S = params["impedance"]
@@ -2229,12 +2214,12 @@ def pre_calc_images_src_rec_optimized_nofs(params):
     num_early_ref_paths = int(num_early_ref_paths_estimate * 1.1)
     # Use total count as an upper bound, then truncate after filling
     # Allocate enough space for early reflections
-    R_sI_r_all_early = np.zeros((num_early_ref_paths, 3))
+    R_sI_r_all_early = np.zeros((num_early_ref_paths, 3), dtype=np.float32)
     R_s_rI_all_early = R_sI_r_all_early.copy()
     R_r_sI_all_early = R_sI_r_all_early.copy()
     # Attenuation should have frequency dependence
     numFreqs = Z_S.shape[1]
-    atten_all_early = np.zeros((num_early_ref_paths, numFreqs), dtype=np.complex128)
+    atten_all_early = np.zeros((num_early_ref_paths, numFreqs), dtype=np.complex64)
     A_early = np.zeros((num_early_ref_paths, 6), dtype=np.int32)
     early_idx = 0
     # Late reflections: use total count minus original early count as estimate
@@ -2243,10 +2228,10 @@ def pre_calc_images_src_rec_optimized_nofs(params):
         int((num_ref_paths_shoebox - num_early_ref_paths_estimate) * 1.1),
         1000,
     )
-    R_sI_r_all_late = np.zeros((num_late_ref_paths, 3))
+    R_sI_r_all_late = np.zeros((num_late_ref_paths, 3), dtype=np.float32)
     R_s_rI_all_late = R_sI_r_all_late.copy()
     R_r_sI_all_late = R_sI_r_all_late.copy()
-    atten_all_late = np.zeros((num_late_ref_paths, numFreqs), dtype=np.complex128)
+    atten_all_late = np.zeros((num_late_ref_paths, numFreqs), dtype=np.complex64)
     A_late = np.zeros((num_late_ref_paths, 6), dtype=np.int32)
     late_idx = 0
     # Other variables
@@ -2254,7 +2239,8 @@ def pre_calc_images_src_rec_optimized_nofs(params):
     x_r_room_c = x_r - room_c
     v_rec = np.array([x_r_room_c[0], x_r_room_c[1], x_r_room_c[2], 1])
 
-    print(f"maxReflectionOrder: {N_o}")
+    if not params["silentMode"]:
+        print(f"maxReflectionOrder: {N_o}")
 
     # Optimized approach: directly generate combinations that satisfy reflection order constraint
     for p_x in range(2):
@@ -2316,32 +2302,12 @@ def pre_calc_images_src_rec_optimized_nofs(params):
                                             if dist_squared > max_distance_squared:
                                                 continue
 
-                                            # Receiver images
-                                            [i_calc, j_calc, k_calc] = [
-                                                2 * q_x - p_x,
-                                                2 * q_y - p_y,
-                                                2 * q_z - p_z,
-                                            ]
-                                            cross_i = int(
-                                                np.cos(int((i_calc % 2) == 0) * np.pi)
-                                                * i_calc
-                                            )
-                                            cross_j = int(
-                                                np.cos(int((j_calc % 2) == 0) * np.pi)
-                                                * j_calc
-                                            )
-                                            cross_k = int(
-                                                np.cos(int((k_calc % 2) == 0) * np.pi)
-                                                * k_calc
-                                            )
-
-                                            r_ijk = (
-                                                T_x(cross_i, LL[0])
-                                                @ T_y(cross_j, LL[1])
-                                                @ T_z(cross_k, LL[2])
-                                                @ v_rec
-                                            )
-                                            I_r = r_ijk[0:3] + LL / 2
+                                            # Receiver images (closed-form)
+                                            I_r = np.array([
+                                                (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
+                                                (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
+                                                (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
+                                            ])
 
                                             # Vector from source images to receiver
                                             R_sI_r = x_r - I_s
@@ -2529,7 +2495,8 @@ def pre_calc_images_src_rec_original(params):
     RefCoef_angdep_flag = params["angDepFlag"]
     # If RefCoef_angdep_flag is 1
     if RefCoef_angdep_flag == 1:
-        print("using angle-dependent reflection coefficients, ", end="")
+        if not params["silentMode"]:
+            print("using angle-dependent reflection coefficients, ", end="")
     N_o = params["maxReflOrder"]
     Z_S = params["acousImpend"]
     # Maximum reflection order for the original DEISM in the DEISM-MIX mode
@@ -2601,31 +2568,12 @@ def pre_calc_images_src_rec_original(params):
                                 ):
                                     continue
 
-                                # Receiver images
-                                # R_p_r = np.array([x_r[0] - 2*p_x*x_r[0], x_r[1] - 2*p_y*x_r[1], x_r[2] - 2*p_z*x_r[2]])
-                                # I_r = R_p_r + R_q
-                                [i, j, k] = [
-                                    2 * q_x - p_x,
-                                    2 * q_y - p_y,
-                                    2 * q_z - p_z,
-                                ]
-                                cross_i = int(np.cos(int((i % 2) == 0) * np.pi) * i)
-                                cross_j = int(np.cos(int((j % 2) == 0) * np.pi) * j)
-                                cross_k = int(np.cos(int((k % 2) == 0) * np.pi) * k)
-                                # v_ijk = (
-                                #     T_x(i, LL[0])
-                                #     @ T_y(j, LL[1])
-                                #     @ T_z(k, LL[2])
-                                #     @ v_src
-                                # )
-                                r_ijk = (
-                                    T_x(cross_i, LL[0])
-                                    @ T_y(cross_j, LL[1])
-                                    @ T_z(cross_k, LL[2])
-                                    @ v_rec
-                                )
-                                I_r = r_ijk[0:3] + LL / 2
-                                # I_r_all.append(I_r)
+                                # Receiver images (closed-form, replaces recursive T_x @ T_y @ T_z)
+                                I_r = np.array([
+                                    (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
+                                    (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
+                                    (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
+                                ])
 
                                 # Vector from source images to receiver
                                 R_sI_r = x_r - I_s
@@ -2754,7 +2702,8 @@ def pre_calc_images_src_rec_optimized(params):
     RefCoef_angdep_flag = params["angDepFlag"]
 
     if RefCoef_angdep_flag == 1:
-        print("using angle-dependent reflection coefficients, ", end="")
+        if not params["silentMode"]:
+            print("using angle-dependent reflection coefficients, ", end="")
 
     N_o = params["maxReflOrder"]
     Z_S = params["acousImpend"]
@@ -2781,7 +2730,8 @@ def pre_calc_images_src_rec_optimized(params):
     x_r_room_c = x_r - room_c
     v_rec = np.array([x_r_room_c[0], x_r_room_c[1], x_r_room_c[2], 1])
 
-    print(f"maxReflectionOrder: {N_o}")
+    if not params["silentMode"]:
+        print(f"maxReflectionOrder: {N_o}")
     # count = 0
 
     # Optimized approach: directly generate combinations that satisfy reflection order constraint
@@ -2855,32 +2805,12 @@ def pre_calc_images_src_rec_optimized(params):
                                             ):
                                                 continue
 
-                                            # Receiver images
-                                            [i_calc, j_calc, k_calc] = [
-                                                2 * q_x - p_x,
-                                                2 * q_y - p_y,
-                                                2 * q_z - p_z,
-                                            ]
-                                            cross_i = int(
-                                                np.cos(int((i_calc % 2) == 0) * np.pi)
-                                                * i_calc
-                                            )
-                                            cross_j = int(
-                                                np.cos(int((j_calc % 2) == 0) * np.pi)
-                                                * j_calc
-                                            )
-                                            cross_k = int(
-                                                np.cos(int((k_calc % 2) == 0) * np.pi)
-                                                * k_calc
-                                            )
-
-                                            r_ijk = (
-                                                T_x(cross_i, LL[0])
-                                                @ T_y(cross_j, LL[1])
-                                                @ T_z(cross_k, LL[2])
-                                                @ v_rec
-                                            )
-                                            I_r = r_ijk[0:3] + LL / 2
+                                            # Receiver images (closed-form)
+                                            I_r = np.array([
+                                                (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
+                                                (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
+                                                (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
+                                            ])
 
                                             # Vector from source images to receiver
                                             R_sI_r = x_r - I_s
@@ -3055,14 +2985,12 @@ def calculate_single_image_source(args):
     )
     I_s = R_p_s + R_q
 
-    # Receiver images
-    [i_calc, j_calc, k_calc] = [2 * q_x - p_x, 2 * q_y - p_y, 2 * q_z - p_z]
-    cross_i = int(np.cos(int((i_calc % 2) == 0) * np.pi) * i_calc)
-    cross_j = int(np.cos(int((j_calc % 2) == 0) * np.pi) * j_calc)
-    cross_k = int(np.cos(int((k_calc % 2) == 0) * np.pi) * k_calc)
-
-    r_ijk = T_x(cross_i, LL[0]) @ T_y(cross_j, LL[1]) @ T_z(cross_k, LL[2]) @ v_rec
-    I_r = r_ijk[0:3] + LL / 2
+    # Receiver images (closed-form, replaces recursive T_x @ T_y @ T_z)
+    I_r = np.array([
+        (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
+        (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
+        (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
+    ])
 
     # Vector calculations
     R_sI_r = x_r - I_s
@@ -3207,7 +3135,8 @@ def pre_calc_images_src_rec_optimized_parallel(params):
     RefCoef_angdep_flag = params["angDepFlag"]
 
     if RefCoef_angdep_flag == 1:
-        print("using angle-dependent reflection coefficients, ", end="")
+        if not params["silentMode"]:
+            print("using angle-dependent reflection coefficients, ", end="")
 
     N_o = params["maxReflOrder"]
     Z_S = params["acousImpend"]
@@ -3216,7 +3145,8 @@ def pre_calc_images_src_rec_optimized_parallel(params):
     if N_o < N_o_ORG:
         N_o_ORG = N_o
 
-    print(f"maxReflectionOrder: {N_o}")
+    if not params["silentMode"]:
+        print(f"maxReflectionOrder: {N_o}")
 
     # Prepare arguments for 8 parallel tasks (one per (p_x, p_y, p_z) combination)
     room_c = LL / 2
