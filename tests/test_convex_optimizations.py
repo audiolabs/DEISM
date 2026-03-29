@@ -190,26 +190,22 @@ def test_speed_comparison():
 # Main
 # ---------------------------------------------------------------------------
 def main():
-    import ray
-    import psutil
-
     print("=" * 70)
     print("DEISM Convex Room (ARG) Optimisation Tests")
     print("=" * 70)
 
-    if not ray.is_initialized():
-        ray.init(num_cpus=psutil.cpu_count(logical=False))
-
     results = {}
 
-    # Test 1: dtype verification (MIX only — ORG/LC have pre-existing merge_images issue for convex)
-    results["dtype_MIX"] = test_convex_dtype_verification(
-        method="MIX", max_order=3, label="method_MIX",
-    )
+    # Test 1: dtype verification for all methods
+    for method in ["MIX", "ORG", "LC"]:
+        results[f"dtype_{method}"] = test_convex_dtype_verification(
+            method=method, max_order=3, label=f"method_{method}",
+        )
 
-    # Test 2: full DEISM-ARG run (MIX only — ORG/LC have pre-existing merge_images issue)
-    ok, _ = test_convex_full_run(method="MIX", max_order=3, label="MIX_order3")
-    results["run_MIX"] = ok
+    # Test 2: full DEISM-ARG run for all methods
+    for method in ["MIX", "ORG", "LC"]:
+        ok, _ = test_convex_full_run(method=method, max_order=3, label=f"{method}_order3")
+        results[f"run_{method}"] = ok
 
     # Test 3: memory storage
     results["memory"] = test_memory_storage(max_order=3, label="order_3")
@@ -226,9 +222,6 @@ def main():
     for name, passed in results.items():
         print(f"  {'PASS' if passed else 'FAIL'}  {name}")
     print(f"\n  {n_pass}/{n_total} tests passed")
-
-    if ray.is_initialized():
-        ray.shutdown()
 
     return n_pass == n_total
 

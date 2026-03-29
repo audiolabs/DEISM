@@ -13,10 +13,6 @@ from scipy.optimize import least_squares
 from scipy.interpolate import PchipInterpolator
 from scipy.fft import ifft
 from sympy.physics.wigner import wigner_3j
-import ray
-import psutil
-
-# from ray.experimental import tqdm_ray
 from sound_field_analysis.sph import sphankel2
 from deism.utilities import *
 from deism.data_loader import *
@@ -102,7 +98,17 @@ class DEISM:
         # -----------------------------------------------------------
         # Calculate images
         if self.roomtype == "shoebox":
-            self.params["images"] = pre_calc_images_src_rec_optimized_nofs(self.params)
+            image_calc_version = str(
+                self.params.get("shoeboxImageCalcVersion", "v2")
+            ).lower()
+            if image_calc_version in ("v1", "1"):
+                self.params["images"] = pre_calc_images_src_rec_optimized_nofs_v1(
+                    self.params
+                )
+            else:
+                self.params["images"] = pre_calc_images_src_rec_optimized_nofs_v2(
+                    self.params
+                )
             # Add the function name "update_source_receiver" to the updated_where dictionary
             for key in ["posSource", "posReceiver", "images"]:
                 self._update_where_tracking(key, "update_source_receiver")
@@ -569,29 +575,48 @@ class DEISM:
 
     def run_DEISM(self, if_clean_up: bool = True, if_shutdown_ray: bool = True):
         """
-        Run DEISM
+        Run DEISM using the Numba backend (default).
+
+        Args:
+            if_clean_up: If True, delete large image arrays after computation.
+            if_shutdown_ray: Ignored (kept for backward compatibility).
+                             Only used by run_DEISM_ray().
         """
-        # Initialize Ray
+        from deism.parallel_backends import run_DEISM as _run_DEISM
+        from deism.parallel_backends import run_DEISM_ARG as _run_DEISM_ARG
+
+        if self.roomtype == "shoebox":
+            self.params["RTF"] = _run_DEISM(self.params)
+        elif self.roomtype == "convex":
+            self.params["RTF"] = _run_DEISM_ARG(self.params)
+        # Clean up large matrices in self.params, e.g., params["images"]
+        if if_clean_up:
+            if "images" in self.params:
+                del self.params["images"]
+            gc.collect()
+
+    def run_DEISM_ray(self, if_clean_up: bool = True, if_shutdown_ray: bool = True):
+        """
+        Run DEISM using the Ray backend (legacy).
+        """
+        import ray
+        import psutil
+        from deism.parallel_backends import run_DEISM_ray as _run_DEISM_ray
+        from deism.parallel_backends import run_DEISM_ARG_ray as _run_DEISM_ARG_ray
+
         num_cpus = psutil.cpu_count(logical=False)
         if not ray.is_initialized():
             ray.init(num_cpus=num_cpus)
             print("\n")
         if self.roomtype == "shoebox":
-            self.params["RTF"] = run_DEISM(self.params)
+            self.params["RTF"] = _run_DEISM_ray(self.params)
         elif self.roomtype == "convex":
-            self.params["RTF"] = run_DEISM_ARG(self.params)
-        # Shutdown Ray
+            self.params["RTF"] = _run_DEISM_ARG_ray(self.params)
         if if_shutdown_ray:
             ray.shutdown()
-        # Clean up large matrices in self.params, e.g., params["images"]
         if if_clean_up:
-            # Delete the images dictionary (and all its contents)
-            # Note: In CPython, del dict[key] immediately decrements reference counts
-            # of all values, so deleting contents first is not necessary, but we do it
-            # for explicitness and to ensure memory is freed even if there are edge cases
             if "images" in self.params:
                 del self.params["images"]
-            # Force garbage collection to free memory immediately
             gc.collect()
         # -------------------------------------------------------
         # # Save the results to local directory with .npz format
@@ -2168,14 +2193,28 @@ def get_reflection_path_number_from_order(order, surfaceNumber):
         return 0
 
 
-def pre_calc_images_src_rec_optimized_nofs(params):
+def _pre_calc_images_src_rec_optimized_nofs_impl(
+    params,
+    use_closed_form_receiver_image,
+    image_dtype,
+    atten_dtype,
+    version_name,
+):
     """
-    Optimized version: Calculate images, reflection paths, and attenuation due to reflections
-    This version directly generates combinations that satisfy the reflection order constraint
-    instead of iterating through all possible combinations and filtering.
+    Optimized no-FS shoebox image generation implementation.
+
+    Args:
+        params: DEISM parameter dictionary.
+        use_closed_form_receiver_image: True for closed-form I_r, False for recursive T_x/T_y/T_z I_r.
+        image_dtype: dtype for angle/radius image arrays.
+        atten_dtype: dtype for attenuation array.
+        version_name: label shown in logs.
     """
     if not params["silentMode"]:
-        print("[Calculating] Images and attenuations (OPTIMIZED), ", end="")
+        print(
+            f"[Calculating] Images and attenuations (OPTIMIZED nofs {version_name}), ",
+            end="",
+        )
     start = time.perf_counter()
 
     LL = np.asarray(params["roomSize"], dtype=np.float64)
@@ -2214,12 +2253,12 @@ def pre_calc_images_src_rec_optimized_nofs(params):
     num_early_ref_paths = int(num_early_ref_paths_estimate * 1.1)
     # Use total count as an upper bound, then truncate after filling
     # Allocate enough space for early reflections
-    R_sI_r_all_early = np.zeros((num_early_ref_paths, 3), dtype=np.float32)
+    R_sI_r_all_early = np.zeros((num_early_ref_paths, 3), dtype=image_dtype)
     R_s_rI_all_early = R_sI_r_all_early.copy()
     R_r_sI_all_early = R_sI_r_all_early.copy()
     # Attenuation should have frequency dependence
     numFreqs = Z_S.shape[1]
-    atten_all_early = np.zeros((num_early_ref_paths, numFreqs), dtype=np.complex64)
+    atten_all_early = np.zeros((num_early_ref_paths, numFreqs), dtype=atten_dtype)
     A_early = np.zeros((num_early_ref_paths, 6), dtype=np.int32)
     early_idx = 0
     # Late reflections: use total count minus original early count as estimate
@@ -2228,10 +2267,10 @@ def pre_calc_images_src_rec_optimized_nofs(params):
         int((num_ref_paths_shoebox - num_early_ref_paths_estimate) * 1.1),
         1000,
     )
-    R_sI_r_all_late = np.zeros((num_late_ref_paths, 3), dtype=np.float32)
+    R_sI_r_all_late = np.zeros((num_late_ref_paths, 3), dtype=image_dtype)
     R_s_rI_all_late = R_sI_r_all_late.copy()
     R_r_sI_all_late = R_sI_r_all_late.copy()
-    atten_all_late = np.zeros((num_late_ref_paths, numFreqs), dtype=np.complex64)
+    atten_all_late = np.zeros((num_late_ref_paths, numFreqs), dtype=atten_dtype)
     A_late = np.zeros((num_late_ref_paths, 6), dtype=np.int32)
     late_idx = 0
     # Other variables
@@ -2302,12 +2341,36 @@ def pre_calc_images_src_rec_optimized_nofs(params):
                                             if dist_squared > max_distance_squared:
                                                 continue
 
-                                            # Receiver images (closed-form)
-                                            I_r = np.array([
-                                                (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
-                                                (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
-                                                (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
-                                            ])
+                                            # Receiver images
+                                            if use_closed_form_receiver_image:
+                                                I_r = np.array([
+                                                    (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
+                                                    (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
+                                                    (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
+                                                ])
+                                            else:
+                                                i_calc = 2 * q_x - p_x
+                                                j_calc = 2 * q_y - p_y
+                                                k_calc = 2 * q_z - p_z
+                                                cross_i = int(
+                                                    np.cos(int((i_calc % 2) == 0) * np.pi)
+                                                    * i_calc
+                                                )
+                                                cross_j = int(
+                                                    np.cos(int((j_calc % 2) == 0) * np.pi)
+                                                    * j_calc
+                                                )
+                                                cross_k = int(
+                                                    np.cos(int((k_calc % 2) == 0) * np.pi)
+                                                    * k_calc
+                                                )
+                                                r_ijk = (
+                                                    T_x(cross_i, LL[0])
+                                                    @ T_y(cross_j, LL[1])
+                                                    @ T_z(cross_k, LL[2])
+                                                    @ v_rec
+                                                )
+                                                I_r = r_ijk[0:3] + LL / 2
 
                                             # Vector from source images to receiver
                                             R_sI_r = x_r - I_s
@@ -2479,6 +2542,39 @@ def pre_calc_images_src_rec_optimized_nofs(params):
         print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
 
     return images
+
+
+def pre_calc_images_src_rec_optimized_nofs_v1(params):
+    """
+    Shoebox no-FS optimized image generation v1.
+    Uses recursive T_x/T_y/T_z receiver image computation and float64/complex128 storage.
+    """
+    return _pre_calc_images_src_rec_optimized_nofs_impl(
+        params=params,
+        use_closed_form_receiver_image=False,
+        image_dtype=np.float64,
+        atten_dtype=np.complex128,
+        version_name="v1",
+    )
+
+
+def pre_calc_images_src_rec_optimized_nofs_v2(params):
+    """
+    Shoebox no-FS optimized image generation v2 (default).
+    Uses closed-form receiver image computation and float32/complex64 storage.
+    """
+    return _pre_calc_images_src_rec_optimized_nofs_impl(
+        params=params,
+        use_closed_form_receiver_image=True,
+        image_dtype=np.float32,
+        atten_dtype=np.complex64,
+        version_name="v2",
+    )
+
+
+def pre_calc_images_src_rec_optimized_nofs(params):
+    """Backward-compatible alias; default to v2 implementation."""
+    return pre_calc_images_src_rec_optimized_nofs_v2(params)
 
 
 def pre_calc_images_src_rec_original(params):
@@ -3325,914 +3421,3 @@ def T_z(k, Lz):
         ) @ T_z(-k + np.sign(k), Lz)
 
 
-# -------------------------------
-# About DEISM calculations
-# -------------------------------
-
-
-@ray.remote
-def calc_DEISM_ORG_single_reflection(
-    N_src_dir, V_rec_dir, C_nm_s, C_vu_r, A_i, atten, x0, W_1_all, W_2_all, k
-):
-    """DEISM: Run each image using parallel computation"""
-
-    P_single_reflection = np.zeros([k.size], dtype="complex")
-    [q_x, q_y, q_z, p_x, p_y, p_z] = A_i
-    [phi_x0, theta_x0, r_x0] = x0
-    l_list = np.arange(N_src_dir + V_rec_dir + 1)
-    l_list_2D = np.broadcast_to(l_list[..., None], l_list.shape + (k.shape[0],))
-    k_2D = np.broadcast_to(k, (len(l_list),) + k.shape)
-    sphan2_all = sphankel2(l_list_2D, k_2D * r_x0)
-
-    for n in range(N_src_dir + 1):
-        for m in range(-n, n + 1):
-            mirror_effect = (-1.0) ** ((p_y + p_z) * m + p_z * n)
-            # (p_x + p_y) is always 0, 1, or 2, so this stays an integer
-            m_mod = (-1) ** (p_x + p_y) * m
-            for v in range(V_rec_dir + 1):
-                # hn_rx0 = sphankel2(v,k*r_x0)
-                for u in range(-1 * v, v + 1):
-                    local_sum = np.zeros(k.size, dtype="complex")
-                    for l in range(np.abs(n - v), n + v + 1):
-                        if np.abs(u - m_mod) <= l:
-                            if (
-                                W_1_all[n, v, l] != 0
-                                and W_2_all[n, v, l, m_mod, u] != 0
-                            ):
-                                Xi = np.sqrt(
-                                    (2 * n + 1)
-                                    * (2 * v + 1)
-                                    * (2 * l + 1)
-                                    / (4 * np.pi)
-                                )
-                                # local_sum = local_sum + (1j)**l * sphankel2(l,k*r_x0) * scy.sph_harm(m_mod-u, l, phi_x0, theta_x0) * W_1_all[n,v,l] * W_2_all[n,v,l,-m_mod,u,m_mod-u] * Xi # Version 1, no precalculation of sphhankel2
-                                local_sum = (
-                                    local_sum
-                                    + (1j) ** l
-                                    * sphan2_all[l, :]
-                                    * scy.sph_harm(m_mod - u, l, phi_x0, theta_x0)
-                                    * W_1_all[n, v, l]
-                                    * W_2_all[n, v, l, m_mod, u]
-                                    * Xi
-                                )  # Version 2, precalculation of sphhankel2
-                    S_nv_mu = 4 * np.pi * (1j) ** (v - n) * (-1.0) ** m_mod * local_sum
-                    P_single_reflection = (
-                        P_single_reflection
-                        + mirror_effect
-                        * atten
-                        * C_nm_s[:, n, m]
-                        * S_nv_mu
-                        * C_vu_r[:, v, -u]
-                        * 1j
-                        / k
-                        * (-1.0) ** u
-                    )
-
-    return P_single_reflection
-
-
-def ray_run_DEISM(params, images, Wigner):
-    """Complete DEISM run"""
-    import gc
-
-    if not params["silentMode"]:
-        print("[Calculating] DEISM Original ... ", end="")
-    start = time.time()
-    N_src_dir = params["sourceOrder"]
-    V_rec_dir = params["receiverOrder"]
-    W_1_all = Wigner["W_1_all"]
-    W_2_all = Wigner["W_2_all"]
-    k = params["waveNumbers"]
-    C_nm_s = params["C_nm_s"]
-    C_vu_r = params["C_vu_r"]
-    A = images["A"]
-    R_sI_r_all = images["R_sI_r_all"]
-    atten_all = images["atten_all"]
-    W_1_all_id = ray.put(W_1_all)
-    W_2_all_id = ray.put(W_2_all)
-    N_src_dir_id = ray.put(N_src_dir)
-    V_rec_dir_id = ray.put(V_rec_dir)
-    C_nm_s_id = ray.put(C_nm_s)
-    C_vu_r_id = ray.put(C_vu_r)
-    k_id = ray.put(k)
-    P_DEISM = np.zeros(k.size, dtype="complex")
-    # You can specify the batch size for better dynamic management of RAM
-    n_images = len(A)
-    batch_size = params["numParaImages"]
-    if not params["silentMode"]:
-        print("{} images, ".format(n_images), end="")
-    for n in range(int(n_images / batch_size) + 1):
-        # Run each image in parallel within each batch
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > n_images:
-            end_ind = n_images
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            result_refs.append(
-                calc_DEISM_ORG_single_reflection.remote(
-                    N_src_dir_id,
-                    V_rec_dir_id,
-                    C_nm_s_id,
-                    C_vu_r_id,
-                    A[i],
-                    atten_all[i],
-                    R_sI_r_all[i],
-                    W_1_all_id,
-                    W_2_all_id,
-                    k_id,
-                )
-            )
-        results = ray.get(result_refs)
-        P_DEISM += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id, k_id
-    gc.collect()
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
-    return P_DEISM
-
-
-@ray.remote
-def calc_DEISM_LC_single_reflection(
-    N_src_dir, V_rec_dir, C_nm_s, C_vu_r, R_s_rI, R_r_sI, atten, k
-):
-    """DEISM LC: Run each image using parallel computation"""
-    [phi_R_s_rI, theta_R_s_rI, r_R_s_rI] = R_s_rI
-    [phi_R_r_sI, theta_R_r_sI, r_R_r_sI] = R_r_sI
-    P_single_reflection = np.zeros([k.size], dtype="complex")
-    factor = -1 * atten * 4 * np.pi / k * np.exp(-(1j) * k * r_R_s_rI) / k / r_R_s_rI
-
-    for n in range(N_src_dir + 1):
-        for m in range(-n, n + 1):
-            factor_nm = (
-                (1j) ** (-n)
-                * (-1.0) ** n
-                * C_nm_s[:, n, m]
-                * scy.sph_harm(m, n, phi_R_s_rI, theta_R_s_rI)
-            )
-            for v in range(V_rec_dir + 1):
-                for u in range(-1 * v, v + 1):
-                    factor_vu = (
-                        (1j) ** v
-                        * C_vu_r[:, v, u]
-                        * scy.sph_harm(u, v, phi_R_r_sI, theta_R_r_sI)
-                    )
-                    P_single_reflection = P_single_reflection + factor_nm * factor_vu
-
-    return P_single_reflection * factor
-
-
-def ray_run_DEISM_LC(params, images):
-    """Complete DEISM LC run"""
-    import gc
-
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM LC ... ", end="")
-    N_src_dir = params["sourceOrder"]
-    V_rec_dir = params["receiverOrder"]
-    k = params["waveNumbers"]
-    C_nm_s = params["C_nm_s"]
-    C_vu_r = params["C_vu_r"]
-    A = images["A"]
-    atten_all = images["atten_all"]
-    R_s_rI_all = images["R_s_rI_all"]
-    R_r_sI_all = images["R_r_sI_all"]
-    # S = 1j * params["k"] * params["c"] * params["rho0"] * params["Q"]
-    N_src_dir_id = ray.put(N_src_dir)
-    V_rec_dir_id = ray.put(V_rec_dir)
-    C_nm_s_id = ray.put(C_nm_s)
-    C_vu_r_id = ray.put(C_vu_r)
-    k_id = ray.put(k)
-    P_DEISM = np.zeros(k.size, dtype="complex")
-
-    # You can specify the batch size for better dynamic management of RAM
-    n_images = len(A)
-    batch_size = params["numParaImages"]
-    if not params["silentMode"]:
-        print("{} images, ".format(n_images), end="")
-    for n in range(int(n_images / batch_size) + 1):
-        # Run each image in parallel within each batch
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > n_images:
-            end_ind = n_images
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            result_refs.append(
-                calc_DEISM_LC_single_reflection.remote(
-                    N_src_dir_id,
-                    V_rec_dir_id,
-                    C_nm_s_id,
-                    C_vu_r_id,
-                    R_s_rI_all[i],
-                    R_r_sI_all[i],
-                    atten_all[i],
-                    k_id,
-                )
-            )
-        results = ray.get(result_refs)
-        P_DEISM += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id, k_id
-    gc.collect()
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
-
-    return P_DEISM
-
-
-@ray.remote
-def calc_DEISM_LC_single_reflection_matrix(
-    n_all, m_all, v_all, u_all, C_nm_s_vec, C_vu_r_vec, R_s_rI, R_r_sI, atten, k
-):
-    """DEISM LC matrix form: Run each image using parallel computation"""
-    # source spherical harmonics
-    Y_s_rI = scy.sph_harm(
-        m_all,
-        n_all,
-        R_s_rI[0],
-        R_s_rI[1],
-    )
-    # vector multiplication for source
-    source_vec = ((1j) ** n_all * C_nm_s_vec) @ Y_s_rI
-    # receiver spherical harmonics
-    Y_r_sI = scy.sph_harm(
-        u_all,
-        v_all,
-        R_r_sI[0],
-        R_r_sI[1],
-    )
-    # vector multiplication for receiver
-    receiver_vec = ((1j) ** v_all * C_vu_r_vec) @ Y_r_sI
-    return (
-        -1
-        * atten
-        * 4
-        * np.pi
-        / k
-        * np.exp(-(1j) * k * R_s_rI[2])
-        / k
-        / R_s_rI[2]
-        * source_vec
-        * receiver_vec
-    )
-
-
-def ray_run_DEISM_LC_matrix(params, images):
-    """Complete DEISM LC in matrix form"""
-    import gc
-
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM LC vectorized ... ", end="")
-
-    k = params["waveNumbers"]
-    n_all = params["n_all"]
-    m_all = params["m_all"]
-    v_all = params["v_all"]
-    u_all = params["u_all"]
-    C_nm_s_vec = params["C_nm_s_vec"]
-    C_vu_r_vec = params["C_vu_r_vec"]
-    A = images["A"]
-    atten_all = images["atten_all"]
-    R_s_rI_all = images["R_s_rI_all"]
-    R_r_sI_all = images["R_r_sI_all"]
-
-    # Ray object store setup
-    n_all_id = ray.put(n_all)
-    m_all_id = ray.put(m_all)
-    v_all_id = ray.put(v_all)
-    u_all_id = ray.put(u_all)
-    C_nm_s_vec_id = ray.put(C_nm_s_vec)
-    C_vu_r_vec_id = ray.put(C_vu_r_vec)
-    k_id = ray.put(k)
-
-    P_DEISM = np.zeros(k.size, dtype="complex")
-    n_images = len(A)
-    batch_size = params["numParaImages"]
-
-    if not params["silentMode"]:
-        print("{} images, ".format(n_images), end="")
-
-    # 🟢 MEMORY-OPTIMIZED BATCH PROCESSING
-    for n in range(int(n_images / batch_size) + 1):
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > n_images:
-            end_ind = n_images
-
-        if start_ind >= end_ind:  # Skip empty batches
-            continue
-
-        # Submit batch of tasks
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            result_refs.append(
-                calc_DEISM_LC_single_reflection_matrix.remote(
-                    n_all_id,
-                    m_all_id,
-                    v_all_id,
-                    u_all_id,
-                    C_nm_s_vec_id,
-                    C_vu_r_vec_id,
-                    R_s_rI_all[i],
-                    R_r_sI_all[i],
-                    atten_all[i],
-                    k_id,
-                )
-            )
-
-        # Get results
-        results = ray.get(result_refs)
-        P_DEISM += sum(results)
-
-        # 🟢 EXPLICIT MEMORY CLEANUP
-        # Clear Ray task references
-        del result_refs
-        # Clear results from local memory
-        del results
-        # Force garbage collection
-        gc.collect()
-
-    # 🟢 FINAL CLEANUP: Remove Ray objects
-    del n_all_id, m_all_id, v_all_id, u_all_id, C_nm_s_vec_id, C_vu_r_vec_id, k_id
-    gc.collect()
-
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(
-            f"Done! [{minutes} minutes, {seconds:.1f} seconds]",
-            end="\n\n",
-        )
-
-    return P_DEISM
-
-
-def ray_run_DEISM_MIX(params, images, Wigner):
-    """
-    Run DEISM with mixed versions
-    Early reflections are calculation using the original DEISM method
-    Higher order reflections are calculated using the LC method in vectorized form
-    """
-    import gc
-
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM MIX ... ", end="")
-    # ------- Parameters for DEISM-ORG -------
-    N_src_dir = params["sourceOrder"]
-    V_rec_dir = params["receiverOrder"]
-    W_1_all = Wigner["W_1_all"]
-    W_2_all = Wigner["W_2_all"]
-    C_nm_s = params["C_nm_s"]
-    C_vu_r = params["C_vu_r"]
-    # Images, early reflections
-    A_early = images["A_early"]
-    R_sI_r_all_early = images["R_sI_r_all_early"]
-    atten_all_early = images["atten_all_early"]
-    # -------- parameters for DEISM-LC vectorized ------
-    n_all = params["n_all"]
-    m_all = params["m_all"]
-    v_all = params["v_all"]
-    u_all = params["u_all"]
-    C_nm_s_vec = params["C_nm_s_vec"]
-    C_vu_r_vec = params["C_vu_r_vec"]
-    # Images, late reflections
-    A_late = images["A_late"]
-    R_s_rI_all_late = images["R_s_rI_all_late"]
-    R_r_sI_all_late = images["R_r_sI_all_late"]
-    atten_all_late = images["atten_all_late"]
-    # -------- shared parameters --------
-    k = params["waveNumbers"]
-    # number of parallel images for calculation
-    batch_size = params["numParaImages"]
-    # Start initialization
-    # ----- Ray initialization -----
-    # For DEISM-ORG
-    W_1_all_id = ray.put(W_1_all)
-    W_2_all_id = ray.put(W_2_all)
-    N_src_dir_id = ray.put(N_src_dir)
-    V_rec_dir_id = ray.put(V_rec_dir)
-    C_nm_s_id = ray.put(C_nm_s)
-    C_vu_r_id = ray.put(C_vu_r)
-    # For DEISM-LC vectorized
-    n_all_id = ray.put(n_all)
-    m_all_id = ray.put(m_all)
-    v_all_id = ray.put(v_all)
-    u_all_id = ray.put(u_all)
-    C_nm_s_vec_id = ray.put(C_nm_s_vec)
-    C_vu_r_vec_id = ray.put(C_vu_r_vec)
-    # For shared parameters
-    k_id = ray.put(k)
-    # Start calculation
-    P_DEISM = np.zeros(k.size, dtype="complex")
-    if not params["silentMode"]:
-        print(
-            "{} early images, {} late images, ".format(len(A_early), len(A_late)),
-            end="",
-        )
-    # For early reflections
-    result_refs = []
-    for i in range(len(A_early)):
-        result_refs.append(
-            calc_DEISM_ORG_single_reflection.remote(
-                N_src_dir_id,
-                V_rec_dir_id,
-                C_nm_s_id,
-                C_vu_r_id,
-                A_early[i],
-                atten_all_early[i],
-                R_sI_r_all_early[i],
-                W_1_all_id,
-                W_2_all_id,
-                k_id,
-            )
-        )
-    # Wait for the results and sum them up
-    results = ray.get(result_refs)
-    P_DEISM += sum(results)
-    del result_refs
-    gc.collect()
-    # For late reflections
-    for n in range(int(len(A_late) / batch_size) + 1):
-        # Run each image in parallel within each batch
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > len(A_late):
-            end_ind = len(A_late)
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            result_refs.append(
-                calc_DEISM_LC_single_reflection_matrix.remote(
-                    n_all_id,
-                    m_all_id,
-                    v_all_id,
-                    u_all_id,
-                    C_nm_s_vec_id,
-                    C_vu_r_vec_id,
-                    R_s_rI_all_late[i],
-                    R_r_sI_all_late[i],
-                    atten_all_late[i],
-                    k_id,
-                )
-            )
-        # Wait for the results and sum them up
-        results = ray.get(result_refs)
-        P_DEISM += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del W_1_all_id, W_2_all_id, N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id
-    del n_all_id, m_all_id, v_all_id, u_all_id, C_nm_s_vec_id, C_vu_r_vec_id, k_id
-    gc.collect()
-
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
-    return P_DEISM
-
-
-def run_DEISM(params):
-    """
-    Initialize some parameters and run DEISM codes
-    """
-    # Run DEISM, first decide which mode to use
-    if params["DEISM_method"] == "ORG":
-        # Run DEISM-ORG
-        P = ray_run_DEISM(params, params["images"], params["Wigner"])
-    elif params["DEISM_method"] == "LC":
-        # Run DEISM-LC
-        P = ray_run_DEISM_LC_matrix(params, params["images"])
-    elif params["DEISM_method"] == "MIX":
-        # Run DEISM-MIX
-        P = ray_run_DEISM_MIX(params, params["images"], params["Wigner"])
-    return P
-
-
-@ray.remote
-def calc_DEISM_ARG_single_reflection_matrix(
-    N_src_dir,
-    V_rec_dir,
-    C_nm_s,
-    C_vu_r,
-    atten,
-    x0,
-    W_1_all,
-    W_2_all,
-    k,
-):
-    # N_src_dir = ray.get(N_src_dir_id)
-    # V_rec_dir = ray.get(V_rec_dir_id)
-    # C_nm_s = ray.get(C_nm_s_id)
-    # C_vu_r = ray.get(C_vu_r_id)
-    # atten = ray.get(atten_id)
-    [phi_x0, theta_x0, r_x0] = x0
-    # W_1_all_id = ray.get(W_1_all_id)
-    # W_2_all_id = ray.get(W_2_all_id)
-    # k = ray.get(k_id)
-    P_single_reflection = np.zeros([k.size], dtype="complex")
-
-    l_list = np.arange(N_src_dir + V_rec_dir + 1)
-    l_list_2D = np.broadcast_to(l_list[..., None], l_list.shape + (k.shape[0],))
-    k_2D = np.broadcast_to(k, (len(l_list),) + k.shape)
-    sphan2_all = sphankel2(l_list_2D, k_2D * r_x0)
-    for n in range(N_src_dir + 1):
-        for m in range(-n, n + 1):
-            # mirror_effect = (-1)**(m +n)
-            # m_mod = (-1)**(p_x+p_y)*m
-            for v in range(V_rec_dir + 1):
-                # hn_rx0 = sphankel2(v,k*r_x0)
-                for u in range(-1 * v, v + 1):
-                    local_sum = np.zeros(k.size, dtype="complex")
-                    for l in range(np.abs(n - v), n + v + 1):
-                        if np.abs(u - m) <= l:
-                            if W_1_all[n, v, l] != 0 and W_2_all[n, v, l, m, u] != 0:
-                                Xi = np.sqrt(
-                                    (2 * n + 1)
-                                    * (2 * v + 1)
-                                    * (2 * l + 1)
-                                    / (4 * np.pi)
-                                )
-                                # local_sum = local_sum + (1j)**l * sphankel2(l,k*r_x0) * scy.sph_harm(m_mod-u, l, phi_x0, theta_x0) * W_1_all[n,v,l] * W_2_all[n,v,l,-m_mod,u,m_mod-u] * Xi # Version 1, no precalculation of sphhankel2
-                                local_sum = (
-                                    local_sum
-                                    + (1j) ** l
-                                    * sphan2_all[l, :]
-                                    * scy.sph_harm(m - u, l, phi_x0, theta_x0)
-                                    * W_1_all[n, v, l]
-                                    * W_2_all[n, v, l, m, u]
-                                    * Xi
-                                )  # Version 2, precalculation of sphhankel2
-                    S_nv_mu = (
-                        4 * np.pi * (1j) ** (v - n) * (-1.0) ** m * local_sum
-                    )  # * np.exp(1j * 2 * u * phi_x0) # * 1j * (-1)**u * np.exp(1j * 2 * m * phi_x0)
-                    P_single_reflection = (
-                        P_single_reflection
-                        + atten
-                        * C_nm_s[:, n, m]
-                        * S_nv_mu
-                        * C_vu_r[:, v, -u]
-                        * 1j
-                        / k
-                        * (-1.0) ** u
-                    )
-    return P_single_reflection
-
-
-def ray_run_DEISM_ARG_ORG(params, images, Wigner):
-    """
-    Run DEISM-ARG using ray, the original version
-    Inputs:
-    params: parameters
-    images: images
-    Wigner: Wigner 3J matrices
-    """
-    # -------------------------------
-    import gc
-
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM-ARG Original ... ", end="")
-    # Parameters for DEISM-ARG Original
-    N_src_dir = params["sourceOrder"]
-    V_rec_dir = params["receiverOrder"]
-    W_1_all = Wigner["W_1_all"]
-    W_2_all = Wigner["W_2_all"]
-    C_nm_s_ARG = params["C_nm_s_ARG"]
-    C_vu_r = params["C_vu_r"]
-    # Images
-    atten_all = images["atten_all"]
-    R_sI_r_all = images["R_sI_r_all"]
-    # -------------------------------
-    # Other parameters
-    k = params["waveNumbers"]
-    # number of parallel images for calculation
-    batch_size = params["numParaImages"]
-    # Start initialization
-
-    # ----- Ray initialization -----
-    # For DEISM-ORG
-    W_1_all_id = ray.put(W_1_all)
-    W_2_all_id = ray.put(W_2_all)
-    N_src_dir_id = ray.put(N_src_dir)
-    V_rec_dir_id = ray.put(V_rec_dir)
-    C_vu_r_id = ray.put(C_vu_r)
-    # For shared parameters
-    k_id = ray.put(k)
-    # -------------------------------
-    P_DEISM_ARG = np.zeros(k.size, dtype="complex")
-    # -------------------------------
-    n_images = max(R_sI_r_all.shape)
-    if not params["silentMode"]:
-        print("{} images, ".format(n_images), end="")
-    for n in range(int(n_images / batch_size) + 1):
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > n_images:
-            end_ind = n_images
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            # result_refs.append( ray_cal_DEISM_FEM_arb_geo_single_reflc.remote(N_src_dir_id,V_rec_dir_id,C_nm_s_id,C_vu_r_id,A[i],atten_all[i],x0_all[i],W_1_all_id,W_2_all_id,k_id) )
-            result_refs.append(
-                calc_DEISM_ARG_single_reflection_matrix.remote(
-                    N_src_dir_id,
-                    V_rec_dir_id,
-                    C_nm_s_ARG[:, :, :, i],
-                    C_vu_r_id,
-                    atten_all[:, i],
-                    R_sI_r_all[:, i],
-                    W_1_all_id,
-                    W_2_all_id,
-                    k_id,
-                )
-            )
-        results = ray.get(result_refs)
-        P_DEISM_ARG += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del W_1_all_id, W_2_all_id, N_src_dir_id, V_rec_dir_id, C_vu_r_id, k_id
-    gc.collect()
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(f"Done! [{minutes} minutes, {seconds:.3f} seconds]", end="\n\n")
-
-    return P_DEISM_ARG
-
-
-@ray.remote
-def calc_DEISM_ARG_LC_single_reflection_matrix(
-    n_all,
-    m_all,
-    v_all,
-    u_all,
-    C_nm_s_vec,
-    C_vu_r_vec,
-    R_sI_r,
-    atten,
-    k,
-    # bar: tqdm_ray.tqdm,  # progress bar
-):
-    """DEISM LC matrix form: Run each image using parallel computation"""
-    # source spherical harmonics
-    Y_sI_r = scy.sph_harm(
-        m_all,
-        n_all,
-        R_sI_r[0],
-        R_sI_r[1],
-    )
-    # vector multiplication for source
-    source_vec = ((1j) ** (-n_all) * (-1.0) ** n_all * C_nm_s_vec) @ Y_sI_r
-    # receiver spherical harmonics
-    Y_sI_r = scy.sph_harm(
-        u_all,
-        v_all,
-        R_sI_r[0],
-        R_sI_r[1],
-    )
-    # vector multiplication for receiver
-    receiver_vec = ((1j) ** v_all * (-1.0) ** v_all * C_vu_r_vec) @ Y_sI_r
-    # bar.update.remote(1)  # update progress bar
-    return (
-        -1
-        * atten
-        * 4
-        * np.pi
-        / k
-        * np.exp(-(1j) * k * R_sI_r[2])
-        / k
-        / R_sI_r[2]
-        * source_vec
-        * receiver_vec
-    )
-
-
-def ray_run_DEISM_ARG_LC_matrix(params, images):
-    """Complete DEISM LC run"""
-    import gc
-
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM-ARG LC vectorized ... ", end="")
-    k = params["waveNumbers"]
-    n_all = params["n_all"]
-    m_all = params["m_all"]
-    v_all = params["v_all"]
-    u_all = params["u_all"]
-    C_nm_s_ARG_vec = params["C_nm_s_ARG_vec"]
-    C_vu_r_vec = params["C_vu_r_vec"]
-    atten_all = images["atten_all"]
-    R_sI_r_all = images["R_sI_r_all"]
-    n_all_id = ray.put(n_all)
-    m_all_id = ray.put(m_all)
-    v_all_id = ray.put(v_all)
-    u_all_id = ray.put(u_all)
-    C_vu_r_vec_id = ray.put(C_vu_r_vec)
-    k_id = ray.put(k)
-    P_DEISM_ARG_LC = np.zeros(k.size, dtype="complex")
-
-    # You can specify the batch size for better dynamic management of RAM
-    batch_size = params["numParaImages"]
-    n_images = max(R_sI_r_all.shape)
-    if not params["silentMode"]:
-        print("{} images, ".format(n_images), end="")
-    # -------------------------------
-    # test progress bar using tqdm_ray
-    # remote_tqdm = ray.remote(tqdm_ray.tqdm)
-    # bar = remote_tqdm.remote(total=n_images, desc="DEISM-ARG-LC")
-    # -------------------------------
-    # t = time.time()
-    for n in range(int(n_images / batch_size) + 1):
-        # Run each image in parallel within each batch
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > n_images:
-            end_ind = n_images
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            result_refs.append(
-                calc_DEISM_ARG_LC_single_reflection_matrix.remote(
-                    n_all_id,
-                    m_all_id,
-                    v_all_id,
-                    u_all_id,
-                    C_nm_s_ARG_vec[:, :, i],
-                    C_vu_r_vec_id,
-                    R_sI_r_all[:, i],
-                    atten_all[:, i],
-                    k_id,
-                    # bar,  # progress bar
-                )
-            )
-        results = ray.get(result_refs)
-        P_DEISM_ARG_LC += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del n_all_id, m_all_id, v_all_id, u_all_id, C_vu_r_vec_id, k_id
-    gc.collect()
-    # bar.close.remote()  # close progress bar
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
-
-    return P_DEISM_ARG_LC
-
-
-def ray_run_DEISM_ARG_MIX(params, images, Wigner):
-    """
-    Run DEISM-ARG with mixed versions
-    Early reflections are calculation using the original DEISM-ARG method
-    Higher order reflections are calculated using the LC method in vectorized form
-    """
-    import gc
-
-    # Start initialization
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM-ARG MIX ... ", end="")
-    # ------- Parameters for DEISM-ORG -------
-    N_src_dir = params["sourceOrder"]
-    V_rec_dir = params["receiverOrder"]
-    W_1_all = Wigner["W_1_all"]
-    W_2_all = Wigner["W_2_all"]
-    C_nm_s_ARG = params["C_nm_s_ARG"]
-    C_vu_r = params["C_vu_r"]
-    early_indices = images["early_indices"]
-    # -------- Images --------
-    atten_all = images["atten_all"]
-    R_sI_r_all = images["R_sI_r_all"]
-
-    # -------- parameters for DEISM-LC vectorized ------
-    n_all = params["n_all"]
-    m_all = params["m_all"]
-    v_all = params["v_all"]
-    u_all = params["u_all"]
-    C_vu_r_vec = params["C_vu_r_vec"]
-    C_nm_s_ARG_vec = params["C_nm_s_ARG_vec"]
-    late_indices = images["late_indices"]
-    # --------- shared parameters ---------
-    k = params["waveNumbers"]
-    # number of parallel images for calculation
-    batch_size = params["numParaImages"]
-
-    # For DEISM-ARG-ORI
-    W_1_all_id = ray.put(W_1_all)
-    W_2_all_id = ray.put(W_2_all)
-    N_src_dir_id = ray.put(N_src_dir)
-    V_rec_dir_id = ray.put(V_rec_dir)
-    C_vu_r_id = ray.put(C_vu_r)
-    # For DEISM-ARG-LC vectorized
-    n_all_id = ray.put(n_all)
-    m_all_id = ray.put(m_all)
-    v_all_id = ray.put(v_all)
-    u_all_id = ray.put(u_all)
-    C_vu_r_vec_id = ray.put(C_vu_r_vec)
-    # For shared parameters
-    k_id = ray.put(k)
-    # Run DEISM-ARG-ORI for early reflections
-    # Start calculation
-    P_DEISM_ARG = np.zeros(k.size, dtype="complex")
-    if not params["silentMode"]:
-        print(
-            "{} early images, {} late images, ".format(
-                len(early_indices), len(late_indices)
-            ),
-            end="",
-        )
-    # For early reflections
-    result_refs = []
-    for i in range(len(early_indices)):
-        index = early_indices[i]
-        result_refs.append(
-            calc_DEISM_ARG_single_reflection_matrix.remote(
-                N_src_dir_id,
-                V_rec_dir_id,
-                C_nm_s_ARG[:, :, :, index],
-                C_vu_r_id,
-                atten_all[:, index],
-                R_sI_r_all[:, index],
-                W_1_all_id,
-                W_2_all_id,
-                k_id,
-            )
-        )
-    # Wait for the results and sum them up
-    results = ray.get(result_refs)
-    P_DEISM_ARG += sum(results)
-    del result_refs
-    del results
-    gc.collect()
-    len_late_indices = len(late_indices)
-    for n in range(int(len_late_indices / batch_size) + 1):
-        # Run each image in parallel within each batch
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > len_late_indices:
-            end_ind = len_late_indices
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            index = late_indices[i]
-            result_refs.append(
-                calc_DEISM_ARG_LC_single_reflection_matrix.remote(
-                    n_all_id,
-                    m_all_id,
-                    v_all_id,
-                    u_all_id,
-                    C_nm_s_ARG_vec[:, :, index],
-                    C_vu_r_vec_id,
-                    R_sI_r_all[:, index],
-                    atten_all[:, index],
-                    k_id,
-                )
-            )
-        # Wait for the results and sum them up
-        results = ray.get(result_refs)
-        P_DEISM_ARG += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del W_1_all_id, W_2_all_id, N_src_dir_id, V_rec_dir_id, C_vu_r_id, k_id
-    gc.collect()
-    if not params["silentMode"]:
-        # Total time used
-        minutes = int((time.time() - start) // 60)
-        seconds = (time.time() - start) % 60
-        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
-    return P_DEISM_ARG
-
-
-def run_DEISM_ARG(params):
-    """
-    Run DEISM-ARG for different modes
-    """
-    if params["DEISM_method"] == "ORG":
-        # Run DEISM-ARG ORG
-        P = ray_run_DEISM_ARG_ORG(params, params["images"], params["Wigner"])
-    elif params["DEISM_method"] == "LC":
-        # Run DEISM-ARG LC
-        P = ray_run_DEISM_ARG_LC_matrix(params, params["images"])
-    elif params["DEISM_method"] == "MIX":
-        # Run DEISM-ARG MIX
-        P = ray_run_DEISM_ARG_MIX(params, params["images"], params["Wigner"])
-    return P

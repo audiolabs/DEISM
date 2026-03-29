@@ -144,13 +144,7 @@ def test_shoebox_run(method="MIX", max_order=5, angdep=1, label=""):
 # ---------------------------------------------------------------------------
 def test_cross_method_consistency(max_order=3, angdep=1):
     """Compare RTF across ORG, LC, MIX for the same configuration."""
-    import ray
-    import psutil
-
     print(f"\nTest 3: Cross-method consistency (order={max_order}, angdep={angdep})")
-
-    if not ray.is_initialized():
-        ray.init(num_cpus=psutil.cpu_count(logical=False))
 
     results = {}
     for method in ["ORG", "LC", "MIX"]:
@@ -266,15 +260,9 @@ def test_memory_storage():
 # Main
 # ---------------------------------------------------------------------------
 def main():
-    import ray
-    import psutil
-
     print("=" * 70)
     print("DEISM Shoebox Optimisation Tests")
     print("=" * 70)
-
-    if not ray.is_initialized():
-        ray.init(num_cpus=psutil.cpu_count(logical=False))
 
     results = {}
 
@@ -307,9 +295,6 @@ def main():
     for name, passed in results.items():
         print(f"  {'PASS' if passed else 'FAIL'}  {name}")
     print(f"\n  {n_pass}/{n_total} tests passed")
-
-    if ray.is_initialized():
-        ray.shutdown()
 
     return n_pass == n_total
 
