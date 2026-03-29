@@ -485,7 +485,7 @@ def main():
             deism.params["ifRemoveDirectPath"] = 1
         else:
             deism.params["ifRemoveDirectPath"] = 0
-        deism.params["shoeboxImageCalcVersion"] = "v1"
+        deism.params["shoeboxImageCalcVersion"] = "v2-numba"
         # Run DEISM-ORG
         deism.params["DEISM_method"] = "ORG"
         deism.update_directivities()

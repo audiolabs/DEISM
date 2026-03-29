@@ -18,8 +18,17 @@ from deism.utilities import *
 from deism.data_loader import *
 
 # from deism.core_deism_arg import Room_deism_cpp  # Moved to avoid circular import
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from multiprocessing import cpu_count
+
+try:
+    import numba
+    from numba import njit, prange
+
+    SHOEBOX_IMAGE_NUMBA_AVAILABLE = True
+except ImportError:
+    numba = None
+    SHOEBOX_IMAGE_NUMBA_AVAILABLE = False
 
 # Try to import C++ wrapper for fast counting (optional)
 try:
@@ -100,10 +109,22 @@ class DEISM:
         if self.roomtype == "shoebox":
             image_calc_version = str(
                 self.params.get("shoeboxImageCalcVersion", "v2")
-            ).lower()
+            ).lower().replace("_", "-")
             if image_calc_version in ("v1", "1"):
                 self.params["images"] = pre_calc_images_src_rec_optimized_nofs_v1(
                     self.params
+                )
+            elif image_calc_version in ("v1-parallel", "parallel-v1"):
+                self.params["images"] = (
+                    pre_calc_images_src_rec_optimized_nofs_v1_parallel(self.params)
+                )
+            elif image_calc_version in ("parallel", "v2-parallel", "parallel-v2"):
+                self.params["images"] = (
+                    pre_calc_images_src_rec_optimized_nofs_v2_parallel(self.params)
+                )
+            elif image_calc_version in ("numba", "v2-numba", "numba-v2"):
+                self.params["images"] = (
+                    pre_calc_images_src_rec_optimized_nofs_v2_numba(self.params)
                 )
             else:
                 self.params["images"] = pre_calc_images_src_rec_optimized_nofs_v2(
@@ -2544,6 +2565,663 @@ def _pre_calc_images_src_rec_optimized_nofs_impl(
     return images
 
 
+def _shoebox_image_array_or_empty(rows, cols, dtype):
+    """Convert a list of rows to a 2D array with a stable empty shape."""
+    if not rows:
+        return np.empty((0, cols), dtype=dtype)
+    return np.asarray(rows, dtype=dtype)
+
+
+if SHOEBOX_IMAGE_NUMBA_AVAILABLE:
+
+    @njit(cache=True)
+    def _shoebox_parity_components_numba(parity_idx):
+        """Map the flattened parity index to (p_x, p_y, p_z)."""
+        p_x = parity_idx // 4
+        p_y = (parity_idx // 2) % 2
+        p_z = parity_idx % 2
+        return p_x, p_y, p_z
+
+
+    @njit(cache=True)
+    def _cart2sph_polar_numba(x, y, z):
+        """Return azimuth, polar angle, and radius for one 3D vector."""
+        h_xy = np.hypot(x, y)
+        r = np.hypot(h_xy, z)
+        el = np.arctan2(z, h_xy)
+        az = np.arctan2(y, x)
+        theta = np.pi / 2 - el
+        return az, theta, r
+
+
+    @njit(cache=True)
+    def _ref_coef_from_cos_numba(cos_theta, zeta):
+        """Reflection coefficient using cos(theta) directly."""
+        return (zeta * cos_theta - 1.0) / (zeta * cos_theta + 1.0)
+
+
+    @njit(cache=True)
+    def _complex_pow_int_numba(base, exponent):
+        """Fast non-negative integer power for complex values."""
+        out = 1.0 + 0.0j
+        for _ in range(exponent):
+            out *= base
+        return out
+
+
+    @njit(parallel=True, cache=True)
+    def _count_shoebox_images_nofs_v2_numba(
+        LL,
+        x_s,
+        x_r,
+        max_distance_squared,
+        N_o,
+        N_o_ORG,
+    ):
+        """Count exact early/late image counts per parity block."""
+        early_counts = np.zeros(8, dtype=np.int64)
+        late_counts = np.zeros(8, dtype=np.int64)
+
+        for parity_idx in prange(8):
+            p_x, p_y, p_z = _shoebox_parity_components_numba(parity_idx)
+            source_offset_x = x_s[0] - 2 * p_x * x_s[0]
+            source_offset_y = x_s[1] - 2 * p_y * x_s[1]
+            source_offset_z = x_s[2] - 2 * p_z * x_s[2]
+            early_count = 0
+            late_count = 0
+
+            for ref_order in range(N_o + 1):
+                for i_abs in range(ref_order + 1):
+                    for j_abs in range(ref_order - i_abs + 1):
+                        k_abs = ref_order - i_abs - j_abs
+
+                        i_count = 1 if i_abs == 0 else 2
+                        j_count = 1 if j_abs == 0 else 2
+                        k_count = 1 if k_abs == 0 else 2
+
+                        for i_idx in range(i_count):
+                            i = i_abs if i_abs == 0 else (-i_abs if i_idx == 0 else i_abs)
+                            for j_idx in range(j_count):
+                                j = (
+                                    j_abs
+                                    if j_abs == 0
+                                    else (-j_abs if j_idx == 0 else j_abs)
+                                )
+                                for k_idx in range(k_count):
+                                    k = (
+                                        k_abs
+                                        if k_abs == 0
+                                        else (-k_abs if k_idx == 0 else k_abs)
+                                    )
+
+                                    if (
+                                        (i + p_x) % 2 != 0
+                                        or (j + p_y) % 2 != 0
+                                        or (k + p_z) % 2 != 0
+                                    ):
+                                        continue
+
+                                    q_x = (i + p_x) // 2
+                                    q_y = (j + p_y) // 2
+                                    q_z = (k + p_z) // 2
+
+                                    I_s_x = 2 * q_x * LL[0] + source_offset_x
+                                    I_s_y = 2 * q_y * LL[1] + source_offset_y
+                                    I_s_z = 2 * q_z * LL[2] + source_offset_z
+                                    dist_squared = (
+                                        (I_s_x - x_r[0]) ** 2
+                                        + (I_s_y - x_r[1]) ** 2
+                                        + (I_s_z - x_r[2]) ** 2
+                                    )
+
+                                    if dist_squared > max_distance_squared:
+                                        continue
+
+                                    if ref_order <= N_o_ORG:
+                                        early_count += 1
+                                    else:
+                                        late_count += 1
+
+            early_counts[parity_idx] = early_count
+            late_counts[parity_idx] = late_count
+
+        return early_counts, late_counts
+
+
+    @njit(parallel=True, cache=True)
+    def _fill_shoebox_images_nofs_v2_numba(
+        LL,
+        x_s,
+        x_r,
+        Z_S,
+        max_distance_squared,
+        RefCoef_angdep_flag,
+        N_o,
+        N_o_ORG,
+        early_offsets,
+        late_offsets,
+        R_sI_r_all_early,
+        R_s_rI_all_early,
+        R_r_sI_all_early,
+        atten_all_early,
+        A_early,
+        R_sI_r_all_late,
+        R_s_rI_all_late,
+        R_r_sI_all_late,
+        atten_all_late,
+        A_late,
+    ):
+        """Fill preallocated shoebox image arrays using compiled loops."""
+        num_freqs = Z_S.shape[1]
+
+        for parity_idx in prange(8):
+            p_x, p_y, p_z = _shoebox_parity_components_numba(parity_idx)
+            source_offset_x = x_s[0] - 2 * p_x * x_s[0]
+            source_offset_y = x_s[1] - 2 * p_y * x_s[1]
+            source_offset_z = x_s[2] - 2 * p_z * x_s[2]
+            early_idx = early_offsets[parity_idx]
+            late_idx = late_offsets[parity_idx]
+
+            for ref_order in range(N_o + 1):
+                for i_abs in range(ref_order + 1):
+                    for j_abs in range(ref_order - i_abs + 1):
+                        k_abs = ref_order - i_abs - j_abs
+
+                        i_count = 1 if i_abs == 0 else 2
+                        j_count = 1 if j_abs == 0 else 2
+                        k_count = 1 if k_abs == 0 else 2
+
+                        for i_idx in range(i_count):
+                            i = i_abs if i_abs == 0 else (-i_abs if i_idx == 0 else i_abs)
+                            for j_idx in range(j_count):
+                                j = (
+                                    j_abs
+                                    if j_abs == 0
+                                    else (-j_abs if j_idx == 0 else j_abs)
+                                )
+                                for k_idx in range(k_count):
+                                    k = (
+                                        k_abs
+                                        if k_abs == 0
+                                        else (-k_abs if k_idx == 0 else k_abs)
+                                    )
+
+                                    if (
+                                        (i + p_x) % 2 != 0
+                                        or (j + p_y) % 2 != 0
+                                        or (k + p_z) % 2 != 0
+                                    ):
+                                        continue
+
+                                    q_x = (i + p_x) // 2
+                                    q_y = (j + p_y) // 2
+                                    q_z = (k + p_z) // 2
+
+                                    I_s_x = 2 * q_x * LL[0] + source_offset_x
+                                    I_s_y = 2 * q_y * LL[1] + source_offset_y
+                                    I_s_z = 2 * q_z * LL[2] + source_offset_z
+                                    dist_squared = (
+                                        (I_s_x - x_r[0]) ** 2
+                                        + (I_s_y - x_r[1]) ** 2
+                                        + (I_s_z - x_r[2]) ** 2
+                                    )
+
+                                    if dist_squared > max_distance_squared:
+                                        continue
+
+                                    I_r_x = (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0])
+                                    I_r_y = (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1])
+                                    I_r_z = (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2])
+
+                                    R_sI_r_x = x_r[0] - I_s_x
+                                    R_sI_r_y = x_r[1] - I_s_y
+                                    R_sI_r_z = x_r[2] - I_s_z
+                                    phi_R_sI_r, theta_R_sI_r, r_R_sI_r = (
+                                        _cart2sph_polar_numba(
+                                            R_sI_r_x, R_sI_r_y, R_sI_r_z
+                                        )
+                                    )
+
+                                    R_s_rI_x = I_r_x - x_s[0]
+                                    R_s_rI_y = I_r_y - x_s[1]
+                                    R_s_rI_z = I_r_z - x_s[2]
+                                    phi_R_s_rI, theta_R_s_rI, r_R_s_rI = (
+                                        _cart2sph_polar_numba(
+                                            R_s_rI_x, R_s_rI_y, R_s_rI_z
+                                        )
+                                    )
+
+                                    R_r_sI_x = I_s_x - x_r[0]
+                                    R_r_sI_y = I_s_y - x_r[1]
+                                    R_r_sI_z = I_s_z - x_r[2]
+                                    phi_R_r_sI, theta_R_r_sI, r_R_r_sI = (
+                                        _cart2sph_polar_numba(
+                                            R_r_sI_x, R_r_sI_y, R_r_sI_z
+                                        )
+                                    )
+
+                                    if RefCoef_angdep_flag == 1:
+                                        r_norm = np.sqrt(dist_squared)
+                                        cos_x = np.abs(R_sI_r_x) / r_norm
+                                        cos_y = np.abs(R_sI_r_y) / r_norm
+                                        cos_z = np.abs(R_sI_r_z) / r_norm
+                                    else:
+                                        cos_x = 1.0
+                                        cos_y = 1.0
+                                        cos_z = 1.0
+
+                                    exp_x1 = np.abs(q_x - p_x)
+                                    exp_x2 = np.abs(q_x)
+                                    exp_y1 = np.abs(q_y - p_y)
+                                    exp_y2 = np.abs(q_y)
+                                    exp_z1 = np.abs(q_z - p_z)
+                                    exp_z2 = np.abs(q_z)
+
+                                    if ref_order <= N_o_ORG:
+                                        target_idx = early_idx
+                                        early_idx += 1
+                                        A_target = A_early
+                                        R_sI_r_target = R_sI_r_all_early
+                                        R_s_rI_target = R_s_rI_all_early
+                                        R_r_sI_target = R_r_sI_all_early
+                                        atten_target = atten_all_early
+                                    else:
+                                        target_idx = late_idx
+                                        late_idx += 1
+                                        A_target = A_late
+                                        R_sI_r_target = R_sI_r_all_late
+                                        R_s_rI_target = R_s_rI_all_late
+                                        R_r_sI_target = R_r_sI_all_late
+                                        atten_target = atten_all_late
+
+                                    A_target[target_idx, 0] = q_x
+                                    A_target[target_idx, 1] = q_y
+                                    A_target[target_idx, 2] = q_z
+                                    A_target[target_idx, 3] = p_x
+                                    A_target[target_idx, 4] = p_y
+                                    A_target[target_idx, 5] = p_z
+
+                                    R_sI_r_target[target_idx, 0] = phi_R_sI_r
+                                    R_sI_r_target[target_idx, 1] = theta_R_sI_r
+                                    R_sI_r_target[target_idx, 2] = r_R_sI_r
+
+                                    R_s_rI_target[target_idx, 0] = phi_R_s_rI
+                                    R_s_rI_target[target_idx, 1] = theta_R_s_rI
+                                    R_s_rI_target[target_idx, 2] = r_R_s_rI
+
+                                    R_r_sI_target[target_idx, 0] = phi_R_r_sI
+                                    R_r_sI_target[target_idx, 1] = theta_R_r_sI
+                                    R_r_sI_target[target_idx, 2] = r_R_r_sI
+
+                                    for fi in range(num_freqs):
+                                        beta_x1 = _ref_coef_from_cos_numba(
+                                            cos_x, Z_S[0, fi]
+                                        )
+                                        beta_x2 = _ref_coef_from_cos_numba(
+                                            cos_x, Z_S[1, fi]
+                                        )
+                                        beta_y1 = _ref_coef_from_cos_numba(
+                                            cos_y, Z_S[2, fi]
+                                        )
+                                        beta_y2 = _ref_coef_from_cos_numba(
+                                            cos_y, Z_S[3, fi]
+                                        )
+                                        beta_z1 = _ref_coef_from_cos_numba(
+                                            cos_z, Z_S[4, fi]
+                                        )
+                                        beta_z2 = _ref_coef_from_cos_numba(
+                                            cos_z, Z_S[5, fi]
+                                        )
+
+                                        atten_target[target_idx, fi] = (
+                                            _complex_pow_int_numba(beta_x1, exp_x1)
+                                            * _complex_pow_int_numba(beta_x2, exp_x2)
+                                            * _complex_pow_int_numba(beta_y1, exp_y1)
+                                            * _complex_pow_int_numba(beta_y2, exp_y2)
+                                            * _complex_pow_int_numba(beta_z1, exp_z1)
+                                            * _complex_pow_int_numba(beta_z2, exp_z2)
+                                        )
+
+
+def _process_shoebox_parity_combination_nofs(args):
+    """
+    Calculate all shoebox images for one parity tuple.
+
+    Splitting by (p_x, p_y, p_z) gives us eight independent chunks that can be
+    processed in parallel while preserving deterministic output ordering when
+    they are concatenated in submission order.
+    """
+    (
+        p_x,
+        p_y,
+        p_z,
+        N_o,
+        N_o_ORG,
+        LL,
+        x_s,
+        x_r,
+        Z_S,
+        max_distance_squared,
+        RefCoef_angdep_flag,
+        use_closed_form_receiver_image,
+        image_dtype,
+        atten_dtype,
+    ) = args
+
+    num_freqs = Z_S.shape[1]
+    source_offset_x = x_s[0] - 2 * p_x * x_s[0]
+    source_offset_y = x_s[1] - 2 * p_y * x_s[1]
+    source_offset_z = x_s[2] - 2 * p_z * x_s[2]
+
+    room_c = LL / 2
+    x_r_room_c = x_r - room_c
+    v_rec = np.array([x_r_room_c[0], x_r_room_c[1], x_r_room_c[2], 1])
+
+    local_early = {"A": [], "R_sI_r": [], "R_s_rI": [], "R_r_sI": [], "atten": []}
+    local_late = {"A": [], "R_sI_r": [], "R_s_rI": [], "R_r_sI": [], "atten": []}
+
+    for ref_order in range(N_o + 1):
+        for i_abs in range(ref_order + 1):
+            for j_abs in range(ref_order - i_abs + 1):
+                k_abs = ref_order - i_abs - j_abs
+
+                i_values = [i_abs] if i_abs == 0 else [-i_abs, i_abs]
+                j_values = [j_abs] if j_abs == 0 else [-j_abs, j_abs]
+                k_values = [k_abs] if k_abs == 0 else [-k_abs, k_abs]
+
+                for i in i_values:
+                    for j in j_values:
+                        for k in k_values:
+                            if (
+                                (i + p_x) % 2 != 0
+                                or (j + p_y) % 2 != 0
+                                or (k + p_z) % 2 != 0
+                            ):
+                                continue
+
+                            q_x = (i + p_x) // 2
+                            q_y = (j + p_y) // 2
+                            q_z = (k + p_z) // 2
+
+                            I_s = np.array(
+                                [
+                                    2 * q_x * LL[0] + source_offset_x,
+                                    2 * q_y * LL[1] + source_offset_y,
+                                    2 * q_z * LL[2] + source_offset_z,
+                                ]
+                            )
+                            dist_squared = (
+                                (I_s[0] - x_r[0]) ** 2
+                                + (I_s[1] - x_r[1]) ** 2
+                                + (I_s[2] - x_r[2]) ** 2
+                            )
+                            if dist_squared > max_distance_squared:
+                                continue
+
+                            if use_closed_form_receiver_image:
+                                I_r = np.array(
+                                    [
+                                        (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
+                                        (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
+                                        (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
+                                    ]
+                                )
+                            else:
+                                i_calc = 2 * q_x - p_x
+                                j_calc = 2 * q_y - p_y
+                                k_calc = 2 * q_z - p_z
+                                cross_i = int(
+                                    np.cos(int((i_calc % 2) == 0) * np.pi) * i_calc
+                                )
+                                cross_j = int(
+                                    np.cos(int((j_calc % 2) == 0) * np.pi) * j_calc
+                                )
+                                cross_k = int(
+                                    np.cos(int((k_calc % 2) == 0) * np.pi) * k_calc
+                                )
+                                r_ijk = (
+                                    T_x(cross_i, LL[0])
+                                    @ T_y(cross_j, LL[1])
+                                    @ T_z(cross_k, LL[2])
+                                    @ v_rec
+                                )
+                                I_r = r_ijk[0:3] + LL / 2
+
+                            R_sI_r = x_r - I_s
+                            phi_R_sI_r, theta_R_sI_r, r_R_sI_r = cart2sph(
+                                R_sI_r[0], R_sI_r[1], R_sI_r[2]
+                            )
+                            theta_R_sI_r = np.pi / 2 - theta_R_sI_r
+
+                            R_s_rI = I_r - x_s
+                            phi_R_s_rI, theta_R_s_rI, r_R_s_rI = cart2sph(
+                                R_s_rI[0], R_s_rI[1], R_s_rI[2]
+                            )
+                            theta_R_s_rI = np.pi / 2 - theta_R_s_rI
+
+                            R_r_sI = I_s - x_r
+                            phi_R_r_sI, theta_R_r_sI, r_R_r_sI = cart2sph(
+                                R_r_sI[0], R_r_sI[1], R_r_sI[2]
+                            )
+                            theta_R_r_sI = np.pi / 2 - theta_R_r_sI
+
+                            if RefCoef_angdep_flag == 1:
+                                r_norm = np.linalg.norm(R_sI_r)
+                                inc_angle_x = np.arccos(np.abs(R_sI_r[0]) / r_norm)
+                                inc_angle_y = np.arccos(np.abs(R_sI_r[1]) / r_norm)
+                                inc_angle_z = np.arccos(np.abs(R_sI_r[2]) / r_norm)
+                                beta_x1 = ref_coef(inc_angle_x, Z_S[0, :])
+                                beta_x2 = ref_coef(inc_angle_x, Z_S[1, :])
+                                beta_y1 = ref_coef(inc_angle_y, Z_S[2, :])
+                                beta_y2 = ref_coef(inc_angle_y, Z_S[3, :])
+                                beta_z1 = ref_coef(inc_angle_z, Z_S[4, :])
+                                beta_z2 = ref_coef(inc_angle_z, Z_S[5, :])
+                            else:
+                                beta_x1 = ref_coef(0, Z_S[0, :])
+                                beta_x2 = ref_coef(0, Z_S[1, :])
+                                beta_y1 = ref_coef(0, Z_S[2, :])
+                                beta_y2 = ref_coef(0, Z_S[3, :])
+                                beta_z1 = ref_coef(0, Z_S[4, :])
+                                beta_z2 = ref_coef(0, Z_S[5, :])
+
+                            atten = (
+                                beta_x1 ** np.abs(q_x - p_x)
+                                * beta_x2 ** np.abs(q_x)
+                                * beta_y1 ** np.abs(q_y - p_y)
+                                * beta_y2 ** np.abs(q_y)
+                                * beta_z1 ** np.abs(q_z - p_z)
+                                * beta_z2 ** np.abs(q_z)
+                            )
+
+                            target = local_early if ref_order <= N_o_ORG else local_late
+                            target["A"].append([q_x, q_y, q_z, p_x, p_y, p_z])
+                            target["R_sI_r"].append(
+                                [phi_R_sI_r, theta_R_sI_r, r_R_sI_r]
+                            )
+                            target["R_s_rI"].append(
+                                [phi_R_s_rI, theta_R_s_rI, r_R_s_rI]
+                            )
+                            target["R_r_sI"].append(
+                                [phi_R_r_sI, theta_R_r_sI, r_R_r_sI]
+                            )
+                            target["atten"].append(atten)
+
+    early = {
+        "A": _shoebox_image_array_or_empty(local_early["A"], 6, np.int32),
+        "R_sI_r": _shoebox_image_array_or_empty(
+            local_early["R_sI_r"], 3, image_dtype
+        ),
+        "R_s_rI": _shoebox_image_array_or_empty(
+            local_early["R_s_rI"], 3, image_dtype
+        ),
+        "R_r_sI": _shoebox_image_array_or_empty(
+            local_early["R_r_sI"], 3, image_dtype
+        ),
+        "atten": _shoebox_image_array_or_empty(
+            local_early["atten"], num_freqs, atten_dtype
+        ),
+    }
+    late = {
+        "A": _shoebox_image_array_or_empty(local_late["A"], 6, np.int32),
+        "R_sI_r": _shoebox_image_array_or_empty(local_late["R_sI_r"], 3, image_dtype),
+        "R_s_rI": _shoebox_image_array_or_empty(local_late["R_s_rI"], 3, image_dtype),
+        "R_r_sI": _shoebox_image_array_or_empty(local_late["R_r_sI"], 3, image_dtype),
+        "atten": _shoebox_image_array_or_empty(
+            local_late["atten"], num_freqs, atten_dtype
+        ),
+    }
+    return early, late
+
+
+def _concat_shoebox_image_blocks(blocks, key, cols, dtype):
+    """Concatenate per-worker blocks while preserving a stable empty shape."""
+    arrays = [block[key] for block in blocks if block[key].size]
+    if not arrays:
+        return np.empty((0, cols), dtype=dtype)
+    return np.concatenate(arrays, axis=0)
+
+
+def _pre_calc_images_src_rec_optimized_nofs_parallel_impl(
+    params,
+    use_closed_form_receiver_image,
+    image_dtype,
+    atten_dtype,
+    version_name,
+):
+    """Parallel shoebox no-FS image generation split across parity tuples."""
+    max_workers = params.get("shoeboxImageCalcWorkers")
+    if max_workers is None:
+        max_workers = min(8, cpu_count())
+    else:
+        max_workers = max(1, min(int(max_workers), 8))
+
+    if max_workers <= 1:
+        return _pre_calc_images_src_rec_optimized_nofs_impl(
+            params=params,
+            use_closed_form_receiver_image=use_closed_form_receiver_image,
+            image_dtype=image_dtype,
+            atten_dtype=atten_dtype,
+            version_name=f"{version_name} serial fallback",
+        )
+
+    if not params["silentMode"]:
+        print(
+            f"[Calculating] Images and attenuations (OPTIMIZED nofs {version_name}), ",
+            end="",
+        )
+    start = time.perf_counter()
+
+    LL = np.asarray(params["roomSize"], dtype=np.float64)
+    x_r = np.asarray(params["posReceiver"], dtype=np.float64)
+    x_s = np.asarray(params["posSource"], dtype=np.float64)
+    max_distance_squared = (params["soundSpeed"] * params["reverberationTime"]) ** 2
+    RefCoef_angdep_flag = int(params["angDepFlag"])
+
+    if RefCoef_angdep_flag == 1 and not params["silentMode"]:
+        print("using angle-dependent reflection coefficients, ", end="")
+
+    N_o = params["maxReflOrder"]
+    Z_S = params["impedance"]
+    N_o_ORG = params["mixEarlyOrder"]
+
+    if N_o < N_o_ORG:
+        N_o_ORG = N_o
+
+    if not params["silentMode"]:
+        print(
+            f"maxReflectionOrder: {N_o}, "
+            f"processing 8 parity combinations in parallel with {max_workers} workers"
+        )
+
+    args_list = []
+    for p_x in range(2):
+        for p_y in range(2):
+            for p_z in range(2):
+                args_list.append(
+                    (
+                        p_x,
+                        p_y,
+                        p_z,
+                        N_o,
+                        N_o_ORG,
+                        LL,
+                        x_s,
+                        x_r,
+                        Z_S,
+                        max_distance_squared,
+                        RefCoef_angdep_flag,
+                        use_closed_form_receiver_image,
+                        image_dtype,
+                        atten_dtype,
+                    )
+                )
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(_process_shoebox_parity_combination_nofs, args_list))
+
+    early_blocks = [result[0] for result in results]
+    late_blocks = [result[1] for result in results]
+    num_freqs = Z_S.shape[1]
+
+    A_early = _concat_shoebox_image_blocks(early_blocks, "A", 6, np.int32)
+    R_sI_r_all_early = _concat_shoebox_image_blocks(
+        early_blocks, "R_sI_r", 3, image_dtype
+    )
+    R_s_rI_all_early = _concat_shoebox_image_blocks(
+        early_blocks, "R_s_rI", 3, image_dtype
+    )
+    R_r_sI_all_early = _concat_shoebox_image_blocks(
+        early_blocks, "R_r_sI", 3, image_dtype
+    )
+    atten_all_early = _concat_shoebox_image_blocks(
+        early_blocks, "atten", num_freqs, atten_dtype
+    )
+
+    A_late = _concat_shoebox_image_blocks(late_blocks, "A", 6, np.int32)
+    R_sI_r_all_late = _concat_shoebox_image_blocks(
+        late_blocks, "R_sI_r", 3, image_dtype
+    )
+    R_s_rI_all_late = _concat_shoebox_image_blocks(
+        late_blocks, "R_s_rI", 3, image_dtype
+    )
+    R_r_sI_all_late = _concat_shoebox_image_blocks(
+        late_blocks, "R_r_sI", 3, image_dtype
+    )
+    atten_all_late = _concat_shoebox_image_blocks(
+        late_blocks, "atten", num_freqs, atten_dtype
+    )
+
+    if params["ifRemoveDirectPath"]:
+        direct_path_mask = np.all(A_early == 0, axis=1)
+        if np.any(direct_path_mask):
+            direct_path_idx = np.where(direct_path_mask)[0][0]
+            A_early = np.delete(A_early, direct_path_idx, axis=0)
+            R_sI_r_all_early = np.delete(R_sI_r_all_early, direct_path_idx, axis=0)
+            R_s_rI_all_early = np.delete(R_s_rI_all_early, direct_path_idx, axis=0)
+            R_r_sI_all_early = np.delete(R_r_sI_all_early, direct_path_idx, axis=0)
+            atten_all_early = np.delete(atten_all_early, direct_path_idx, axis=0)
+
+    images = {
+        "R_sI_r_all_early": R_sI_r_all_early,
+        "R_s_rI_all_early": R_s_rI_all_early,
+        "R_r_sI_all_early": R_r_sI_all_early,
+        "atten_all_early": atten_all_early,
+        "A_early": A_early,
+        "R_sI_r_all_late": R_sI_r_all_late,
+        "R_s_rI_all_late": R_s_rI_all_late,
+        "R_r_sI_all_late": R_r_sI_all_late,
+        "atten_all_late": atten_all_late,
+        "A_late": A_late,
+    }
+
+    end = time.perf_counter()
+    if not params["silentMode"]:
+        minutes, seconds = divmod(end - start, 60)
+        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
+
+    return images
+
+
 def pre_calc_images_src_rec_optimized_nofs_v1(params):
     """
     Shoebox no-FS optimized image generation v1.
@@ -2558,6 +3236,20 @@ def pre_calc_images_src_rec_optimized_nofs_v1(params):
     )
 
 
+def pre_calc_images_src_rec_optimized_nofs_v1_parallel(params):
+    """
+    Parallel shoebox no-FS image generation v1.
+    Uses recursive T_x/T_y/T_z receiver images and float64/complex128 storage.
+    """
+    return _pre_calc_images_src_rec_optimized_nofs_parallel_impl(
+        params=params,
+        use_closed_form_receiver_image=False,
+        image_dtype=np.float64,
+        atten_dtype=np.complex128,
+        version_name="v1 parallel",
+    )
+
+
 def pre_calc_images_src_rec_optimized_nofs_v2(params):
     """
     Shoebox no-FS optimized image generation v2 (default).
@@ -2569,6 +3261,157 @@ def pre_calc_images_src_rec_optimized_nofs_v2(params):
         image_dtype=np.float32,
         atten_dtype=np.complex64,
         version_name="v2",
+    )
+
+
+def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
+    """
+    Shoebox no-FS optimized image generation v2 using Numba.
+
+    This preserves the serial v2 output structure and ordering while compiling
+    the hot image-generation loop.
+    """
+    if not SHOEBOX_IMAGE_NUMBA_AVAILABLE:
+        raise ImportError(
+            "Numba is required for shoeboxImageCalcVersion='v2-numba'."
+        )
+
+    if not params["silentMode"]:
+        print(
+            "[Calculating] Images and attenuations (OPTIMIZED nofs v2 numba), ",
+            end="",
+        )
+    start = time.perf_counter()
+
+    LL = np.asarray(params["roomSize"], dtype=np.float64)
+    x_r = np.asarray(params["posReceiver"], dtype=np.float64)
+    x_s = np.asarray(params["posSource"], dtype=np.float64)
+    max_distance_squared = (params["soundSpeed"] * params["reverberationTime"]) ** 2
+    RefCoef_angdep_flag = int(params["angDepFlag"])
+
+    if RefCoef_angdep_flag == 1 and not params["silentMode"]:
+        print("using angle-dependent reflection coefficients, ", end="")
+
+    N_o = params["maxReflOrder"]
+    Z_S = np.asarray(params["impedance"], dtype=np.complex128)
+    N_o_ORG = params["mixEarlyOrder"]
+
+    if N_o < N_o_ORG:
+        N_o_ORG = N_o
+
+    if "shoeboxImageCalcWorkers" in params and params["shoeboxImageCalcWorkers"] is not None:
+        num_threads = max(
+            1,
+            min(
+                int(params["shoeboxImageCalcWorkers"]),
+                int(numba.config.NUMBA_NUM_THREADS),
+            ),
+        )
+        numba.set_num_threads(num_threads)
+    else:
+        num_threads = numba.get_num_threads()
+
+    if not params["silentMode"]:
+        print(
+            f"maxReflectionOrder: {N_o}, numba_threads={num_threads}",
+        )
+
+    early_counts, late_counts = _count_shoebox_images_nofs_v2_numba(
+        LL=LL,
+        x_s=x_s,
+        x_r=x_r,
+        max_distance_squared=max_distance_squared,
+        N_o=N_o,
+        N_o_ORG=N_o_ORG,
+    )
+
+    early_offsets = np.zeros(8, dtype=np.int64)
+    late_offsets = np.zeros(8, dtype=np.int64)
+    for idx in range(1, 8):
+        early_offsets[idx] = early_offsets[idx - 1] + early_counts[idx - 1]
+        late_offsets[idx] = late_offsets[idx - 1] + late_counts[idx - 1]
+
+    num_early_ref_paths = int(np.sum(early_counts))
+    num_late_ref_paths = int(np.sum(late_counts))
+    num_freqs = Z_S.shape[1]
+
+    R_sI_r_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
+    R_s_rI_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
+    R_r_sI_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
+    atten_all_early = np.empty((num_early_ref_paths, num_freqs), dtype=np.complex64)
+    A_early = np.empty((num_early_ref_paths, 6), dtype=np.int32)
+
+    R_sI_r_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
+    R_s_rI_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
+    R_r_sI_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
+    atten_all_late = np.empty((num_late_ref_paths, num_freqs), dtype=np.complex64)
+    A_late = np.empty((num_late_ref_paths, 6), dtype=np.int32)
+
+    _fill_shoebox_images_nofs_v2_numba(
+        LL=LL,
+        x_s=x_s,
+        x_r=x_r,
+        Z_S=Z_S,
+        max_distance_squared=max_distance_squared,
+        RefCoef_angdep_flag=RefCoef_angdep_flag,
+        N_o=N_o,
+        N_o_ORG=N_o_ORG,
+        early_offsets=early_offsets,
+        late_offsets=late_offsets,
+        R_sI_r_all_early=R_sI_r_all_early,
+        R_s_rI_all_early=R_s_rI_all_early,
+        R_r_sI_all_early=R_r_sI_all_early,
+        atten_all_early=atten_all_early,
+        A_early=A_early,
+        R_sI_r_all_late=R_sI_r_all_late,
+        R_s_rI_all_late=R_s_rI_all_late,
+        R_r_sI_all_late=R_r_sI_all_late,
+        atten_all_late=atten_all_late,
+        A_late=A_late,
+    )
+
+    if params["ifRemoveDirectPath"]:
+        direct_path_mask = np.all(A_early == 0, axis=1)
+        if np.any(direct_path_mask):
+            direct_path_idx = np.where(direct_path_mask)[0][0]
+            A_early = np.delete(A_early, direct_path_idx, axis=0)
+            R_sI_r_all_early = np.delete(R_sI_r_all_early, direct_path_idx, axis=0)
+            R_s_rI_all_early = np.delete(R_s_rI_all_early, direct_path_idx, axis=0)
+            R_r_sI_all_early = np.delete(R_r_sI_all_early, direct_path_idx, axis=0)
+            atten_all_early = np.delete(atten_all_early, direct_path_idx, axis=0)
+
+    images = {
+        "R_sI_r_all_early": R_sI_r_all_early,
+        "R_s_rI_all_early": R_s_rI_all_early,
+        "R_r_sI_all_early": R_r_sI_all_early,
+        "atten_all_early": atten_all_early,
+        "A_early": A_early,
+        "R_sI_r_all_late": R_sI_r_all_late,
+        "R_s_rI_all_late": R_s_rI_all_late,
+        "R_r_sI_all_late": R_r_sI_all_late,
+        "atten_all_late": atten_all_late,
+        "A_late": A_late,
+    }
+
+    end = time.perf_counter()
+    if not params["silentMode"]:
+        minutes, seconds = divmod(end - start, 60)
+        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
+
+    return images
+
+
+def pre_calc_images_src_rec_optimized_nofs_v2_parallel(params):
+    """
+    Parallel shoebox no-FS image generation v2.
+    Uses closed-form receiver images and float32/complex64 storage.
+    """
+    return _pre_calc_images_src_rec_optimized_nofs_parallel_impl(
+        params=params,
+        use_closed_form_receiver_image=True,
+        image_dtype=np.float32,
+        atten_dtype=np.complex64,
+        version_name="v2 parallel",
     )
 
 
@@ -3419,3 +4262,4 @@ def T_z(k, Lz):
                 [0, 0, 0, 1],
             ]
         ) @ T_z(-k + np.sign(k), Lz)
+
