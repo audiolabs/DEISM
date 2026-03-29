@@ -383,7 +383,6 @@ class Room_deism_python:
             new_wall = Wall_deism_python(face_points, self.centroid, self.Z_S)
             if not choose_wall_centers:
                 self.walls.append(new_wall)
-                print("The walls are generated")  # !!! remember to remove
             else:
                 for wall_center in choose_wall_centers:
                     if (
@@ -391,7 +390,6 @@ class Room_deism_python:
                         < 0.0001
                     ):
                         self.walls.append(new_wall)
-                        print("Selected wall with center {}".format(wall_center))
 
     def image_source_model(self):
         self.image_sources_dfs(ImageSource(self.source), self.ism_order)
@@ -679,9 +677,6 @@ class Wall_deism_cpp:
             # Use complex constructor to preserve full impedance information
             # Convert to complex array explicitly to match C++ signature
             impedence_complex = impedence.astype(np.complex64)
-            print(
-                f"DEBUG: Using complex constructor with impedance type: {impedence_complex.dtype}"
-            )
             if points.shape[0] == 2:
                 walls = libroom_deism.Wall2D_deism.from_complex_impedance(
                     points,
@@ -867,7 +862,8 @@ class Room_deism_cpp:
             )
         # -------------------------------------------------------------------
         if params["convexRoom"]:
-            print("Convex room generation of walls")
+            if not params.get("silentMode", 0):
+                print("Convex room generation of walls")
             self.generate_walls_convex(*choose_wall_centers)
 
         # -->new
@@ -987,7 +983,6 @@ class Room_deism_cpp:
                         < 0.0001
                     ):
                         self.walls.append(new_wall)
-                        print("Selected wall with center {}".format(wall_center))
 
     def generate_walls_non_convex(self, *wall_labels):
         # Generate walls for non-convex rooms
@@ -1144,7 +1139,6 @@ def find_wall_centers(vertices, *choose_wall_centers):
                 # If the wall center attribute is given, the wall will only be added when the midpoint of the wall is the given center
                 if np.linalg.norm(face_points.mean(axis=0) - wall_center) < 0.0001:
                     wall_centers.append(np.mean(face_points, axis=0))
-                    print("Selected wall with center {}".format(wall_center))
     return np.array(wall_centers)
 
 
@@ -1215,14 +1209,18 @@ def get_ref_paths_ARG(params, room_pra_deism):
     Get the reflection paths for DEISM-ARG
     """
     # get the reflection matrices to describe the reflected source directivity coefficients
-    reflection_matrix = np.array(room_pra_deism.room_engine.reflection_matrix)
+    reflection_matrix = np.array(
+        room_pra_deism.room_engine.reflection_matrix, dtype=np.float32
+    )
     reflection_matrix = np.moveaxis(reflection_matrix, 0, 2)
     # Get vectors from source images to receiver
     R_sI_r_all = get_R_sI_to_r_from_room(
         params["posReceiver"], room_pra_deism.room_engine.sources
-    )
+    ).astype(np.float32)
     # get attenuation values for each image source
-    atten_all = room_pra_deism.room_engine.attenuations
+    atten_all = np.asarray(
+        room_pra_deism.room_engine.attenuations, dtype=np.complex64
+    )
     # remove the direct path if params["ifRemoveDirectPath"] = 1
     if params["ifRemoveDirectPath"]:
         R_sI_r_all = R_sI_r_all[:, 1:]
