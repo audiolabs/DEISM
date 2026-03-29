@@ -327,6 +327,7 @@ setup_kwargs = dict(
         "psutil",
         "matplotlib",
         "ray",
+        "numba",
         "sound-field-analysis",
         "pybind11>=2.2",
         "Cython",

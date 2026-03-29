@@ -19,7 +19,6 @@ Also notice that the frequencies are from 20 Hz to 1000 Hz, you probably need to
 # Email: zeyu.xu@audiolabs-erlangen.de
 # -------------------------------------------------------
 import os
-import ray
 import numpy as np
 import matplotlib.pyplot as plt
 from deism.core_deism import (
@@ -392,11 +391,7 @@ def plot_shifted_Phases(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
 
 
 def main():
-    # Use DEISM class and consistent run_DEISM(if_clean_up=..., if_shutdown_ray=...) pattern
-    # Limit Ray to a modest number of CPUs to reduce system load
-    if ray.is_initialized():
-        ray.shutdown()
-    ray.init(num_cpus=4)
+    # Use DEISM class and consistent run_DEISM(if_clean_up=...) pattern
     deism = DEISM("RTF", "shoebox")
     init_parameters(deism.params)
     detect_conflicts(deism.params)
