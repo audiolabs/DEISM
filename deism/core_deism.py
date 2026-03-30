@@ -107,9 +107,19 @@ class DEISM:
         # -----------------------------------------------------------
         # Calculate images
         if self.roomtype == "shoebox":
+            default_image_calc_version = "v2-numba"
             image_calc_version = str(
-                self.params.get("shoeboxImageCalcVersion", "v2")
+                self.params.get("shoeboxImageCalcVersion", default_image_calc_version)
             ).lower().replace("_", "-")
+            if (
+                image_calc_version in ("numba", "v2-numba", "numba-v2")
+                and not SHOEBOX_IMAGE_NUMBA_AVAILABLE
+            ):
+                if "shoeboxImageCalcVersion" in self.params:
+                    raise ImportError(
+                        "Numba is required for shoeboxImageCalcVersion='v2-numba'."
+                    )
+                image_calc_version = "v2"
             if image_calc_version in ("v1", "1"):
                 self.params["images"] = pre_calc_images_src_rec_optimized_nofs_v1(
                     self.params
@@ -2719,6 +2729,7 @@ if SHOEBOX_IMAGE_NUMBA_AVAILABLE:
         RefCoef_angdep_flag,
         N_o,
         N_o_ORG,
+        store_attenuation,
         early_offsets,
         late_offsets,
         R_sI_r_all_early,
@@ -2877,34 +2888,51 @@ if SHOEBOX_IMAGE_NUMBA_AVAILABLE:
                                 R_r_sI_target[target_idx, 1] = theta_R_r_sI
                                 R_r_sI_target[target_idx, 2] = r_R_r_sI
 
-                                for fi in range(num_freqs):
-                                    beta_x1 = _ref_coef_from_cos_numba(
-                                        cos_x, Z_S[0, fi]
-                                    )
-                                    beta_x2 = _ref_coef_from_cos_numba(
-                                        cos_x, Z_S[1, fi]
-                                    )
-                                    beta_y1 = _ref_coef_from_cos_numba(
-                                        cos_y, Z_S[2, fi]
-                                    )
-                                    beta_y2 = _ref_coef_from_cos_numba(
-                                        cos_y, Z_S[3, fi]
-                                    )
-                                    beta_z1 = _ref_coef_from_cos_numba(
-                                        cos_z, Z_S[4, fi]
-                                    )
-                                    beta_z2 = _ref_coef_from_cos_numba(
-                                        cos_z, Z_S[5, fi]
-                                    )
+                                if store_attenuation == 1:
+                                    for fi in range(num_freqs):
+                                        beta_x1 = _ref_coef_from_cos_numba(
+                                            cos_x, Z_S[0, fi]
+                                        )
+                                        beta_x2 = _ref_coef_from_cos_numba(
+                                            cos_x, Z_S[1, fi]
+                                        )
+                                        beta_y1 = _ref_coef_from_cos_numba(
+                                            cos_y, Z_S[2, fi]
+                                        )
+                                        beta_y2 = _ref_coef_from_cos_numba(
+                                            cos_y, Z_S[3, fi]
+                                        )
+                                        beta_z1 = _ref_coef_from_cos_numba(
+                                            cos_z, Z_S[4, fi]
+                                        )
+                                        beta_z2 = _ref_coef_from_cos_numba(
+                                            cos_z, Z_S[5, fi]
+                                        )
 
-                                    atten_target[target_idx, fi] = (
-                                        _complex_pow_int_numba(beta_x1, exp_x1)
-                                        * _complex_pow_int_numba(beta_x2, exp_x2)
-                                        * _complex_pow_int_numba(beta_y1, exp_y1)
-                                        * _complex_pow_int_numba(beta_y2, exp_y2)
-                                        * _complex_pow_int_numba(beta_z1, exp_z1)
-                                        * _complex_pow_int_numba(beta_z2, exp_z2)
-                                    )
+                                        atten_target[target_idx, fi] = (
+                                            _complex_pow_int_numba(beta_x1, exp_x1)
+                                            * _complex_pow_int_numba(beta_x2, exp_x2)
+                                            * _complex_pow_int_numba(beta_y1, exp_y1)
+                                            * _complex_pow_int_numba(beta_y2, exp_y2)
+                                            * _complex_pow_int_numba(beta_z1, exp_z1)
+                                            * _complex_pow_int_numba(beta_z2, exp_z2)
+                                        )
+
+
+def _shoebox_use_compact_storage(params):
+    """
+    Use compact shoebox image storage by default for the Numba image generator.
+
+    The compact format stores only geometry and reflection metadata; attenuation
+    is reconstructed in the solver backend on demand. Users can override the
+    default via ``shoeboxCompactImages``.
+
+    Compact storage is supported for shoebox `v2-numba` in both `RIR` and
+    `RTF`, so the default is enabled unless explicitly disabled.
+    """
+    if "shoeboxCompactImages" in params:
+        return bool(params["shoeboxCompactImages"])
+    return True
 
 
 def _process_shoebox_parity_combination_nofs(args):
@@ -3319,6 +3347,8 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
     N_o = params["maxReflOrder"]
     Z_S = np.asarray(params["impedance"], dtype=np.complex128)
     N_o_ORG = params["mixEarlyOrder"]
+    compact_storage = _shoebox_use_compact_storage(params)
+    store_attenuation = 0 if compact_storage else 1
 
     if N_o < N_o_ORG:
         N_o_ORG = N_o
@@ -3337,7 +3367,8 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
 
     if not params["silentMode"]:
         print(
-            f"maxReflectionOrder: {N_o}, numba_threads={num_threads}",
+            f"maxReflectionOrder: {N_o}, numba_threads={num_threads}, "
+            f"storage={'compact' if compact_storage else 'materialized'}",
         )
 
     early_counts, late_counts = _count_shoebox_images_nofs_v2_numba(
@@ -3362,13 +3393,19 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
     R_sI_r_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
     R_s_rI_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
     R_r_sI_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
-    atten_all_early = np.empty((num_early_ref_paths, num_freqs), dtype=np.complex64)
+    if compact_storage:
+        atten_all_early = np.empty((num_early_ref_paths, 0), dtype=np.complex64)
+    else:
+        atten_all_early = np.empty((num_early_ref_paths, num_freqs), dtype=np.complex64)
     A_early = np.empty((num_early_ref_paths, 6), dtype=np.int32)
 
     R_sI_r_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
     R_s_rI_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
     R_r_sI_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
-    atten_all_late = np.empty((num_late_ref_paths, num_freqs), dtype=np.complex64)
+    if compact_storage:
+        atten_all_late = np.empty((num_late_ref_paths, 0), dtype=np.complex64)
+    else:
+        atten_all_late = np.empty((num_late_ref_paths, num_freqs), dtype=np.complex64)
     A_late = np.empty((num_late_ref_paths, 6), dtype=np.int32)
 
     _fill_shoebox_images_nofs_v2_numba(
@@ -3380,6 +3417,7 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
         RefCoef_angdep_flag=RefCoef_angdep_flag,
         N_o=N_o,
         N_o_ORG=N_o_ORG,
+        store_attenuation=store_attenuation,
         early_offsets=early_offsets,
         late_offsets=late_offsets,
         R_sI_r_all_early=R_sI_r_all_early,
@@ -3402,20 +3440,23 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
             R_sI_r_all_early = np.delete(R_sI_r_all_early, direct_path_idx, axis=0)
             R_s_rI_all_early = np.delete(R_s_rI_all_early, direct_path_idx, axis=0)
             R_r_sI_all_early = np.delete(R_r_sI_all_early, direct_path_idx, axis=0)
-            atten_all_early = np.delete(atten_all_early, direct_path_idx, axis=0)
+            if not compact_storage:
+                atten_all_early = np.delete(atten_all_early, direct_path_idx, axis=0)
 
     images = {
+        "storage": "compact" if compact_storage else "materialized",
         "R_sI_r_all_early": R_sI_r_all_early,
         "R_s_rI_all_early": R_s_rI_all_early,
         "R_r_sI_all_early": R_r_sI_all_early,
-        "atten_all_early": atten_all_early,
         "A_early": A_early,
         "R_sI_r_all_late": R_sI_r_all_late,
         "R_s_rI_all_late": R_s_rI_all_late,
         "R_r_sI_all_late": R_r_sI_all_late,
-        "atten_all_late": atten_all_late,
         "A_late": A_late,
     }
+    if not compact_storage:
+        images["atten_all_early"] = atten_all_early
+        images["atten_all_late"] = atten_all_late
 
     end = time.perf_counter()
     if not params["silentMode"]:
@@ -4226,6 +4267,9 @@ def merge_images(images):
         late = np.asarray(late)
         return np.concatenate([early, late], axis=0)
 
+    if "storage" in images:
+        merged["storage"] = images["storage"]
+
     merged["A"] = concat_early_late(images["A_early"], images["A_late"])
     merged["R_sI_r_all"] = concat_early_late(
         images["R_sI_r_all_early"], images["R_sI_r_all_late"]
@@ -4236,9 +4280,10 @@ def merge_images(images):
     merged["R_r_sI_all"] = concat_early_late(
         images["R_r_sI_all_early"], images["R_r_sI_all_late"]
     )
-    merged["atten_all"] = concat_early_late(
-        images["atten_all_early"], images["atten_all_late"]
-    )
+    if "atten_all_early" in images and "atten_all_late" in images:
+        merged["atten_all"] = concat_early_late(
+            images["atten_all_early"], images["atten_all_late"]
+        )
     return merged
 
 

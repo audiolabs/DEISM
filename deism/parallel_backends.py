@@ -30,7 +30,8 @@ except ImportError:
     NUMBA_AVAILABLE = False
 
 
-# Keep Numba LC/MIX temporary buffers bounded for dense RIR spectra.
+# Keep Numba shoebox temporary buffers bounded for dense RIR spectra.
+NUMBA_ORG_TEMP_TARGET_MB = 256
 NUMBA_LC_TEMP_TARGET_MB = 256
 
 
@@ -115,6 +116,74 @@ if NUMBA_AVAILABLE:
             yn = y1
 
         return complex(jn, -yn)
+
+    @njit(cache=True)
+    def _shoebox_ref_coef_from_cos_numba(cos_theta, zeta):
+        return (zeta * cos_theta - 1.0) / (zeta * cos_theta + 1.0)
+
+    @njit(cache=True)
+    def _shoebox_complex_pow_int_numba(base, exponent):
+        out = 1.0 + 0.0j
+        for _ in range(exponent):
+            out *= base
+        return out
+
+    @njit(cache=True)
+    def _shoebox_abs_direction_cosines_numba(phi, theta):
+        sin_theta = np.sin(theta)
+        cos_x = np.abs(sin_theta * np.cos(phi))
+        cos_y = np.abs(sin_theta * np.sin(phi))
+        cos_z = np.abs(np.cos(theta))
+        return cos_x, cos_y, cos_z
+
+    @njit(parallel=True, cache=True)
+    def _numba_build_shoebox_attenuation_batch(A_all, R_sI_r_all, Z_S, ang_dep_flag):
+        n_images = A_all.shape[0]
+        K = Z_S.shape[1]
+        atten_all = np.empty((n_images, K), dtype=complex128)
+
+        for img in prange(n_images):
+            q_x = A_all[img, 0]
+            q_y = A_all[img, 1]
+            q_z = A_all[img, 2]
+            p_x = A_all[img, 3]
+            p_y = A_all[img, 4]
+            p_z = A_all[img, 5]
+
+            if ang_dep_flag == 1:
+                cos_x, cos_y, cos_z = _shoebox_abs_direction_cosines_numba(
+                    R_sI_r_all[img, 0], R_sI_r_all[img, 1]
+                )
+            else:
+                cos_x = 1.0
+                cos_y = 1.0
+                cos_z = 1.0
+
+            exp_x1 = abs(q_x - p_x)
+            exp_x2 = abs(q_x)
+            exp_y1 = abs(q_y - p_y)
+            exp_y2 = abs(q_y)
+            exp_z1 = abs(q_z - p_z)
+            exp_z2 = abs(q_z)
+
+            for ki in range(K):
+                beta_x1 = _shoebox_ref_coef_from_cos_numba(cos_x, Z_S[0, ki])
+                beta_x2 = _shoebox_ref_coef_from_cos_numba(cos_x, Z_S[1, ki])
+                beta_y1 = _shoebox_ref_coef_from_cos_numba(cos_y, Z_S[2, ki])
+                beta_y2 = _shoebox_ref_coef_from_cos_numba(cos_y, Z_S[3, ki])
+                beta_z1 = _shoebox_ref_coef_from_cos_numba(cos_z, Z_S[4, ki])
+                beta_z2 = _shoebox_ref_coef_from_cos_numba(cos_z, Z_S[5, ki])
+
+                atten_all[img, ki] = (
+                    _shoebox_complex_pow_int_numba(beta_x1, exp_x1)
+                    * _shoebox_complex_pow_int_numba(beta_x2, exp_x2)
+                    * _shoebox_complex_pow_int_numba(beta_y1, exp_y1)
+                    * _shoebox_complex_pow_int_numba(beta_y2, exp_y2)
+                    * _shoebox_complex_pow_int_numba(beta_z1, exp_z1)
+                    * _shoebox_complex_pow_int_numba(beta_z2, exp_z2)
+                )
+
+        return atten_all
 
     @njit(parallel=True, cache=True)
     def _numba_ORG_batch(
@@ -395,32 +464,62 @@ if NUMBA_AVAILABLE:
 # Numba shoebox dispatchers
 # ============================================================================
 
-def _resolve_numba_lc_batch_size(params, n_images, n_freqs):
-    """
-    Respect the existing ``numParaImages`` limit, but also cap the batch size so
-    dense RIR runs do not allocate multi-GB LC temporaries in one shot.
-    """
+def _shoebox_images_are_compact(images):
+    return images.get("storage") == "compact"
+
+
+def _resolve_numba_batch_size(
+    params,
+    n_images,
+    n_freqs,
+    temp_target_key,
+    default_target_mb,
+    bytes_per_image,
+):
+    if n_images <= 0:
+        return 1
+
     requested = params.get("numParaImages")
     if requested is None:
         requested = n_images
     requested = max(1, min(int(requested), int(n_images)))
 
-    target_mb = params.get("numbaLCTempTargetMB", NUMBA_LC_TEMP_TARGET_MB)
+    target_mb = params.get(temp_target_key, default_target_mb)
     target_bytes = max(1, int(target_mb)) * 1024 * 1024
-
-    # One LC batch allocates P_all(batch_images, n_freqs) as complex128.
-    # Budget one additional complex64-sized buffer worth of headroom for views
-    # and temporaries.
-    bytes_per_image = max(
-        1,
-        int(n_freqs)
-        * (
-            np.dtype(np.complex128).itemsize
-            + np.dtype(np.complex64).itemsize
-        ),
-    )
-    auto_limit = max(1, target_bytes // bytes_per_image)
+    auto_limit = max(1, target_bytes // max(1, int(bytes_per_image)))
     return max(1, min(requested, auto_limit))
+
+
+def _resolve_numba_org_batch_size(params, n_images, n_freqs):
+    bytes_per_image = int(n_freqs) * (
+        np.dtype(np.complex128).itemsize + np.dtype(np.complex128).itemsize
+    )
+    return _resolve_numba_batch_size(
+        params,
+        n_images,
+        n_freqs,
+        "numbaORGTempTargetMB",
+        NUMBA_ORG_TEMP_TARGET_MB,
+        bytes_per_image,
+    )
+
+
+def _resolve_numba_lc_batch_size(params, n_images, n_freqs):
+    """
+    Respect the existing ``numParaImages`` limit, but also cap the batch size so
+    dense RIR runs do not allocate multi-GB LC temporaries in one shot.
+    """
+    bytes_per_image = int(n_freqs) * (
+        np.dtype(np.complex128).itemsize + np.dtype(np.complex128).itemsize
+    )
+    return _resolve_numba_batch_size(
+        params,
+        n_images,
+        n_freqs,
+        "numbaLCTempTargetMB",
+        NUMBA_LC_TEMP_TARGET_MB,
+        bytes_per_image,
+    )
 
 
 def _ensure_image_frequency_layout(arr, n_images):
@@ -430,15 +529,88 @@ def _ensure_image_frequency_layout(arr, n_images):
     return arr2
 
 
-def _run_numba_lc_matrix_in_batches(params, R_s_rI_all, R_r_sI_all, atten_all):
+def _build_shoebox_attenuation_batch(params, A_batch, R_sI_r_batch):
+    if not NUMBA_AVAILABLE:
+        raise ImportError("numba is required for compact shoebox attenuation")
+    return _numba_build_shoebox_attenuation_batch(
+        np.ascontiguousarray(np.asarray(A_batch, dtype=np.int64)),
+        np.ascontiguousarray(np.asarray(R_sI_r_batch, dtype=np.float64)),
+        np.ascontiguousarray(np.asarray(params["impedance"], dtype=np.complex128)),
+        int(params["angDepFlag"]),
+    )
+
+
+def _run_numba_org_in_batches(params, A_all, R_sI_r_all, atten_all, Wigner):
+    """Run the shoebox ORG kernel in image batches."""
+    n_images = len(A_all)
+    if n_images == 0:
+        return np.zeros(params["waveNumbers"].shape[0], dtype=np.complex128)
+
+    A_arr = np.ascontiguousarray(np.asarray(A_all, dtype=np.int64))
+    x0_arr = np.ascontiguousarray(np.asarray(R_sI_r_all, dtype=np.float64))
+    atten_arr = None
+    if atten_all is not None:
+        atten_arr = _ensure_image_frequency_layout(atten_all, n_images)
+
+    k_c = np.ascontiguousarray(params["waveNumbers"].astype(np.float64))
+    C_nm_s_c = np.ascontiguousarray(params["C_nm_s"].astype(np.complex128))
+    C_vu_r_c = np.ascontiguousarray(params["C_vu_r"].astype(np.complex128))
+    W_1 = np.ascontiguousarray(Wigner["W_1_all"].astype(np.complex128))
+    W_2 = np.ascontiguousarray(Wigner["W_2_all"].astype(np.complex128))
+
+    batch_size = _resolve_numba_org_batch_size(params, n_images, k_c.shape[0])
+    if not params["silentMode"] and batch_size < n_images:
+        print(f"org_batch_size={batch_size}, ", end="")
+
+    P = np.zeros(k_c.shape[0], dtype=np.complex128)
+    for start_idx in range(0, n_images, batch_size):
+        end_idx = min(start_idx + batch_size, n_images)
+        if atten_arr is None:
+            atten_batch = _build_shoebox_attenuation_batch(
+                params,
+                A_arr[start_idx:end_idx],
+                x0_arr[start_idx:end_idx],
+            )
+        else:
+            atten_batch = np.ascontiguousarray(
+                np.asarray(atten_arr[start_idx:end_idx], dtype=np.complex128)
+            )
+
+        P += _numba_ORG_batch(
+            params["sourceOrder"],
+            params["receiverOrder"],
+            C_nm_s_c,
+            C_vu_r_c,
+            A_arr[start_idx:end_idx],
+            atten_batch,
+            x0_arr[start_idx:end_idx],
+            W_1,
+            W_2,
+            k_c,
+        )
+    return P
+
+
+def _run_numba_lc_matrix_in_batches(
+    params,
+    A_all,
+    R_sI_r_all,
+    R_s_rI_all,
+    R_r_sI_all,
+    atten_all,
+):
     """
-    Run the shoebox LC kernel in image batches to avoid O(n_images * n_freqs)
-    transient allocations for the full late-image matrix.
+    Run the shoebox LC kernel in image batches with either materialized or
+    on-the-fly reconstructed attenuation.
     """
     n_images = R_s_rI_all.shape[0]
     if n_images == 0:
         return np.zeros(params["waveNumbers"].shape[0], dtype=np.complex128)
 
+    A_arr = np.ascontiguousarray(np.asarray(A_all, dtype=np.int64))
+    x0_arr = np.ascontiguousarray(np.asarray(R_sI_r_all, dtype=np.float64))
+    R_s_arr = np.ascontiguousarray(np.asarray(R_s_rI_all, dtype=np.float64))
+    R_r_arr = np.ascontiguousarray(np.asarray(R_r_sI_all, dtype=np.float64))
     k_c = np.ascontiguousarray(params["waveNumbers"].astype(np.float64))
     n_all_c = np.ascontiguousarray(params["n_all"].astype(np.int64))
     m_all_c = np.ascontiguousarray(params["m_all"].astype(np.int64))
@@ -446,7 +618,9 @@ def _run_numba_lc_matrix_in_batches(params, R_s_rI_all, R_r_sI_all, atten_all):
     u_all_c = np.ascontiguousarray(params["u_all"].astype(np.int64))
     C_nm_s_vec_c = np.ascontiguousarray(params["C_nm_s_vec"])
     C_vu_r_vec_c = np.ascontiguousarray(params["C_vu_r_vec"])
-    atten_arr = _ensure_image_frequency_layout(atten_all, n_images)
+    atten_arr = None
+    if atten_all is not None:
+        atten_arr = _ensure_image_frequency_layout(atten_all, n_images)
 
     batch_size = _resolve_numba_lc_batch_size(params, n_images, k_c.shape[0])
     if not params["silentMode"] and batch_size < n_images:
@@ -455,6 +629,16 @@ def _run_numba_lc_matrix_in_batches(params, R_s_rI_all, R_r_sI_all, atten_all):
     P = np.zeros(k_c.shape[0], dtype=np.complex128)
     for start_idx in range(0, n_images, batch_size):
         end_idx = min(start_idx + batch_size, n_images)
+        if atten_arr is None:
+            atten_batch = _build_shoebox_attenuation_batch(
+                params,
+                A_arr[start_idx:end_idx],
+                x0_arr[start_idx:end_idx],
+            )
+        else:
+            atten_batch = np.ascontiguousarray(
+                np.asarray(atten_arr[start_idx:end_idx], dtype=np.complex128)
+            )
         P += _numba_LC_matrix_batch(
             n_all_c,
             m_all_c,
@@ -462,9 +646,9 @@ def _run_numba_lc_matrix_in_batches(params, R_s_rI_all, R_r_sI_all, atten_all):
             u_all_c,
             C_nm_s_vec_c,
             C_vu_r_vec_c,
-            np.ascontiguousarray(R_s_rI_all[start_idx:end_idx]),
-            np.ascontiguousarray(R_r_sI_all[start_idx:end_idx]),
-            np.ascontiguousarray(atten_arr[start_idx:end_idx]),
+            R_s_arr[start_idx:end_idx],
+            R_r_arr[start_idx:end_idx],
+            atten_batch,
             k_c,
         )
     return P
@@ -477,34 +661,23 @@ def _numba_run_DEISM_ORG(params, images, Wigner):
     if not params["silentMode"]:
         print("[Numba] DEISM Original ... ", end="")
 
-    k = params["waveNumbers"]
-    C_nm_s = params["C_nm_s"]
-    C_vu_r = params["C_vu_r"]
     A = images["A"]
     R_sI_r_all = images["R_sI_r_all"]
-    atten_all = images["atten_all"]
+    atten_all = images.get("atten_all")
 
     n_images = len(A)
     if not params["silentMode"]:
-        print(f"{n_images} images, ", end="")
+        if atten_all is None and _shoebox_images_are_compact(images):
+            print(f"{n_images} images, compact_images, ", end="")
+        else:
+            print(f"{n_images} images, ", end="")
 
-    # Ensure contiguous arrays for numba
-    A_arr = np.ascontiguousarray(np.array(A, dtype=np.float64))
-    x0_arr = np.ascontiguousarray(np.array(R_sI_r_all, dtype=np.float64))
-    atten_arr = np.atleast_2d(np.array(atten_all, dtype=np.complex128))
-    if atten_arr.shape[0] != n_images:
-        atten_arr = atten_arr.T
-    atten_arr = np.ascontiguousarray(atten_arr)
-
-    C_nm_s_c = np.ascontiguousarray(C_nm_s.astype(np.complex128))
-    C_vu_r_c = np.ascontiguousarray(C_vu_r.astype(np.complex128))
-    W_1 = np.ascontiguousarray(Wigner["W_1_all"].astype(np.complex128))
-    W_2 = np.ascontiguousarray(Wigner["W_2_all"].astype(np.complex128))
-    k_c = np.ascontiguousarray(k.astype(np.float64))
-
-    P = _numba_ORG_batch(
-        params["sourceOrder"], params["receiverOrder"],
-        C_nm_s_c, C_vu_r_c, A_arr, atten_arr, x0_arr, W_1, W_2, k_c,
+    P = _run_numba_org_in_batches(
+        params,
+        A,
+        R_sI_r_all,
+        atten_all,
+        Wigner,
     )
 
     if not params["silentMode"]:
@@ -522,19 +695,25 @@ def _numba_run_DEISM_LC_matrix(params, images):
         print("[Numba] DEISM LC vectorized ... ", end="")
 
     A = images["A"]
-    atten_all = images["atten_all"]
+    R_sI_r_all = images["R_sI_r_all"]
+    atten_all = images.get("atten_all")
     R_s_rI_all = images["R_s_rI_all"]
     R_r_sI_all = images["R_r_sI_all"]
     n_images = len(A)
 
     if not params["silentMode"]:
-        print(f"{n_images} images, ", end="")
+        if atten_all is None and _shoebox_images_are_compact(images):
+            print(f"{n_images} images, compact_images, ", end="")
+        else:
+            print(f"{n_images} images, ", end="")
 
     P = _run_numba_lc_matrix_in_batches(
         params,
-        np.asarray(R_s_rI_all),
-        np.asarray(R_r_sI_all),
-        np.asarray(atten_all),
+        A,
+        R_sI_r_all,
+        R_s_rI_all,
+        R_r_sI_all,
+        atten_all,
     )
 
     if not params["silentMode"]:
@@ -551,50 +730,45 @@ def _numba_run_DEISM_MIX(params, images, Wigner):
     if not params["silentMode"]:
         print("[Numba] DEISM MIX ... ", end="")
 
-    k = params["waveNumbers"]
-
     A_early = images["A_early"]
     R_sI_r_all_early = images["R_sI_r_all_early"]
-    atten_all_early = images["atten_all_early"]
+    atten_all_early = images.get("atten_all_early")
 
+    A_late = images["A_late"]
+    R_sI_r_all_late = images["R_sI_r_all_late"]
     R_s_rI_all_late = images["R_s_rI_all_late"]
     R_r_sI_all_late = images["R_r_sI_all_late"]
-    atten_all_late = images["atten_all_late"]
+    atten_all_late = images.get("atten_all_late")
 
     n_early = len(A_early)
-    n_late = len(images["A_late"])
+    n_late = len(A_late)
     if not params["silentMode"]:
-        print(f"{n_early} early, {n_late} late images, ", end="")
+        if _shoebox_images_are_compact(images):
+            print(f"{n_early} early, {n_late} late images, compact_images, ", end="")
+        else:
+            print(f"{n_early} early, {n_late} late images, ", end="")
 
-    P_DEISM = np.zeros(k.size, dtype="complex")
+    P_DEISM = np.zeros(params["waveNumbers"].size, dtype="complex")
 
     # Early: ORG
     if n_early > 0:
-        A_arr = np.ascontiguousarray(np.array(A_early, dtype=np.float64))
-        x0_arr = np.ascontiguousarray(np.array(R_sI_r_all_early, dtype=np.float64))
-        atten_arr = np.atleast_2d(np.array(atten_all_early, dtype=np.complex128))
-        if atten_arr.shape[0] != n_early:
-            atten_arr = atten_arr.T
-        atten_arr = np.ascontiguousarray(atten_arr)
-
-        C_nm_s_c = np.ascontiguousarray(params["C_nm_s"].astype(np.complex128))
-        C_vu_r_c = np.ascontiguousarray(params["C_vu_r"].astype(np.complex128))
-        W_1 = np.ascontiguousarray(Wigner["W_1_all"].astype(np.complex128))
-        W_2 = np.ascontiguousarray(Wigner["W_2_all"].astype(np.complex128))
-
-        P_DEISM += _numba_ORG_batch(
-            params["sourceOrder"], params["receiverOrder"],
-            C_nm_s_c, C_vu_r_c, A_arr, atten_arr, x0_arr, W_1, W_2,
-            np.ascontiguousarray(k.astype(np.float64)),
+        P_DEISM += _run_numba_org_in_batches(
+            params,
+            A_early,
+            R_sI_r_all_early,
+            atten_all_early,
+            Wigner,
         )
 
     # Late: LC matrix
     if n_late > 0:
         P_DEISM += _run_numba_lc_matrix_in_batches(
             params,
-            np.asarray(R_s_rI_all_late),
-            np.asarray(R_r_sI_all_late),
-            np.asarray(atten_all_late),
+            A_late,
+            R_sI_r_all_late,
+            R_s_rI_all_late,
+            R_r_sI_all_late,
+            atten_all_late,
         )
 
     if not params["silentMode"]:
@@ -1360,6 +1534,11 @@ def run_DEISM_ray(params):
     """Run DEISM shoebox with Ray backend."""
     if not RAY_AVAILABLE:
         raise ImportError("ray is required for the ray backend. Install with: pip install ray")
+    if _shoebox_images_are_compact(params["images"]):
+        raise NotImplementedError(
+            "Ray shoebox backend does not support compact image storage. "
+            "Set shoeboxCompactImages=0 or use the default Numba backend."
+        )
     method = params["DEISM_method"]
     if method == "ORG":
         return _ray_run_DEISM_ORG(params, params["images"], params["Wigner"])

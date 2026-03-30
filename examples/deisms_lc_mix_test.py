@@ -32,7 +32,7 @@ def setup_deism(method):
     deism.params["radiusReceiver"] = np.array([0.5])
     deism.params["ifRemoveDirectPath"] = 0
     # Match the frequency setup used in deism_JASA_fig8.py
-    deism.params["shoeboxImageCalcVersion"] = "v1"
+    deism.params["shoeboxImageCalcVersion"] = "v2-numba"
     deism.params["ifReceiverNormalize"] = 1
     deism.params["startFreq"] = 20
     deism.params["endFreq"] = 1000
