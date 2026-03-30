@@ -30,6 +30,10 @@ except ImportError:
     NUMBA_AVAILABLE = False
 
 
+# Keep Numba LC/MIX temporary buffers bounded for dense RIR spectra.
+NUMBA_LC_TEMP_TARGET_MB = 256
+
+
 if NUMBA_AVAILABLE:
     @njit(cache=True)
     def _sph_harm_numba(m, n, phi, theta):
@@ -391,6 +395,80 @@ if NUMBA_AVAILABLE:
 # Numba shoebox dispatchers
 # ============================================================================
 
+def _resolve_numba_lc_batch_size(params, n_images, n_freqs):
+    """
+    Respect the existing ``numParaImages`` limit, but also cap the batch size so
+    dense RIR runs do not allocate multi-GB LC temporaries in one shot.
+    """
+    requested = params.get("numParaImages")
+    if requested is None:
+        requested = n_images
+    requested = max(1, min(int(requested), int(n_images)))
+
+    target_mb = params.get("numbaLCTempTargetMB", NUMBA_LC_TEMP_TARGET_MB)
+    target_bytes = max(1, int(target_mb)) * 1024 * 1024
+
+    # One LC batch allocates P_all(batch_images, n_freqs) as complex128.
+    # Budget one additional complex64-sized buffer worth of headroom for views
+    # and temporaries.
+    bytes_per_image = max(
+        1,
+        int(n_freqs)
+        * (
+            np.dtype(np.complex128).itemsize
+            + np.dtype(np.complex64).itemsize
+        ),
+    )
+    auto_limit = max(1, target_bytes // bytes_per_image)
+    return max(1, min(requested, auto_limit))
+
+
+def _ensure_image_frequency_layout(arr, n_images):
+    arr2 = np.atleast_2d(np.asarray(arr))
+    if arr2.shape[0] != n_images and arr2.shape[1] == n_images:
+        arr2 = arr2.T
+    return arr2
+
+
+def _run_numba_lc_matrix_in_batches(params, R_s_rI_all, R_r_sI_all, atten_all):
+    """
+    Run the shoebox LC kernel in image batches to avoid O(n_images * n_freqs)
+    transient allocations for the full late-image matrix.
+    """
+    n_images = R_s_rI_all.shape[0]
+    if n_images == 0:
+        return np.zeros(params["waveNumbers"].shape[0], dtype=np.complex128)
+
+    k_c = np.ascontiguousarray(params["waveNumbers"].astype(np.float64))
+    n_all_c = np.ascontiguousarray(params["n_all"].astype(np.int64))
+    m_all_c = np.ascontiguousarray(params["m_all"].astype(np.int64))
+    v_all_c = np.ascontiguousarray(params["v_all"].astype(np.int64))
+    u_all_c = np.ascontiguousarray(params["u_all"].astype(np.int64))
+    C_nm_s_vec_c = np.ascontiguousarray(params["C_nm_s_vec"])
+    C_vu_r_vec_c = np.ascontiguousarray(params["C_vu_r_vec"])
+    atten_arr = _ensure_image_frequency_layout(atten_all, n_images)
+
+    batch_size = _resolve_numba_lc_batch_size(params, n_images, k_c.shape[0])
+    if not params["silentMode"] and batch_size < n_images:
+        print(f"lc_batch_size={batch_size}, ", end="")
+
+    P = np.zeros(k_c.shape[0], dtype=np.complex128)
+    for start_idx in range(0, n_images, batch_size):
+        end_idx = min(start_idx + batch_size, n_images)
+        P += _numba_LC_matrix_batch(
+            n_all_c,
+            m_all_c,
+            v_all_c,
+            u_all_c,
+            C_nm_s_vec_c,
+            C_vu_r_vec_c,
+            np.ascontiguousarray(R_s_rI_all[start_idx:end_idx]),
+            np.ascontiguousarray(R_r_sI_all[start_idx:end_idx]),
+            np.ascontiguousarray(atten_arr[start_idx:end_idx]),
+            k_c,
+        )
+    return P
+
 def _numba_run_DEISM_ORG(params, images, Wigner):
     """ORG dispatcher using Numba."""
     if not NUMBA_AVAILABLE:
@@ -443,13 +521,6 @@ def _numba_run_DEISM_LC_matrix(params, images):
     if not params["silentMode"]:
         print("[Numba] DEISM LC vectorized ... ", end="")
 
-    k = params["waveNumbers"]
-    n_all = params["n_all"]
-    m_all = params["m_all"]
-    v_all = params["v_all"]
-    u_all = params["u_all"]
-    C_nm_s_vec = params["C_nm_s_vec"]
-    C_vu_r_vec = params["C_vu_r_vec"]
     A = images["A"]
     atten_all = images["atten_all"]
     R_s_rI_all = images["R_s_rI_all"]
@@ -459,22 +530,11 @@ def _numba_run_DEISM_LC_matrix(params, images):
     if not params["silentMode"]:
         print(f"{n_images} images, ", end="")
 
-    R_s = np.ascontiguousarray(np.array(R_s_rI_all, dtype=np.float64))
-    R_r = np.ascontiguousarray(np.array(R_r_sI_all, dtype=np.float64))
-    atten_arr = np.atleast_2d(np.array(atten_all, dtype=np.complex128))
-    if atten_arr.shape[0] != n_images:
-        atten_arr = atten_arr.T
-    atten_arr = np.ascontiguousarray(atten_arr)
-
-    P = _numba_LC_matrix_batch(
-        np.ascontiguousarray(n_all.astype(np.int64)),
-        np.ascontiguousarray(m_all.astype(np.int64)),
-        np.ascontiguousarray(v_all.astype(np.int64)),
-        np.ascontiguousarray(u_all.astype(np.int64)),
-        np.ascontiguousarray(C_nm_s_vec.astype(np.complex128)),
-        np.ascontiguousarray(C_vu_r_vec.astype(np.complex128)),
-        R_s, R_r, atten_arr,
-        np.ascontiguousarray(k.astype(np.float64)),
+    P = _run_numba_lc_matrix_in_batches(
+        params,
+        np.asarray(R_s_rI_all),
+        np.asarray(R_r_sI_all),
+        np.asarray(atten_all),
     )
 
     if not params["silentMode"]:
@@ -530,22 +590,11 @@ def _numba_run_DEISM_MIX(params, images, Wigner):
 
     # Late: LC matrix
     if n_late > 0:
-        R_s = np.ascontiguousarray(np.array(R_s_rI_all_late, dtype=np.float64))
-        R_r = np.ascontiguousarray(np.array(R_r_sI_all_late, dtype=np.float64))
-        atten_arr = np.atleast_2d(np.array(atten_all_late, dtype=np.complex128))
-        if atten_arr.shape[0] != n_late:
-            atten_arr = atten_arr.T
-        atten_arr = np.ascontiguousarray(atten_arr)
-
-        P_DEISM += _numba_LC_matrix_batch(
-            np.ascontiguousarray(params["n_all"].astype(np.int64)),
-            np.ascontiguousarray(params["m_all"].astype(np.int64)),
-            np.ascontiguousarray(params["v_all"].astype(np.int64)),
-            np.ascontiguousarray(params["u_all"].astype(np.int64)),
-            np.ascontiguousarray(params["C_nm_s_vec"].astype(np.complex128)),
-            np.ascontiguousarray(params["C_vu_r_vec"].astype(np.complex128)),
-            R_s, R_r, atten_arr,
-            np.ascontiguousarray(k.astype(np.float64)),
+        P_DEISM += _run_numba_lc_matrix_in_batches(
+            params,
+            np.asarray(R_s_rI_all_late),
+            np.asarray(R_r_sI_all_late),
+            np.asarray(atten_all_late),
         )
 
     if not params["silentMode"]:
