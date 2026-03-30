@@ -453,7 +453,7 @@ def main():
         deism.params["sourceType"] = source_type
         deism.params["receiverType"] = receiver_type
         deism.params["posReceiver"] = pos_receiver
-        deism.params["shoeboxImageCalcVersion"] = "v2-numba"
+        # deism.params["shoeboxImageCalcVersion"] = "v2-numba"
         deism.params["ifReceiverNormalize"] = 1
         # update_freqs() must not be called here: it overwrites params["impedance"], so a
         # second call breaks interpolate_materials. pointSrcStrength was set once above.

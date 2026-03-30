@@ -107,9 +107,19 @@ class DEISM:
         # -----------------------------------------------------------
         # Calculate images
         if self.roomtype == "shoebox":
+            default_image_calc_version = "v2-numba"
             image_calc_version = str(
-                self.params.get("shoeboxImageCalcVersion", "v2")
+                self.params.get("shoeboxImageCalcVersion", default_image_calc_version)
             ).lower().replace("_", "-")
+            if (
+                image_calc_version in ("numba", "v2-numba", "numba-v2")
+                and not SHOEBOX_IMAGE_NUMBA_AVAILABLE
+            ):
+                if "shoeboxImageCalcVersion" in self.params:
+                    raise ImportError(
+                        "Numba is required for shoeboxImageCalcVersion='v2-numba'."
+                    )
+                image_calc_version = "v2"
             if image_calc_version in ("v1", "1"):
                 self.params["images"] = pre_calc_images_src_rec_optimized_nofs_v1(
                     self.params
@@ -2584,6 +2594,24 @@ if SHOEBOX_IMAGE_NUMBA_AVAILABLE:
 
 
     @njit(cache=True)
+    def _shoebox_task_components_numba(task_idx, n_ref_orders):
+        """
+        Map the flattened shoebox task index to one parity block and one
+        reflection order.
+
+        Splitting work by parity alone creates only eight parallel tasks. For
+        higher reflection orders that leaves many CPU threads idle, especially
+        in long-reverberation cases. Adding reflection order to the work index
+        preserves deterministic output ordering while exposing much finer
+        parallel granularity.
+        """
+        parity_idx = task_idx // n_ref_orders
+        ref_order = task_idx % n_ref_orders
+        p_x, p_y, p_z = _shoebox_parity_components_numba(parity_idx)
+        return p_x, p_y, p_z, ref_order
+
+
+    @njit(cache=True)
     def _cart2sph_polar_numba(x, y, z):
         """Return azimuth, polar angle, and radius for one 3D vector."""
         h_xy = np.hypot(x, y)
@@ -2618,72 +2646,75 @@ if SHOEBOX_IMAGE_NUMBA_AVAILABLE:
         N_o,
         N_o_ORG,
     ):
-        """Count exact early/late image counts per parity block."""
-        early_counts = np.zeros(8, dtype=np.int64)
-        late_counts = np.zeros(8, dtype=np.int64)
+        """Count exact early/late image counts per parity/reflection-order task."""
+        n_ref_orders = N_o + 1
+        n_tasks = 8 * n_ref_orders
+        early_counts = np.zeros(n_tasks, dtype=np.int64)
+        late_counts = np.zeros(n_tasks, dtype=np.int64)
 
-        for parity_idx in prange(8):
-            p_x, p_y, p_z = _shoebox_parity_components_numba(parity_idx)
+        for task_idx in prange(n_tasks):
+            p_x, p_y, p_z, ref_order = _shoebox_task_components_numba(
+                task_idx, n_ref_orders
+            )
             source_offset_x = x_s[0] - 2 * p_x * x_s[0]
             source_offset_y = x_s[1] - 2 * p_y * x_s[1]
             source_offset_z = x_s[2] - 2 * p_z * x_s[2]
             early_count = 0
             late_count = 0
 
-            for ref_order in range(N_o + 1):
-                for i_abs in range(ref_order + 1):
-                    for j_abs in range(ref_order - i_abs + 1):
-                        k_abs = ref_order - i_abs - j_abs
+            for i_abs in range(ref_order + 1):
+                for j_abs in range(ref_order - i_abs + 1):
+                    k_abs = ref_order - i_abs - j_abs
 
-                        i_count = 1 if i_abs == 0 else 2
-                        j_count = 1 if j_abs == 0 else 2
-                        k_count = 1 if k_abs == 0 else 2
+                    i_count = 1 if i_abs == 0 else 2
+                    j_count = 1 if j_abs == 0 else 2
+                    k_count = 1 if k_abs == 0 else 2
 
-                        for i_idx in range(i_count):
-                            i = i_abs if i_abs == 0 else (-i_abs if i_idx == 0 else i_abs)
-                            for j_idx in range(j_count):
-                                j = (
-                                    j_abs
-                                    if j_abs == 0
-                                    else (-j_abs if j_idx == 0 else j_abs)
+                    for i_idx in range(i_count):
+                        i = i_abs if i_abs == 0 else (-i_abs if i_idx == 0 else i_abs)
+                        for j_idx in range(j_count):
+                            j = (
+                                j_abs
+                                if j_abs == 0
+                                else (-j_abs if j_idx == 0 else j_abs)
+                            )
+                            for k_idx in range(k_count):
+                                k = (
+                                    k_abs
+                                    if k_abs == 0
+                                    else (-k_abs if k_idx == 0 else k_abs)
                                 )
-                                for k_idx in range(k_count):
-                                    k = (
-                                        k_abs
-                                        if k_abs == 0
-                                        else (-k_abs if k_idx == 0 else k_abs)
-                                    )
 
-                                    if (
-                                        (i + p_x) % 2 != 0
-                                        or (j + p_y) % 2 != 0
-                                        or (k + p_z) % 2 != 0
-                                    ):
-                                        continue
+                                if (
+                                    (i + p_x) % 2 != 0
+                                    or (j + p_y) % 2 != 0
+                                    or (k + p_z) % 2 != 0
+                                ):
+                                    continue
 
-                                    q_x = (i + p_x) // 2
-                                    q_y = (j + p_y) // 2
-                                    q_z = (k + p_z) // 2
+                                q_x = (i + p_x) // 2
+                                q_y = (j + p_y) // 2
+                                q_z = (k + p_z) // 2
 
-                                    I_s_x = 2 * q_x * LL[0] + source_offset_x
-                                    I_s_y = 2 * q_y * LL[1] + source_offset_y
-                                    I_s_z = 2 * q_z * LL[2] + source_offset_z
-                                    dist_squared = (
-                                        (I_s_x - x_r[0]) ** 2
-                                        + (I_s_y - x_r[1]) ** 2
-                                        + (I_s_z - x_r[2]) ** 2
-                                    )
+                                I_s_x = 2 * q_x * LL[0] + source_offset_x
+                                I_s_y = 2 * q_y * LL[1] + source_offset_y
+                                I_s_z = 2 * q_z * LL[2] + source_offset_z
+                                dist_squared = (
+                                    (I_s_x - x_r[0]) ** 2
+                                    + (I_s_y - x_r[1]) ** 2
+                                    + (I_s_z - x_r[2]) ** 2
+                                )
 
-                                    if dist_squared > max_distance_squared:
-                                        continue
+                                if dist_squared > max_distance_squared:
+                                    continue
 
-                                    if ref_order <= N_o_ORG:
-                                        early_count += 1
-                                    else:
-                                        late_count += 1
+                                if ref_order <= N_o_ORG:
+                                    early_count += 1
+                                else:
+                                    late_count += 1
 
-            early_counts[parity_idx] = early_count
-            late_counts[parity_idx] = late_count
+            early_counts[task_idx] = early_count
+            late_counts[task_idx] = late_count
 
         return early_counts, late_counts
 
@@ -2698,6 +2729,7 @@ if SHOEBOX_IMAGE_NUMBA_AVAILABLE:
         RefCoef_angdep_flag,
         N_o,
         N_o_ORG,
+        store_attenuation,
         early_offsets,
         late_offsets,
         R_sI_r_all_early,
@@ -2713,146 +2745,150 @@ if SHOEBOX_IMAGE_NUMBA_AVAILABLE:
     ):
         """Fill preallocated shoebox image arrays using compiled loops."""
         num_freqs = Z_S.shape[1]
+        n_ref_orders = N_o + 1
+        n_tasks = 8 * n_ref_orders
 
-        for parity_idx in prange(8):
-            p_x, p_y, p_z = _shoebox_parity_components_numba(parity_idx)
+        for task_idx in prange(n_tasks):
+            p_x, p_y, p_z, ref_order = _shoebox_task_components_numba(
+                task_idx, n_ref_orders
+            )
             source_offset_x = x_s[0] - 2 * p_x * x_s[0]
             source_offset_y = x_s[1] - 2 * p_y * x_s[1]
             source_offset_z = x_s[2] - 2 * p_z * x_s[2]
-            early_idx = early_offsets[parity_idx]
-            late_idx = late_offsets[parity_idx]
+            early_idx = early_offsets[task_idx]
+            late_idx = late_offsets[task_idx]
 
-            for ref_order in range(N_o + 1):
-                for i_abs in range(ref_order + 1):
-                    for j_abs in range(ref_order - i_abs + 1):
-                        k_abs = ref_order - i_abs - j_abs
+            for i_abs in range(ref_order + 1):
+                for j_abs in range(ref_order - i_abs + 1):
+                    k_abs = ref_order - i_abs - j_abs
 
-                        i_count = 1 if i_abs == 0 else 2
-                        j_count = 1 if j_abs == 0 else 2
-                        k_count = 1 if k_abs == 0 else 2
+                    i_count = 1 if i_abs == 0 else 2
+                    j_count = 1 if j_abs == 0 else 2
+                    k_count = 1 if k_abs == 0 else 2
 
-                        for i_idx in range(i_count):
-                            i = i_abs if i_abs == 0 else (-i_abs if i_idx == 0 else i_abs)
-                            for j_idx in range(j_count):
-                                j = (
-                                    j_abs
-                                    if j_abs == 0
-                                    else (-j_abs if j_idx == 0 else j_abs)
+                    for i_idx in range(i_count):
+                        i = i_abs if i_abs == 0 else (-i_abs if i_idx == 0 else i_abs)
+                        for j_idx in range(j_count):
+                            j = (
+                                j_abs
+                                if j_abs == 0
+                                else (-j_abs if j_idx == 0 else j_abs)
+                            )
+                            for k_idx in range(k_count):
+                                k = (
+                                    k_abs
+                                    if k_abs == 0
+                                    else (-k_abs if k_idx == 0 else k_abs)
                                 )
-                                for k_idx in range(k_count):
-                                    k = (
-                                        k_abs
-                                        if k_abs == 0
-                                        else (-k_abs if k_idx == 0 else k_abs)
+
+                                if (
+                                    (i + p_x) % 2 != 0
+                                    or (j + p_y) % 2 != 0
+                                    or (k + p_z) % 2 != 0
+                                ):
+                                    continue
+
+                                q_x = (i + p_x) // 2
+                                q_y = (j + p_y) // 2
+                                q_z = (k + p_z) // 2
+
+                                I_s_x = 2 * q_x * LL[0] + source_offset_x
+                                I_s_y = 2 * q_y * LL[1] + source_offset_y
+                                I_s_z = 2 * q_z * LL[2] + source_offset_z
+                                dist_squared = (
+                                    (I_s_x - x_r[0]) ** 2
+                                    + (I_s_y - x_r[1]) ** 2
+                                    + (I_s_z - x_r[2]) ** 2
+                                )
+
+                                if dist_squared > max_distance_squared:
+                                    continue
+
+                                I_r_x = (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0])
+                                I_r_y = (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1])
+                                I_r_z = (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2])
+
+                                R_sI_r_x = x_r[0] - I_s_x
+                                R_sI_r_y = x_r[1] - I_s_y
+                                R_sI_r_z = x_r[2] - I_s_z
+                                phi_R_sI_r, theta_R_sI_r, r_R_sI_r = (
+                                    _cart2sph_polar_numba(
+                                        R_sI_r_x, R_sI_r_y, R_sI_r_z
                                     )
+                                )
 
-                                    if (
-                                        (i + p_x) % 2 != 0
-                                        or (j + p_y) % 2 != 0
-                                        or (k + p_z) % 2 != 0
-                                    ):
-                                        continue
-
-                                    q_x = (i + p_x) // 2
-                                    q_y = (j + p_y) // 2
-                                    q_z = (k + p_z) // 2
-
-                                    I_s_x = 2 * q_x * LL[0] + source_offset_x
-                                    I_s_y = 2 * q_y * LL[1] + source_offset_y
-                                    I_s_z = 2 * q_z * LL[2] + source_offset_z
-                                    dist_squared = (
-                                        (I_s_x - x_r[0]) ** 2
-                                        + (I_s_y - x_r[1]) ** 2
-                                        + (I_s_z - x_r[2]) ** 2
+                                R_s_rI_x = I_r_x - x_s[0]
+                                R_s_rI_y = I_r_y - x_s[1]
+                                R_s_rI_z = I_r_z - x_s[2]
+                                phi_R_s_rI, theta_R_s_rI, r_R_s_rI = (
+                                    _cart2sph_polar_numba(
+                                        R_s_rI_x, R_s_rI_y, R_s_rI_z
                                     )
+                                )
 
-                                    if dist_squared > max_distance_squared:
-                                        continue
-
-                                    I_r_x = (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0])
-                                    I_r_y = (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1])
-                                    I_r_z = (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2])
-
-                                    R_sI_r_x = x_r[0] - I_s_x
-                                    R_sI_r_y = x_r[1] - I_s_y
-                                    R_sI_r_z = x_r[2] - I_s_z
-                                    phi_R_sI_r, theta_R_sI_r, r_R_sI_r = (
-                                        _cart2sph_polar_numba(
-                                            R_sI_r_x, R_sI_r_y, R_sI_r_z
-                                        )
+                                R_r_sI_x = I_s_x - x_r[0]
+                                R_r_sI_y = I_s_y - x_r[1]
+                                R_r_sI_z = I_s_z - x_r[2]
+                                phi_R_r_sI, theta_R_r_sI, r_R_r_sI = (
+                                    _cart2sph_polar_numba(
+                                        R_r_sI_x, R_r_sI_y, R_r_sI_z
                                     )
+                                )
 
-                                    R_s_rI_x = I_r_x - x_s[0]
-                                    R_s_rI_y = I_r_y - x_s[1]
-                                    R_s_rI_z = I_r_z - x_s[2]
-                                    phi_R_s_rI, theta_R_s_rI, r_R_s_rI = (
-                                        _cart2sph_polar_numba(
-                                            R_s_rI_x, R_s_rI_y, R_s_rI_z
-                                        )
-                                    )
+                                if RefCoef_angdep_flag == 1:
+                                    r_norm = np.sqrt(dist_squared)
+                                    cos_x = np.abs(R_sI_r_x) / r_norm
+                                    cos_y = np.abs(R_sI_r_y) / r_norm
+                                    cos_z = np.abs(R_sI_r_z) / r_norm
+                                else:
+                                    cos_x = 1.0
+                                    cos_y = 1.0
+                                    cos_z = 1.0
 
-                                    R_r_sI_x = I_s_x - x_r[0]
-                                    R_r_sI_y = I_s_y - x_r[1]
-                                    R_r_sI_z = I_s_z - x_r[2]
-                                    phi_R_r_sI, theta_R_r_sI, r_R_r_sI = (
-                                        _cart2sph_polar_numba(
-                                            R_r_sI_x, R_r_sI_y, R_r_sI_z
-                                        )
-                                    )
+                                exp_x1 = np.abs(q_x - p_x)
+                                exp_x2 = np.abs(q_x)
+                                exp_y1 = np.abs(q_y - p_y)
+                                exp_y2 = np.abs(q_y)
+                                exp_z1 = np.abs(q_z - p_z)
+                                exp_z2 = np.abs(q_z)
 
-                                    if RefCoef_angdep_flag == 1:
-                                        r_norm = np.sqrt(dist_squared)
-                                        cos_x = np.abs(R_sI_r_x) / r_norm
-                                        cos_y = np.abs(R_sI_r_y) / r_norm
-                                        cos_z = np.abs(R_sI_r_z) / r_norm
-                                    else:
-                                        cos_x = 1.0
-                                        cos_y = 1.0
-                                        cos_z = 1.0
+                                if ref_order <= N_o_ORG:
+                                    target_idx = early_idx
+                                    early_idx += 1
+                                    A_target = A_early
+                                    R_sI_r_target = R_sI_r_all_early
+                                    R_s_rI_target = R_s_rI_all_early
+                                    R_r_sI_target = R_r_sI_all_early
+                                    atten_target = atten_all_early
+                                else:
+                                    target_idx = late_idx
+                                    late_idx += 1
+                                    A_target = A_late
+                                    R_sI_r_target = R_sI_r_all_late
+                                    R_s_rI_target = R_s_rI_all_late
+                                    R_r_sI_target = R_r_sI_all_late
+                                    atten_target = atten_all_late
 
-                                    exp_x1 = np.abs(q_x - p_x)
-                                    exp_x2 = np.abs(q_x)
-                                    exp_y1 = np.abs(q_y - p_y)
-                                    exp_y2 = np.abs(q_y)
-                                    exp_z1 = np.abs(q_z - p_z)
-                                    exp_z2 = np.abs(q_z)
+                                A_target[target_idx, 0] = q_x
+                                A_target[target_idx, 1] = q_y
+                                A_target[target_idx, 2] = q_z
+                                A_target[target_idx, 3] = p_x
+                                A_target[target_idx, 4] = p_y
+                                A_target[target_idx, 5] = p_z
 
-                                    if ref_order <= N_o_ORG:
-                                        target_idx = early_idx
-                                        early_idx += 1
-                                        A_target = A_early
-                                        R_sI_r_target = R_sI_r_all_early
-                                        R_s_rI_target = R_s_rI_all_early
-                                        R_r_sI_target = R_r_sI_all_early
-                                        atten_target = atten_all_early
-                                    else:
-                                        target_idx = late_idx
-                                        late_idx += 1
-                                        A_target = A_late
-                                        R_sI_r_target = R_sI_r_all_late
-                                        R_s_rI_target = R_s_rI_all_late
-                                        R_r_sI_target = R_r_sI_all_late
-                                        atten_target = atten_all_late
+                                R_sI_r_target[target_idx, 0] = phi_R_sI_r
+                                R_sI_r_target[target_idx, 1] = theta_R_sI_r
+                                R_sI_r_target[target_idx, 2] = r_R_sI_r
 
-                                    A_target[target_idx, 0] = q_x
-                                    A_target[target_idx, 1] = q_y
-                                    A_target[target_idx, 2] = q_z
-                                    A_target[target_idx, 3] = p_x
-                                    A_target[target_idx, 4] = p_y
-                                    A_target[target_idx, 5] = p_z
+                                R_s_rI_target[target_idx, 0] = phi_R_s_rI
+                                R_s_rI_target[target_idx, 1] = theta_R_s_rI
+                                R_s_rI_target[target_idx, 2] = r_R_s_rI
 
-                                    R_sI_r_target[target_idx, 0] = phi_R_sI_r
-                                    R_sI_r_target[target_idx, 1] = theta_R_sI_r
-                                    R_sI_r_target[target_idx, 2] = r_R_sI_r
+                                R_r_sI_target[target_idx, 0] = phi_R_r_sI
+                                R_r_sI_target[target_idx, 1] = theta_R_r_sI
+                                R_r_sI_target[target_idx, 2] = r_R_r_sI
 
-                                    R_s_rI_target[target_idx, 0] = phi_R_s_rI
-                                    R_s_rI_target[target_idx, 1] = theta_R_s_rI
-                                    R_s_rI_target[target_idx, 2] = r_R_s_rI
-
-                                    R_r_sI_target[target_idx, 0] = phi_R_r_sI
-                                    R_r_sI_target[target_idx, 1] = theta_R_r_sI
-                                    R_r_sI_target[target_idx, 2] = r_R_r_sI
-
+                                if store_attenuation == 1:
                                     for fi in range(num_freqs):
                                         beta_x1 = _ref_coef_from_cos_numba(
                                             cos_x, Z_S[0, fi]
@@ -2881,6 +2917,22 @@ if SHOEBOX_IMAGE_NUMBA_AVAILABLE:
                                             * _complex_pow_int_numba(beta_z1, exp_z1)
                                             * _complex_pow_int_numba(beta_z2, exp_z2)
                                         )
+
+
+def _shoebox_use_compact_storage(params):
+    """
+    Use compact shoebox image storage by default for the Numba image generator.
+
+    The compact format stores only geometry and reflection metadata; attenuation
+    is reconstructed in the solver backend on demand. Users can override the
+    default via ``shoeboxCompactImages``.
+
+    Compact storage is supported for shoebox `v2-numba` in both `RIR` and
+    `RTF`, so the default is enabled unless explicitly disabled.
+    """
+    if "shoeboxCompactImages" in params:
+        return bool(params["shoeboxCompactImages"])
+    return True
 
 
 def _process_shoebox_parity_combination_nofs(args):
@@ -3295,6 +3347,8 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
     N_o = params["maxReflOrder"]
     Z_S = np.asarray(params["impedance"], dtype=np.complex128)
     N_o_ORG = params["mixEarlyOrder"]
+    compact_storage = _shoebox_use_compact_storage(params)
+    store_attenuation = 0 if compact_storage else 1
 
     if N_o < N_o_ORG:
         N_o_ORG = N_o
@@ -3313,7 +3367,8 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
 
     if not params["silentMode"]:
         print(
-            f"maxReflectionOrder: {N_o}, numba_threads={num_threads}",
+            f"maxReflectionOrder: {N_o}, numba_threads={num_threads}, "
+            f"storage={'compact' if compact_storage else 'materialized'}",
         )
 
     early_counts, late_counts = _count_shoebox_images_nofs_v2_numba(
@@ -3325,9 +3380,9 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
         N_o_ORG=N_o_ORG,
     )
 
-    early_offsets = np.zeros(8, dtype=np.int64)
-    late_offsets = np.zeros(8, dtype=np.int64)
-    for idx in range(1, 8):
+    early_offsets = np.zeros(early_counts.shape[0], dtype=np.int64)
+    late_offsets = np.zeros(late_counts.shape[0], dtype=np.int64)
+    for idx in range(1, early_counts.shape[0]):
         early_offsets[idx] = early_offsets[idx - 1] + early_counts[idx - 1]
         late_offsets[idx] = late_offsets[idx - 1] + late_counts[idx - 1]
 
@@ -3338,13 +3393,19 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
     R_sI_r_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
     R_s_rI_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
     R_r_sI_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
-    atten_all_early = np.empty((num_early_ref_paths, num_freqs), dtype=np.complex64)
+    if compact_storage:
+        atten_all_early = np.empty((num_early_ref_paths, 0), dtype=np.complex64)
+    else:
+        atten_all_early = np.empty((num_early_ref_paths, num_freqs), dtype=np.complex64)
     A_early = np.empty((num_early_ref_paths, 6), dtype=np.int32)
 
     R_sI_r_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
     R_s_rI_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
     R_r_sI_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
-    atten_all_late = np.empty((num_late_ref_paths, num_freqs), dtype=np.complex64)
+    if compact_storage:
+        atten_all_late = np.empty((num_late_ref_paths, 0), dtype=np.complex64)
+    else:
+        atten_all_late = np.empty((num_late_ref_paths, num_freqs), dtype=np.complex64)
     A_late = np.empty((num_late_ref_paths, 6), dtype=np.int32)
 
     _fill_shoebox_images_nofs_v2_numba(
@@ -3356,6 +3417,7 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
         RefCoef_angdep_flag=RefCoef_angdep_flag,
         N_o=N_o,
         N_o_ORG=N_o_ORG,
+        store_attenuation=store_attenuation,
         early_offsets=early_offsets,
         late_offsets=late_offsets,
         R_sI_r_all_early=R_sI_r_all_early,
@@ -3378,20 +3440,23 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
             R_sI_r_all_early = np.delete(R_sI_r_all_early, direct_path_idx, axis=0)
             R_s_rI_all_early = np.delete(R_s_rI_all_early, direct_path_idx, axis=0)
             R_r_sI_all_early = np.delete(R_r_sI_all_early, direct_path_idx, axis=0)
-            atten_all_early = np.delete(atten_all_early, direct_path_idx, axis=0)
+            if not compact_storage:
+                atten_all_early = np.delete(atten_all_early, direct_path_idx, axis=0)
 
     images = {
+        "storage": "compact" if compact_storage else "materialized",
         "R_sI_r_all_early": R_sI_r_all_early,
         "R_s_rI_all_early": R_s_rI_all_early,
         "R_r_sI_all_early": R_r_sI_all_early,
-        "atten_all_early": atten_all_early,
         "A_early": A_early,
         "R_sI_r_all_late": R_sI_r_all_late,
         "R_s_rI_all_late": R_s_rI_all_late,
         "R_r_sI_all_late": R_r_sI_all_late,
-        "atten_all_late": atten_all_late,
         "A_late": A_late,
     }
+    if not compact_storage:
+        images["atten_all_early"] = atten_all_early
+        images["atten_all_late"] = atten_all_late
 
     end = time.perf_counter()
     if not params["silentMode"]:
@@ -4202,6 +4267,9 @@ def merge_images(images):
         late = np.asarray(late)
         return np.concatenate([early, late], axis=0)
 
+    if "storage" in images:
+        merged["storage"] = images["storage"]
+
     merged["A"] = concat_early_late(images["A_early"], images["A_late"])
     merged["R_sI_r_all"] = concat_early_late(
         images["R_sI_r_all_early"], images["R_sI_r_all_late"]
@@ -4212,9 +4280,10 @@ def merge_images(images):
     merged["R_r_sI_all"] = concat_early_late(
         images["R_r_sI_all_early"], images["R_r_sI_all_late"]
     )
-    merged["atten_all"] = concat_early_late(
-        images["atten_all_early"], images["atten_all_late"]
-    )
+    if "atten_all_early" in images and "atten_all_late" in images:
+        merged["atten_all"] = concat_early_late(
+            images["atten_all_early"], images["atten_all_late"]
+        )
     return merged
 
 
