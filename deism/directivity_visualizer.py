@@ -212,6 +212,45 @@ class Dir_Visualizer:
         
         return cnm_deism.astype(np.complex64), r0
 
+    @classmethod
+    def inject_sofa_into_deism(cls, model, sofa_path, role="receiver", use_reciprocal=False):
+        """
+        interface: Injects SOFA-directed data into the DEISM model with a single click.        
+        Parameters:
+            model: DEISM instance
+            sofa_path: SOFA file path
+            role: "source" or "receiver"
+            use_reciprocal: Whether to apply reciprocity
+        """
+        # Get frequency from the model
+        target_freqs = model.params["freqs"]
+        
+        # Determine the max level based on the role
+        sh_order = model.params["sourceOrder"] if role == "source" else model.params["receiverOrder"]
+            
+        # Get the revised C_nm coefficient matrix
+        cnm_sofa, r0_sofa = cls.get_deism_sh_coeffs(
+            sofa_path, target_freqs, max_order=sh_order, use_reciprocal=use_reciprocal
+        )
+        
+        # Inject the datas based on the role and vevtorize
+        if role == "source":
+            model.params["C_nm_s"] = cnm_sofa
+            model.params["radiusSource"] = r0_sofa
+            model.params["sourceType"] = "SOFA_Imported"
+            model.params = vectorize_C_nm_s(model.params)
+            print(f"Successfully injected into SOURCE directivity.")
+            
+        elif role == "receiver":
+            model.params["C_vu_r"] = cnm_sofa
+            model.params["radiusReceiver"] = r0_sofa
+            model.params["receiverType"] = "SOFA_Imported"            
+            model.params = vectorize_C_vu_r(model.params)
+            print(f"Successfully injected into RECEIVER directivity.")
+            
+        else:
+            raise ValueError("Role must be 'source' or 'receiver'")
+
     def __init__(self):
         """Initialize the Dir_Visualizer class"""
         self.is_initial_draw = True
