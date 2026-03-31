@@ -1,0 +1,1763 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>deism.data_loader &mdash; DEISM 2.2.1.11 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=247ccb63"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+      <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            DEISM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../introduction.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../workflows.html">Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../parameter_dependencies.html">Parameter Dependencies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../troubleshooting.html">Troubleshooting</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">DEISM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">deism.data_loader</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for deism.data_loader</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">fnmatch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">scipy.io</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+
+<div class="viewcode-block" id="ConflictChecks">
+<a class="viewcode-back" href="../../api_reference.html#deism.data_loader.ConflictChecks">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ConflictChecks</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Static methods for efficient parameter conflict checking&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="ConflictChecks.directivity_checks">
+<a class="viewcode-back" href="../../api_reference.html#deism.data_loader.ConflictChecks.directivity_checks">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">directivity_checks</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check directivity-related parameter conflicts&quot;&quot;&quot;</span>
+        <span class="c1"># If monopole is used, set spherical harmonic order to 0 for source and receiver</span>
+        <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceType&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;monopole&quot;</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceOrder&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;monopole&quot;</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverOrder&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">params</span><span class="p">[</span><span class="s2">&quot;ifReceiverNormalize&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="c1"># If not monopole, raise a warning if the spherical harmonic order is also 0</span>
+        <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span> <span class="ow">and</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceOrder&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;[Warning] Spherical harmonic order is set to 0 for source, but source type is not monopole! </span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span> <span class="ow">and</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverOrder&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;[Warning] Spherical harmonic order is set to 0 for receiver, but receiver type is not monopole! </span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span> <span class="ow">and</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;ifReceiverNormalize&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;[Warning] Receiver normalization is set to 0 for non-monopole receiver, make sure you know what you are doing! </span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ConflictChecks.distance_spheres_checks">
+<a class="viewcode-back" href="../../api_reference.html#deism.data_loader.ConflictChecks.distance_spheres_checks">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">distance_spheres_checks</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check distance-related parameter conflicts&quot;&quot;&quot;</span>
+        <span class="c1"># If either source or receiver is not monopole, check the distance between source and receiver</span>
+        <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusSource&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Source radius is not set for non-monopole source&quot;</span><span class="p">)</span>
+            <span class="c1"># If distance between source and receiver is smaller than the source radius, raise a warning</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="s2">&quot;posSource&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posReceiver&quot;</span><span class="p">])</span>
+                <span class="o">&lt;</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusSource&quot;</span><span class="p">]</span>
+            <span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span>
+                    <span class="s2">&quot;[Warning] Distance between source and receiver is smaller than the source radius! </span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusReceiver&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Receiver radius is not set for non-monopole receiver&quot;</span><span class="p">)</span>
+            <span class="c1"># If distance between source and receiver is smaller than the receiver radius, raise a warning</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="s2">&quot;posSource&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posReceiver&quot;</span><span class="p">])</span>
+                <span class="o">&lt;</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusReceiver&quot;</span><span class="p">]</span>
+            <span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span>
+                    <span class="s2">&quot;[Warning] Distance between source and receiver is smaller than the receiver radius! </span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+
+        <span class="c1"># If both source and receiver are not monopole, check the distance between source and receiver</span>
+        <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span> <span class="ow">and</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="s2">&quot;posSource&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posReceiver&quot;</span><span class="p">])</span>
+                <span class="o">&lt;</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusSource&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusReceiver&quot;</span><span class="p">]</span>
+            <span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span>
+                    <span class="s2">&quot;[Warning] Distance between source and receiver is smaller than the sum of the source and receiver radius! </span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ConflictChecks.wall_material_checks">
+<a class="viewcode-back" href="../../api_reference.html#deism.data_loader.ConflictChecks.wall_material_checks">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">wall_material_checks</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check wall material parameter conflicts&quot;&quot;&quot;</span>
+        <span class="c1"># Check if multiple material types are defined</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;givenMaterials&quot;</span><span class="p">,</span> <span class="p">[]))</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;The user can only define one of the following three parameters: &quot;</span>
+                <span class="s2">&quot;impedance, absorption coefficient, or reverberation time. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;The following parameters are defined: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="s1">&#39;givenMaterials&#39;</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Check the dimension of the impedance, absorption coefficient, and reverberation time</span>
+        <span class="c1"># data shapes should be 2D numpy arrays for impedance, absorption coefficient, first dimension is 6</span>
+        <span class="c1"># and 1D numpy arrays for reverberation time</span>
+        <span class="k">if</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;givenMaterials&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;impedance&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s2">&quot;impedance&quot;</span> <span class="ow">in</span> <span class="n">params</span><span class="p">:</span>
+                <span class="n">arr</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;impedance&quot;</span><span class="p">]</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span>
+                    <span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">6</span>
+                <span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;Impedance data must be a 2D numpy array with 6 rows (for shoebox room), &quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;got shape </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span><span class="w"> </span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;not a numpy array&#39;</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;givenMaterials&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;absorpCoefficient&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s2">&quot;absorptionCoeff&quot;</span> <span class="ow">in</span> <span class="n">params</span><span class="p">:</span>
+                <span class="n">arr</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;absorptionCoeff&quot;</span><span class="p">]</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span>
+                    <span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">6</span>
+                <span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;Absorption coefficient data must be a 2D numpy array with 6 rows (for shoebox room), &quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;got shape </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span><span class="w"> </span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;not a numpy array&#39;</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;givenMaterials&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;reverberationTime&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s2">&quot;reverberationTime&quot;</span> <span class="ow">in</span> <span class="n">params</span><span class="p">:</span>
+                <span class="n">arr</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;reverberationTime&quot;</span><span class="p">]</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;Reverberation time data must be a 1D numpy array, &quot;</span>
+                        <span class="sa">f</span><span class="s2">&quot;got shape </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">isinstance</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span><span class="w"> </span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;not a numpy array&#39;</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ConflictChecks.distance_boundaries_checks">
+<a class="viewcode-back" href="../../api_reference.html#deism.data_loader.ConflictChecks.distance_boundaries_checks">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">distance_boundaries_checks</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check distance from source and receiver to the boundaries of the room&quot;&quot;&quot;</span>
+        <span class="c1"># The source and receiver should be inside the room, not touching the boundaries</span>
+        <span class="c1"># If they are on the boundaries, raise a warning and stop the program</span>
+        <span class="c1"># If they are too close to the boundaries, raise a message and continue the program</span>
+        <span class="c1"># TODO</span>
+        <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;roomType&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;shoebox&quot;</span><span class="p">:</span>
+            <span class="n">src_x</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posSource&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">src_y</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posSource&quot;</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">src_z</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posSource&quot;</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span>
+            <span class="n">rec_x</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posReceiver&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">rec_y</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posReceiver&quot;</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">rec_z</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posReceiver&quot;</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span>
+            <span class="n">room_x</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;roomSize&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">room_y</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;roomSize&quot;</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">room_z</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;roomSize&quot;</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">src_x</span> <span class="o">&lt;=</span> <span class="mi">0</span>
+                <span class="ow">or</span> <span class="n">src_x</span> <span class="o">&gt;=</span> <span class="n">room_x</span>
+                <span class="ow">or</span> <span class="n">src_y</span> <span class="o">&lt;=</span> <span class="mi">0</span>
+                <span class="ow">or</span> <span class="n">src_y</span> <span class="o">&gt;=</span> <span class="n">room_y</span>
+                <span class="ow">or</span> <span class="n">src_z</span> <span class="o">&lt;=</span> <span class="mi">0</span>
+                <span class="ow">or</span> <span class="n">src_z</span> <span class="o">&gt;=</span> <span class="n">room_z</span>
+            <span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[Warning] Source is on the boundaries or outside of the room!&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">rec_x</span> <span class="o">&lt;=</span> <span class="mi">0</span>
+                <span class="ow">or</span> <span class="n">rec_x</span> <span class="o">&gt;=</span> <span class="n">room_x</span>
+                <span class="ow">or</span> <span class="n">rec_y</span> <span class="o">&lt;=</span> <span class="mi">0</span>
+                <span class="ow">or</span> <span class="n">rec_y</span> <span class="o">&gt;=</span> <span class="n">room_y</span>
+                <span class="ow">or</span> <span class="n">rec_z</span> <span class="o">&lt;=</span> <span class="mi">0</span>
+                <span class="ow">or</span> <span class="n">rec_z</span> <span class="o">&gt;=</span> <span class="n">room_z</span>
+            <span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[Warning] Receiver is on the boundaries or outside of the room!&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ConflictChecks.check_all_conflicts">
+<a class="viewcode-back" href="../../api_reference.html#deism.data_loader.ConflictChecks.check_all_conflicts">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_all_conflicts</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run all conflict checks efficiently&quot;&quot;&quot;</span>
+        <span class="n">ConflictChecks</span><span class="o">.</span><span class="n">directivity_checks</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">ConflictChecks</span><span class="o">.</span><span class="n">distance_spheres_checks</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">ConflictChecks</span><span class="o">.</span><span class="n">distance_boundaries_checks</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">ConflictChecks</span><span class="o">.</span><span class="n">wall_material_checks</span><span class="p">(</span><span class="n">params</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">load_format_materials_checks</span><span class="p">(</span><span class="n">datain</span><span class="p">,</span> <span class="n">datatype</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Format the materials to the correct shape</span>
+<span class="sd">    inputs:</span>
+<span class="sd">    - datain: Could be many types of inputs, including:</span>
+<span class="sd">    - datatype: str, the type of the parameters to be converted</span>
+<span class="sd">    Outputs:</span>
+<span class="sd">    - if input is an integer or float number, return a array of size (6, 1) for impedance, absorption coefficients; return a array of size (1, 1) for reverberation time;</span>
+<span class="sd">    - if input is a list of size 6, return a array of size (6, 1) for impedance, absorption coefficients; return a array of size (1, 1) for reverberation time;</span>
+<span class="sd">    - Raise an error for other types of inputs</span>
+<span class="sd">    Outputs:</span>
+<span class="sd">    - datain:</span>
+<span class="sd">    1. &quot;impedance&quot;: impedance, shape (6, 1)</span>
+<span class="sd">    2. &quot;absorpCoefficient&quot;: absorption coefficients, shape (6, 1)</span>
+<span class="sd">    3. &quot;reverberationTime&quot;: reverberation time, shape (1, 1)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dataout</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">datatype</span> <span class="o">==</span> <span class="s2">&quot;impedance&quot;</span> <span class="ow">or</span> <span class="n">datatype</span> <span class="o">==</span> <span class="s2">&quot;absorpCoefficient&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">datain</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
+            <span class="n">dataout</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="mi">6</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">datain</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">datain</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="c1"># If the impedance is a list of single values, convert it to a numpy array</span>
+            <span class="n">dataout</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">datain</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid data shape for </span><span class="si">{datatype}</span><span class="s2">!&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">datatype</span> <span class="o">==</span> <span class="s2">&quot;reverberationTime&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">datain</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
+            <span class="n">dataout</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">datain</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid data shape for </span><span class="si">{datatype}</span><span class="s2">!&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">dataout</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">update_n1_n2_n3</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Update the n1, n2, n3 based on the room size and the sound speed&quot;&quot;&quot;</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;n1&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span>
+            <span class="n">params</span><span class="p">[</span><span class="s2">&quot;soundSpeed&quot;</span><span class="p">]</span>
+            <span class="o">*</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;reverberationTime&quot;</span><span class="p">]</span>
+            <span class="o">/</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;roomSize&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="o">/</span> <span class="mi">2</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;n2&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span>
+            <span class="n">params</span><span class="p">[</span><span class="s2">&quot;soundSpeed&quot;</span><span class="p">]</span>
+            <span class="o">*</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;reverberationTime&quot;</span><span class="p">]</span>
+            <span class="o">/</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;roomSize&quot;</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span>
+            <span class="o">/</span> <span class="mi">2</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;n3&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span>
+            <span class="n">params</span><span class="p">[</span><span class="s2">&quot;soundSpeed&quot;</span><span class="p">]</span>
+            <span class="o">*</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;reverberationTime&quot;</span><span class="p">]</span>
+            <span class="o">/</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;roomSize&quot;</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span>
+            <span class="o">/</span> <span class="mi">2</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">params</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_rest_params</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute the rest of the parameters based on the initialized parameters.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;mode&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;RIR&quot;</span><span class="p">:</span>  <span class="c1"># Add 1/T60 as spacing later !!!</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;nSamples&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="s2">&quot;sampleRate&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;RIRLength&quot;</span><span class="p">])</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;freqs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span>
+            <span class="mi">0</span><span class="p">,</span>
+            <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sampleRate&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span>
+            <span class="nb">round</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="s2">&quot;RIRLength&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sampleRate&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="p">)</span>  <span class="c1"># Frequencies will be computed based on the RIR length</span>
+        <span class="c1"># remove the first DC frequency</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;freqs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;freqs&quot;</span><span class="p">][</span><span class="mi">1</span><span class="p">:]</span>
+    <span class="k">elif</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;mode&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;RTF&quot;</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;freqs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span>
+            <span class="n">params</span><span class="p">[</span><span class="s2">&quot;startFreq&quot;</span><span class="p">],</span>
+            <span class="n">params</span><span class="p">[</span><span class="s2">&quot;endFreq&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;freqStep&quot;</span><span class="p">],</span>
+            <span class="n">params</span><span class="p">[</span><span class="s2">&quot;freqStep&quot;</span><span class="p">],</span>
+        <span class="p">)</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;waveNumbers&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;freqs&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;soundSpeed&quot;</span><span class="p">]</span>
+    <span class="p">)</span>  <span class="c1"># wavenumbers</span>
+    <span class="c1"># ------------------------------------------------------------</span>
+    <span class="c1"># For the impedance, we may have a few cases</span>
+    <span class="c1"># 1. input is just a single value, which means the impedance is uniform in frequency and walls</span>
+    <span class="c1"># 2. input is a list of single values, which means the impedance is non-uniform in walls but uniform in frequency</span>
+    <span class="c1"># 3. input is a 2D array of size (6, len(params[&quot;freqs&quot;])), which means the impedance is non-uniform in frequency and walls</span>
+    <span class="c1"># We want to make sure the impedance is a 2D array of size (6, len(params[&quot;freqs&quot;]))</span>
+    <span class="c1"># # : for convex rooms? For other data types?</span>
+    <span class="c1"># if isinstance(params[&quot;impedance&quot;], (int, float)):</span>
+    <span class="c1">#     params[&quot;impedance&quot;] = np.full((6, len(params[&quot;freqs&quot;])), params[&quot;impedance&quot;])</span>
+    <span class="c1"># elif isinstance(params[&quot;impedance&quot;], list):</span>
+    <span class="c1">#     # If the impedance is a list of single values, we need to repeat the value for each frequency</span>
+    <span class="c1">#     params[&quot;impedance&quot;] = np.tile(</span>
+    <span class="c1">#         np.array(params[&quot;impedance&quot;])[:, None], (1, len(params[&quot;freqs&quot;]))</span>
+    <span class="c1">#     )</span>
+    <span class="c1"># elif isinstance(params[&quot;impedance&quot;], np.ndarray):</span>
+    <span class="c1">#     if params[&quot;impedance&quot;].shape == (6,):</span>
+    <span class="c1">#         params[&quot;impedance&quot;] = np.tile(</span>
+    <span class="c1">#             params[&quot;impedance&quot;][:, None], (1, len(params[&quot;freqs&quot;]))</span>
+    <span class="c1">#         )</span>
+    <span class="c1">#     elif params[&quot;impedance&quot;].shape == (6, len(params[&quot;freqs&quot;])):</span>
+    <span class="c1">#         pass</span>
+    <span class="c1">#     else:</span>
+    <span class="c1">#         raise ValueError(&quot;Invalid impedance array shape&quot;)</span>
+    <span class="c1"># #</span>
+    <span class="c1"># ------------------------------------------------------------</span>
+    <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;ifReceiverNormalize&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;pointSrcStrength&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="mi">1</span><span class="n">j</span>
+            <span class="o">*</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;waveNumbers&quot;</span><span class="p">]</span>
+            <span class="o">*</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;soundSpeed&quot;</span><span class="p">]</span>
+            <span class="o">*</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;airDensity&quot;</span><span class="p">]</span>
+            <span class="o">*</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;qFlowStrength&quot;</span><span class="p">]</span>
+        <span class="p">)</span>  <span class="c1"># point source strength compensation</span>
+
+    <span class="c1"># params[&quot;cTs&quot;] = params[&quot;soundSpeed&quot;] / params[&quot;sampleRate&quot;]</span>
+    <span class="c1"># try:</span>
+    <span class="c1">#     # In case of empty roomSize, use &quot;try&quot; to avoid error !!!</span>
+    <span class="c1">#     L = params[&quot;roomSize&quot;] / params[&quot;cTs&quot;]</span>
+    <span class="c1">#     params[&quot;n1&quot;], params[&quot;n2&quot;], params[&quot;n3&quot;] = np.ceil(</span>
+    <span class="c1">#         params[&quot;nSamples&quot;] / (2 * L)</span>
+    <span class="c1">#     ).astype(int)</span>
+    <span class="c1"># except:</span>
+    <span class="c1">#     pass</span>
+
+    <span class="k">return</span> <span class="n">params</span>
+
+
+<div class="viewcode-block" id="detect_conflicts">
+<a class="viewcode-back" href="../../api_reference.html#deism.data_loader.detect_conflicts">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">detect_conflicts</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Print warnings for parameter conflicts. Does not modify params and does not raise.</span>
+
+<span class="sd">    Use this for diagnostics only. For enforcement (modify params for monopole,</span>
+<span class="sd">    raise on invalid config), use ConflictChecks.check_all_conflicts(params) instead.</span>
+
+<span class="sd">    Suggested placement: after initializing all parameters, before running</span>
+<span class="sd">    pre_calc_images_src_rec, run_DEISM, pre_calc_Wigner, init_source_directivity,</span>
+<span class="sd">    init_receiver_directivity, or other DEISM-ARG functions.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Directivity: warn if orders or normalization look inconsistent</span>
+    <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceType&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;monopole&quot;</span> <span class="ow">and</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;sourceOrder&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="s2">&quot;[Warning] Source type is monopole but sourceOrder is not 0; consider setting sourceOrder=0.</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;monopole&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;receiverOrder&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;[Warning] Receiver type is monopole but receiverOrder is not 0; consider setting receiverOrder=0.</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ifReceiverNormalize&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;[Warning] Receiver type is monopole but ifReceiverNormalize is not 0; consider setting ifReceiverNormalize=0.</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+    <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span> <span class="ow">and</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;sourceOrder&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="s2">&quot;[Warning] Spherical harmonic order is set to 0 for source, but source type is not monopole!</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span> <span class="ow">and</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;receiverOrder&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="s2">&quot;[Warning] Spherical harmonic order is set to 0 for receiver, but receiver type is not monopole!</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span> <span class="ow">and</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ifReceiverNormalize&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="s2">&quot;[Warning] Receiver normalization is set to 0 for non-monopole receiver, make sure you know what you are doing!</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="c1"># Distance / radius</span>
+    <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;radiusSource&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[Warning] Source radius is not set for non-monopole source.</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="s2">&quot;posSource&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posReceiver&quot;</span><span class="p">])</span>
+            <span class="o">&lt;</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusSource&quot;</span><span class="p">]</span>
+        <span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;[Warning] Distance between source and receiver is smaller than the source radius!</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+    <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;radiusReceiver&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[Warning] Receiver radius is not set for non-monopole receiver.</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="s2">&quot;posSource&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posReceiver&quot;</span><span class="p">])</span>
+            <span class="o">&lt;</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusReceiver&quot;</span><span class="p">]</span>
+        <span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;[Warning] Distance between source and receiver is smaller than the receiver radius!</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+    <span class="k">if</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span> <span class="ow">and</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;monopole&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;radiusSource&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;radiusReceiver&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="s2">&quot;posSource&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posReceiver&quot;</span><span class="p">])</span>
+            <span class="o">&lt;</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusSource&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusReceiver&quot;</span><span class="p">]</span>
+        <span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;[Warning] Distance between source and receiver is smaller than the sum of the source and receiver radius!</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+    <span class="c1"># Wall materials</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;givenMaterials&quot;</span><span class="p">,</span> <span class="p">[]))</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="s2">&quot;[Warning] More than one material type defined (impedance, absorption coefficient, or reverberation time): &quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="s2">&quot;givenMaterials&quot;</span><span class="p">])</span>
+            <span class="o">+</span> <span class="s2">&quot;. Use only one.</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">readYaml</span><span class="p">(</span><span class="n">filePath</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This function reads the yaml file and returns a dictionary with the same structure as the yaml file</span>
+<span class="sd">    inputs:</span>
+<span class="sd">    - filePath: the address of the yaml file to be read, including the file name with the suffix</span>
+<span class="sd">    outputs:</span>
+<span class="sd">    - yaml-&gt;dict: a dictionary with the same structure as the yaml file</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># First determine if the file path exists</span>
+    <span class="c1"># Either in the .test/ directory or in the specified directory</span>
+    <span class="c1"># Use try to find the file in the tests/ directory</span>
+    <span class="c1"># if it is found, add tests/ to the file path</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># If the file is found, assign the file path to filePath</span>
+        <span class="k">if</span> <span class="n">fnmatch</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="s2">&quot;examples&quot;</span><span class="p">),</span> <span class="n">filePath</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">filePath</span> <span class="o">=</span> <span class="s2">&quot;examples/&quot;</span> <span class="o">+</span> <span class="n">filePath</span>
+        <span class="c1"># If the file is not found, an exception is raised</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="c1"># If the file is not found, assign the file path to filePath</span>
+        <span class="n">filePath</span> <span class="o">=</span> <span class="n">filePath</span>
+    <span class="c1"># Then determine if the file path exists</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filePath</span><span class="p">):</span>
+        <span class="c1"># If it does not exist, an exception is thrown</span>
+        <span class="k">raise</span> <span class="ne">FileExistsError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">filePath</span><span class="si">}</span><span class="s2"> doesn&#39;t exist!&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Then determine if it is a file</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">filePath</span><span class="p">):</span>
+        <span class="c1"># raise an exception if it is not a file</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">filePath</span><span class="si">}</span><span class="s2"> is not a file!&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Load yaml normally and return</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filePath</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">stream</span><span class="p">:</span>
+        <span class="n">configs</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
+    <span class="c1"># The arrays read directly from yaml are in list format, so they are converted to numpy format</span>
+    <span class="c1"># Convert the arrays in it to numpy arrays</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">configs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">configs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">configs</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">parseCmdArgs</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;RTF&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add command line parameter modification support, that is, allow some loaded parameters to be modified directly from the command line</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">parse</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Please input your self-defined initialized parameters&quot;</span>
+    <span class="p">)</span>
+    <span class="c1"># print(parse.description)</span>
+    <span class="c1"># Environment parameters</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-c&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s2">&quot;c0&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;speed of sound(m/s:typical 343)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-rho&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s2">&quot;rho0&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;constant of air&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="c1"># Room parameters</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-room&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Lx&quot;</span><span class="p">,</span> <span class="s2">&quot;Ly&quot;</span><span class="p">,</span> <span class="s2">&quot;Lz&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;shoebox room size with input format </span><span class="se">\</span>
+<span class="s1">        &quot;-room 3.2 4.1 5.6&quot; (m)&#39;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Reflections</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-nro&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;maximum reflection order, integer&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+    <span class="c1"># ------------------------------------------------------------</span>
+    <span class="c1"># The user can only define one of the following three parameters, e.g., -zs or -absp or -t60, if more than one is defined, a warning will be raised</span>
+    <span class="c1"># Impedance of the walls, can be complex number or a list of complex numbers or a string or a list of strings</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-zs&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Z_x1&quot;</span><span class="p">,</span> <span class="s2">&quot;Z_x2&quot;</span><span class="p">,</span> <span class="s2">&quot;Z_y1&quot;</span><span class="p">,</span> <span class="s2">&quot;Z_y2&quot;</span><span class="p">,</span> <span class="s2">&quot;Z_z1&quot;</span><span class="p">,</span> <span class="s2">&quot;Z_z2&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;acoustic impedance of the the six walls at all frequencies&quot;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-absp&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;alpha_x1&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;alpha_x2&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;alpha_y1&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;alpha_y2&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;alpha_z1&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;alpha_z2&quot;</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;absorption coefficients of the the six walls at all frequencies&quot;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-t60&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;T60&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;reverberation time (positive value) of all frequencies&quot;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># ------------------------------------------------------------</span>
+    <span class="c1"># Some problems may occur when setting bool parameters !!!</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-adrc&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;reflection coefficient is angle </span><span class="se">\</span>
+<span class="s2">        dependent or not(0:independent, 1:dependent)&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Positions of the source and receiver</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-xs&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;source position in 3D Cartesian </span><span class="se">\</span>
+<span class="s1">        coordinate(m),input format &quot;-xs 2.2 2.1 1.3&quot;&#39;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-xr&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;receiver position in 3D Cartesian </span><span class="se">\</span>
+<span class="s1">        coordinate(m),input format &quot;-xr 1.2 1.1 2.3&quot;&#39;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Orientations of the source and receiver</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-so&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;alpha&quot;</span><span class="p">,</span> <span class="s2">&quot;beta&quot;</span><span class="p">,</span> <span class="s2">&quot;gamma&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;source orientation in Euler angles </span><span class="se">\</span>
+<span class="s1">        Degrees, input format &quot;-so 0 0 0&quot;&#39;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-ro&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;alpha&quot;</span><span class="p">,</span> <span class="s2">&quot;beta&quot;</span><span class="p">,</span> <span class="s2">&quot;gamma&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;receiver orientation in Euler angles </span><span class="se">\</span>
+<span class="s1">        Degrees, input format &quot;-ro 0 0 0&quot;&#39;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Frequency parameters</span>
+    <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;RTF&quot;</span><span class="p">:</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-fmin&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;start frequency(Hz)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-fstep&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;frequence step size(Hz)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-fmax&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;stop frequency(Hz)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;RIR&quot;</span><span class="p">:</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-fs&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;sampling rate&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-K&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;over sampling factor&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-rirlen&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;RIR length (sec)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="c1"># -------------------Directivity parameters-------------------</span>
+    <span class="c1"># Source and receiver directivities types</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-srctype&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;source type, string&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-rectype&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;receiver type, string&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+    <span class="c1"># Source directivities parameters</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-srcorder&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;maximum spherical harmonic </span><span class="se">\</span>
+<span class="s2">        directivity order in source&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-srcr0&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;radius of transparent sphere of source(m)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span>
+    <span class="p">)</span>
+    <span class="c1"># Receiver directivity parameters</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-recorder&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;maximum spherical harmonic </span><span class="se">\</span>
+<span class="s2">        directivity order in receiver&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-recr0&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;radius of transparent sphere of receiver(m)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span>
+    <span class="p">)</span>
+    <span class="c1"># -------------------Other DEISM parameters-------------------</span>
+    <span class="c1"># parse.add_argument(&#39;-nos&#39;,help=&#39;number of sample points&#39;,type=int)</span>
+    <span class="c1"># # parse.add_argument(&#39;-brc&#39;,help=&#39;beta reference coefficients&#39;,type=float)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-ird&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;If remove the direct path or not(0: not remove, 1: remove)&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-method&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Speficy which DEISM mode to use: </span><span class="se">\</span>
+<span class="s2">        ORG, LC, MIX&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-meo&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Max. reflection order used for DEISM-ORG: </span><span class="se">\</span>
+<span class="s2">        in DEISM-MIX mode&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-npi&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of images in parallel computation&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-irn&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;If normalize the receiver directivities </span><span class="se">\</span>
+<span class="s2">        or not(0: not normalize, 1: normalize)&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-q&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;point source flow strength used in </span><span class="se">\</span>
+<span class="s2">        obtaining receive directivities&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># parse.add_argument(&#39;-spm&#39;,help=&#39;sampling scheme&#39;,type=str)</span>
+    <span class="c1"># -------------------trigger running--------------------</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Flag to indicate whether to run the DEISM function&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Trigger no output messages in the command line</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--quiet&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Flag to indicate whether to output messages in the command line&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">parse</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">parseCmdArgs_ARG</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;RTF&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add command line parameter modification support, that is, allow some loaded parameters to be modified directly from the command line</span>
+<span class="sd">    Todos:</span>
+<span class="sd">    1. now for the wall materials, only impedance and absorption coefficients are supported by setting the same value for all walls, should support T60 later</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">parse</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Please input your self-defined initialized parameters&quot;</span>
+    <span class="p">)</span>
+    <span class="c1"># print(parse.description)</span>
+    <span class="c1"># Environment parameters</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-c&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s2">&quot;c0&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;speed of sound(m/s:typical 343)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-rho&quot;</span><span class="p">,</span> <span class="n">metavar</span><span class="o">=</span><span class="s2">&quot;rho0&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;constant of air&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="c1"># Room parameters</span>
+    <span class="c1"># Reflections</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-nro&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;maximum reflection order, integer&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+    <span class="c1"># Impedance of the walls, can be complex number or a list of complex numbers or a string or a list of strings</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-zs&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Z_S&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;acoustic impedance of the all walls at all frequencies&quot;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-absp&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;alpha_S&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;absorption coefficients of the all walls at all frequencies&quot;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Positions of the source and receiver</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-xs&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;source position in 3D Cartesian </span><span class="se">\</span>
+<span class="s1">        coordinate(m),input format &quot;-xs 2.2 2.1 1.3&quot;&#39;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-xr&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;x&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;receiver position in 3D Cartesian </span><span class="se">\</span>
+<span class="s1">        coordinate(m),input format &quot;-xr 1.2 1.1 2.3&quot;&#39;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Orientations of the source and receiver</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-so&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;alpha&quot;</span><span class="p">,</span> <span class="s2">&quot;beta&quot;</span><span class="p">,</span> <span class="s2">&quot;gamma&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;source orientation in Euler angles </span><span class="se">\</span>
+<span class="s1">        Degrees, input format &quot;-so 0 0 0&quot;&#39;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-ro&quot;</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;alpha&quot;</span><span class="p">,</span> <span class="s2">&quot;beta&quot;</span><span class="p">,</span> <span class="s2">&quot;gamma&quot;</span><span class="p">),</span>
+        <span class="n">help</span><span class="o">=</span><span class="s1">&#39;receiver orientation in Euler angles </span><span class="se">\</span>
+<span class="s1">        Degrees, input format &quot;-ro 0 0 0&quot;&#39;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Frequency parameters</span>
+    <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;RTF&quot;</span><span class="p">:</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-fmin&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;start frequency(Hz)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-fstep&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;frequence step size(Hz)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-fmax&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;stop frequency(Hz)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;RIR&quot;</span><span class="p">:</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-fs&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;sampling rate&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-K&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;over sampling factor&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-rirlen&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;RIR length (sec)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="c1"># -------------------Directivity parameters-------------------</span>
+    <span class="c1"># Source and receiver directivities types</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-srctype&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;source type, string&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;-rectype&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;receiver type, string&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+    <span class="c1"># Source directivities parameters</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-srcorder&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;maximum spherical harmonic </span><span class="se">\</span>
+<span class="s2">        directivity order in source&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-srcr0&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;radius of transparent sphere of source(m)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span>
+    <span class="p">)</span>
+    <span class="c1"># Receiver directivity parameters</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-recorder&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;maximum spherical harmonic </span><span class="se">\</span>
+<span class="s2">        directivity order in receiver&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-recr0&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;radius of transparent sphere of receiver(m)&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span>
+    <span class="p">)</span>
+    <span class="c1"># -------------------Other DEISM parameters-------------------</span>
+    <span class="c1"># parse.add_argument(&#39;-nos&#39;,help=&#39;number of sample points&#39;,type=int)</span>
+    <span class="c1"># # parse.add_argument(&#39;-brc&#39;,help=&#39;beta reference coefficients&#39;,type=float)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-ifconvex&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;If the room is convex or not(0: not convex, 1: convex)&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-ird&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;If remove the direct path or not(0: not remove, 1: remove)&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-method&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Speficy which DEISM mode to use: </span><span class="se">\</span>
+<span class="s2">        ORG, LC, MIX&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-meo&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Max. reflection order used for DEISM-ORG: </span><span class="se">\</span>
+<span class="s2">        in DEISM-MIX mode&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-npi&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of images in parallel computation&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-irn&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;If normalize the receiver directivities </span><span class="se">\</span>
+<span class="s2">        or not(0: not normalize, 1: normalize)&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-q&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;point source flow strength used in </span><span class="se">\</span>
+<span class="s2">        obtaining receive directivities&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># parse.add_argument(&#39;-spm&#39;,help=&#39;sampling scheme&#39;,type=str)</span>
+    <span class="c1"># -------------------trigger running--------------------</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Flag to indicate whether to run the DEISM function&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Trigger no output messages in the command line</span>
+    <span class="n">parse</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--quiet&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Flag to indicate whether to output messages in the command line&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">parse</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">loadSingleParam</span><span class="p">(</span><span class="n">configs</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;RTF&quot;</span><span class="p">,</span> <span class="n">roomtype</span><span class="o">=</span><span class="s2">&quot;shoebox&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Directly read the selected configuration YAML file to obtain parameters,</span>
+<span class="sd">    without first writing parameters back to YAML and then reading them again.</span>
+<span class="sd">    Determine whether the command line has entered some parameters.</span>
+<span class="sd">    If so, override the corresponding parameters in yaml.</span>
+<span class="sd">    If not, keep the configuration values in yaml</span>
+<span class="sd">    inputs:</span>
+<span class="sd">    - args:    argparse library parsed command line object, usually the return value of the parse.parse_args() method</span>
+<span class="sd">    - configs: a dictionary with the same data in the yaml file</span>
+<span class="sd">    outputs:</span>
+<span class="sd">    - params:   the final configuration dictionary, some parameters that need to be calculated</span>
+<span class="sd">    are not calculated at the current location, because the calculated value is a very long</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">argparse</span><span class="o">.</span><span class="n">Namespace</span><span class="p">):</span>
+        <span class="c1"># Type check is not correct</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;args type:</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">args</span><span class="p">)</span><span class="si">}</span><span class="s2"> is not of type argparse.Namespace.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">configs</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;configs is not of type dict&quot;</span><span class="p">)</span>
+
+    <span class="c1"># First define params as a dictionary</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+    <span class="c1"># Then determine whether to use the values of the command line to override</span>
+    <span class="c1"># Environment parameters, make sure the values are all float</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;soundSpeed&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">c</span> <span class="ow">or</span> <span class="nb">float</span><span class="p">(</span><span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Environment&quot;</span><span class="p">][</span><span class="s2">&quot;soundSpeed&quot;</span><span class="p">])</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;airDensity&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">rho</span> <span class="ow">or</span> <span class="nb">float</span><span class="p">(</span><span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Environment&quot;</span><span class="p">][</span><span class="s2">&quot;airDensity&quot;</span><span class="p">])</span>
+    <span class="c1"># ------------------------------------------------------------</span>
+    <span class="c1"># Room geometry parameters</span>
+    <span class="c1"># Shoebox room: roomSize</span>
+    <span class="c1"># Convex room: vertices, wallCenters</span>
+    <span class="k">if</span> <span class="n">roomtype</span> <span class="o">==</span> <span class="s2">&quot;shoebox&quot;</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;roomSize&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">room</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">(</span><span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Dimensions&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
+    <span class="k">elif</span> <span class="n">roomtype</span> <span class="o">==</span> <span class="s2">&quot;convex&quot;</span><span class="p">:</span>
+        <span class="c1"># TODO: Right now we don&#39;t support inputing geometry throught the command line</span>
+        <span class="c1"># So we use the geometry including vertices and wallCenters defined in the config file</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;vertices&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Dimensions&quot;</span><span class="p">][</span><span class="s2">&quot;vertices&quot;</span><span class="p">]))</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;wallCenters&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Dimensions&quot;</span><span class="p">][</span><span class="s2">&quot;wallCenters&quot;</span><span class="p">]))</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;ifRotateRoom&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Dimensions&quot;</span><span class="p">][</span><span class="s2">&quot;ifRotateRoom&quot;</span><span class="p">]</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;roomRotation&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+            <span class="nb">list</span><span class="p">(</span><span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Dimensions&quot;</span><span class="p">][</span><span class="s2">&quot;roomRotation&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="p">)</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;convexRoom&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">ifconvex</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Dimensions&quot;</span><span class="p">][</span><span class="s2">&quot;ifConvexRoom&quot;</span><span class="p">]</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Invalid room type: </span><span class="si">{</span><span class="n">roomtype</span><span class="si">}</span><span class="s2">, must be &#39;shoebox&#39; or &#39;convex&#39;&quot;</span>
+        <span class="p">)</span>
+    <span class="c1"># ------------------------------------------------------------</span>
+    <span class="c1"># Reflections</span>
+    <span class="c1"># The maximum reflection order is either defined or set to -1, if not defined</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">nro</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Reflections&quot;</span><span class="p">][</span><span class="s2">&quot;maxReflectionOrder&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;maxReflOrder&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">nro</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Reflections&quot;</span><span class="p">][</span><span class="s2">&quot;maxReflectionOrder&quot;</span><span class="p">]</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;maxReflOrder&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+    <span class="c1"># Impedance, float or list of floats, !!! Should support string or list of strings</span>
+    <span class="n">givenMaterials</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;impedance&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">zs</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Reflections&quot;</span><span class="p">][</span><span class="s2">&quot;impedance&quot;</span><span class="p">]</span>
+        <span class="n">givenMaterials</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;impedance&quot;</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;absorpCoefficient&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">absp</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Reflections&quot;</span><span class="p">][</span><span class="s2">&quot;absorpCoefficienticient&quot;</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">givenMaterials</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;absorpCoefficient&quot;</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;reverberationTime&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">t60</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Reflections&quot;</span><span class="p">][</span><span class="s2">&quot;reverberationTime&quot;</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">givenMaterials</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;reverberationTime&quot;</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">givenMaterials</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;The user can only define one of the following three parameters: -zs or -absp or -t60. The following parameters are defined: &quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">givenMaterials</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;givenMaterials&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">givenMaterials</span>
+    <span class="c1"># Show which material in</span>
+    <span class="c1"># if len(materials) &gt; 0:</span>
+    <span class="c1">#     if materials[0] == &quot;impedance&quot;:</span>
+    <span class="c1">#         print(&quot;The following material is defined: Acoustic Impedance&quot;)</span>
+    <span class="c1">#     elif materials[0] == &quot;absorpCoefficient&quot;:</span>
+    <span class="c1">#         print(&quot;The following material is defined: Absorption Coefficient&quot;)</span>
+    <span class="c1">#     elif materials[0] == &quot;reverberationTime&quot;:</span>
+    <span class="c1">#         print(&quot;The following material is defined: Reverberation Time&quot;)</span>
+    <span class="c1"># ------------------------------------------------------------</span>
+    <span class="c1"># Angle dependent flag, could be 0 or 1 or not defined</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;angDepFlag&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">adrc</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Reflections&quot;</span><span class="p">][</span><span class="s2">&quot;angleDependentFlag&quot;</span><span class="p">]</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="c1"># params[&quot;angDepFlag&quot;] = (</span>
+    <span class="c1">#     args.adrc</span>
+    <span class="c1">#     if args.adrc is not None</span>
+    <span class="c1">#     else configs[&quot;Reflections&quot;][&quot;angleDependentFlag&quot;]</span>
+    <span class="c1"># )</span>
+
+    <span class="c1"># positions of the source and receiver</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posSource&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">xs</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">(</span><span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Positions&quot;</span><span class="p">][</span><span class="s2">&quot;source&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="p">)</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;posReceiver&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">xr</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">(</span><span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Positions&quot;</span><span class="p">][</span><span class="s2">&quot;receiver&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="p">)</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;orientSource&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">so</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">(</span><span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Orientations&quot;</span><span class="p">][</span><span class="s2">&quot;source&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="p">)</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;orientReceiver&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">ro</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">(</span><span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Orientations&quot;</span><span class="p">][</span><span class="s2">&quot;receiver&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="p">)</span>
+    <span class="c1"># Frequency parameters</span>
+    <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;RTF&quot;</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;startFreq&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">fmin</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Frequencies&quot;</span><span class="p">][</span><span class="s2">&quot;startFrequency&quot;</span><span class="p">]</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;freqStep&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">fstep</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Frequencies&quot;</span><span class="p">][</span><span class="s2">&quot;frequencyStep&quot;</span><span class="p">]</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;endFreq&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">fmax</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Frequencies&quot;</span><span class="p">][</span><span class="s2">&quot;endFrequency&quot;</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;RIR&quot;</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sampleRate&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">fs</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Signal&quot;</span><span class="p">][</span><span class="s2">&quot;samplingRate&quot;</span><span class="p">]</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;RIRLength&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">rirlen</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Signal&quot;</span><span class="p">][</span><span class="s2">&quot;RIRLength&quot;</span><span class="p">]</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;overSamplingFactor&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">K</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Signal&quot;</span><span class="p">][</span><span class="s2">&quot;overSamplingFactor&quot;</span><span class="p">]</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;mode&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">mode</span>
+
+    <span class="c1"># Directivity parameters</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceOrder&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">srcorder</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;MaxSphDirectivityOrder&quot;</span><span class="p">][</span><span class="s2">&quot;sourceOrder&quot;</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverOrder&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">recorder</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;MaxSphDirectivityOrder&quot;</span><span class="p">][</span><span class="s2">&quot;receiverOrder&quot;</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusSource&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">srcr0</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Radius&quot;</span><span class="p">][</span><span class="s2">&quot;source&quot;</span><span class="p">]</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;radiusReceiver&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">recr0</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Radius&quot;</span><span class="p">][</span><span class="s2">&quot;receiver&quot;</span><span class="p">]</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;sourceType&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">srctype</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Directivities&quot;</span><span class="p">][</span><span class="s2">&quot;source&quot;</span><span class="p">]</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">rectype</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;Directivities&quot;</span><span class="p">][</span><span class="s2">&quot;receiver&quot;</span><span class="p">]</span>
+
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;ifRemoveDirectPath&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">ird</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;DEISM_specs&quot;</span><span class="p">][</span><span class="s2">&quot;ifRemoveDirect&quot;</span><span class="p">]</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;DEISM_method&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">method</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;DEISM_specs&quot;</span><span class="p">][</span><span class="s2">&quot;Method&quot;</span><span class="p">]</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;mixEarlyOrder&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">meo</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;DEISM_specs&quot;</span><span class="p">][</span><span class="s2">&quot;mixEarlyOrder&quot;</span><span class="p">]</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;numParaImages&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">npi</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;DEISM_specs&quot;</span><span class="p">][</span><span class="s2">&quot;numParaImages&quot;</span><span class="p">]</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;ifReceiverNormalize&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">irn</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;DEISM_specs&quot;</span><span class="p">][</span><span class="s2">&quot;ifReceiverNormalize&quot;</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;qFlowStrength&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">q</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;DEISM_specs&quot;</span><span class="p">][</span><span class="s2">&quot;QFlowStrength&quot;</span><span class="p">]</span>
+    <span class="n">params</span><span class="p">[</span><span class="s2">&quot;silentMode&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">quiet</span> <span class="ow">or</span> <span class="n">configs</span><span class="p">[</span><span class="s2">&quot;SilentMode&quot;</span><span class="p">]</span>
+    <span class="c1"># variables computed according to the above parameters</span>
+    <span class="c1"># params = compute_rest_params(params)</span>
+    <span class="k">return</span> <span class="n">params</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">printDict</span><span class="p">(</span><span class="nb">dict</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Output the variable of the params dictionary</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">dict</span><span class="p">[</span><span class="s2">&quot;silentMode&quot;</span><span class="p">]:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[Parameters]: &quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="c1"># Copy the dictionary to avoid modifying the original dictionary</span>
+        <span class="n">dict1</span> <span class="o">=</span> <span class="nb">dict</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="c1"># Exclude the following keys</span>
+        <span class="c1"># Remove the following keys</span>
+        <span class="n">excludeKeys</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s2">&quot;waveNumbers&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;pointSrcStrength&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;n1&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;n2&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;n3&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;nSamples&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;silentMode&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;posSources&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;posReceivers&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;orientSources&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;orientReceivers&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;cTs&quot;</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="c1"># If the source is monopole, remove radiusSource</span>
+        <span class="k">if</span> <span class="nb">dict</span><span class="p">[</span><span class="s2">&quot;sourceType&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;monopole&quot;</span><span class="p">:</span>
+            <span class="n">excludeKeys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;radiusSource&quot;</span><span class="p">)</span>
+        <span class="c1"># If the receiver is monopole, remove radiusReceiver</span>
+        <span class="k">if</span> <span class="nb">dict</span><span class="p">[</span><span class="s2">&quot;receiverType&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;monopole&quot;</span><span class="p">:</span>
+            <span class="n">excludeKeys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;radiusReceiver&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">excludeKeys</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">dict1</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                <span class="n">dict1</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="c1"># First traverse to find the longest key for the purpose of providing formatted output</span>
+        <span class="n">maxLen</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="c1"># For all parameter names</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">dict1</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="c1"># If the length of the key is greater than maxLen, then maxLen is equal to the length of the key</span>
+            <span class="n">maxLen</span> <span class="o">=</span> <span class="n">maxLen</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">maxLen</span> <span class="k">else</span> <span class="nb">len</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="c1"># For all parameter name-value pairs</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">dict1</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="c1"># If the value is a list and the length of the value is greater than 6</span>
+            <span class="c1"># Or the value is a 2D numpy array</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">6</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span>
+                <span class="n">value</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span>
+            <span class="p">):</span>
+                <span class="c1"># If print the 2D array value of the key &quot;vertices&quot;,</span>
+                <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;vertices&quot;</span><span class="p">:</span>
+                    <span class="c1"># If &quot;if_rotate_room&quot; is 1, add &quot;rotated&quot; before the key &quot;vertices&quot;</span>
+                    <span class="k">if</span> <span class="nb">dict</span><span class="p">[</span><span class="s2">&quot;ifRotateRoom&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                        <span class="n">key</span> <span class="o">=</span> <span class="s2">&quot;rotated vertices&quot;</span>
+                    <span class="c1"># For each row in the 2D array</span>
+                    <span class="n">row_id</span> <span class="o">=</span> <span class="mi">0</span>
+                    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+                        <span class="c1"># Output the key with incrementing ids and the row</span>
+                        <span class="n">row_id</span> <span class="o">+=</span> <span class="mi">1</span>
+                        <span class="c1"># Round the row to 2 decimal places</span>
+                        <span class="n">row</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">:</span><span class="s2">&gt;</span><span class="si">{</span><span class="n">maxLen</span><span class="si">}}</span><span class="s2"> </span><span class="si">{</span><span class="n">row_id</span><span class="si">}</span><span class="s2"> : </span><span class="si">{</span><span class="n">row</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="c1"># Skip the following output</span>
+                    <span class="k">continue</span>
+                <span class="c1"># If the key is acousImpend with 2D arrays, output the key and the 2D array separately</span>
+                <span class="c1"># Each entry&#39;s name is Impedance wall 1, Impedance wall 2, etc.</span>
+                <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;impedance&quot;</span><span class="p">:</span>
+                    <span class="n">key</span> <span class="o">=</span> <span class="s2">&quot;Impedance wall &quot;</span>
+                    <span class="c1"># For each row in the 2D array</span>
+                    <span class="n">row_id</span> <span class="o">=</span> <span class="mi">0</span>
+                    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+                        <span class="c1"># Output the key with incrementing ids and the row</span>
+                        <span class="n">row_id</span> <span class="o">+=</span> <span class="mi">1</span>
+                        <span class="c1"># Round the row to 2 decimal places</span>
+                        <span class="n">row</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+                        <span class="nb">print</span><span class="p">(</span>
+                            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">:</span><span class="s2">&gt;</span><span class="si">{</span><span class="n">maxLen</span><span class="si">}}</span><span class="s2"> </span><span class="si">{</span><span class="n">row_id</span><span class="si">}</span><span class="s2"> : </span><span class="si">{</span><span class="n">row</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="s2"> ... </span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">:]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                            <span class="n">end</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span>
+                        <span class="p">)</span>
+                    <span class="c1"># Skip the following output</span>
+                    <span class="k">continue</span>
+                <span class="c1"># The value is truncated to the first two elements and last two elements</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                    <span class="n">valueStr</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="s2"> ... </span><span class="si">{</span><span class="n">value</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">:]</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">6</span><span class="p">:</span>
+                        <span class="n">valueStr</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">valueStr</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="s2"> ... </span><span class="si">{</span><span class="n">value</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">:]</span><span class="si">}</span><span class="s2">&quot;</span>
+
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Otherwise, the value is converted to a string</span>
+                <span class="n">valueStr</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+            <span class="c1"># Output the key and value</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">:</span><span class="s2">&gt;</span><span class="si">{</span><span class="n">maxLen</span><span class="o">+</span><span class="mi">2</span><span class="si">}}</span><span class="s2"> : </span><span class="si">{</span><span class="n">valueStr</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="c1"># Print some additional parameters individually</span>
+        <span class="c1"># If vertices is in the dictionary, output the vertices (2D array) separately on the right side</span>
+        <span class="c1"># if &quot;vertices&quot; in dict.keys():</span>
+        <span class="c1">#     print(&quot;vertices : &quot;, dict[&quot;vertices&quot;])</span>
+
+        <span class="c1"># Other messages, notes for the users:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[Notes]: &quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="s2">&quot;If the receiver directivity is obtained by placing a point source with flow strength QFlowStrength &quot;</span><span class="p">,</span>
+            <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="p">)</span>  <span class="c1"># Rephrase the sentences and delete the spaces between lines</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="s2">&quot;at the receiver position and measuring the sound pressure at a sphere around the receiver, &quot;</span><span class="p">,</span>
+            <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;you need to specify QFlowStrength and set ifReceiverNormalize to 1. </span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="s2">&quot;If the receiver directivity is obtained by other methods, you can set ifReceiverNormalize to 0. &quot;</span><span class="p">,</span>
+            <span class="n">end</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="c1"># print(&quot;[All] &quot;, end=&quot;\n&quot;)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">cmdArgsToDict</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;RTF&quot;</span><span class="p">,</span> <span class="n">roomtype</span><span class="o">=</span><span class="s2">&quot;shoebox&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Takes the command line arguments and the parameters from the selected</span>
+<span class="sd">    default configuration YAML file.</span>
+<span class="sd">    outputs:</span>
+<span class="sd">    - params: the final configuration dictionary</span>
+<span class="sd">    - cmdArgs: the command line arguments</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Decide with default yml name to load</span>
+    <span class="k">if</span> <span class="n">roomtype</span> <span class="o">==</span> <span class="s2">&quot;shoebox&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;RTF&quot;</span><span class="p">:</span>
+            <span class="n">yml_name</span> <span class="o">=</span> <span class="s2">&quot;configSingleParam_RTF.yml&quot;</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;RIR&quot;</span><span class="p">:</span>
+            <span class="n">yml_name</span> <span class="o">=</span> <span class="s2">&quot;configSingleParam_RIR.yml&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid mode: </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">roomtype</span> <span class="o">==</span> <span class="s2">&quot;convex&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;RTF&quot;</span><span class="p">:</span>
+            <span class="n">yml_name</span> <span class="o">=</span> <span class="s2">&quot;configSingleParam_ARG_RTF.yml&quot;</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;RIR&quot;</span><span class="p">:</span>
+            <span class="n">yml_name</span> <span class="o">=</span> <span class="s2">&quot;configSingleParam_ARG_RIR.yml&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid mode: </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid room: </span><span class="si">{</span><span class="n">roomtype</span><span class="si">}</span><span class="s2">, must be &#39;shoebox&#39; or &#39;convex&#39;&quot;</span><span class="p">)</span>
+    <span class="c1"># First load the selected configuration YAML file directly as params,</span>
+    <span class="n">configsInYaml</span> <span class="o">=</span> <span class="n">readYaml</span><span class="p">(</span><span class="n">yml_name</span><span class="p">)</span>
+    <span class="c1"># parse the command line arguments</span>
+    <span class="c1"># TODO: merge the two functions parseCmdArgs and parseCmdArgs_ARG later</span>
+    <span class="k">if</span> <span class="n">roomtype</span> <span class="o">==</span> <span class="s2">&quot;shoebox&quot;</span><span class="p">:</span>
+        <span class="n">cmdArgs</span> <span class="o">=</span> <span class="n">parseCmdArgs</span><span class="p">(</span><span class="n">mode</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">roomtype</span> <span class="o">==</span> <span class="s2">&quot;convex&quot;</span><span class="p">:</span>
+        <span class="n">cmdArgs</span> <span class="o">=</span> <span class="n">parseCmdArgs_ARG</span><span class="p">(</span><span class="n">mode</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid room: </span><span class="si">{</span><span class="n">roomtype</span><span class="si">}</span><span class="s2">, must be &#39;shoebox&#39; or &#39;convex&#39;&quot;</span><span class="p">)</span>
+    <span class="c1"># replace the corresponding variables in configsInYaml with the values entered from the command line</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="n">loadSingleParam</span><span class="p">(</span><span class="n">configsInYaml</span><span class="p">,</span> <span class="n">cmdArgs</span><span class="p">,</span> <span class="n">mode</span><span class="p">,</span> <span class="n">roomtype</span><span class="p">)</span>
+    <span class="c1"># Compute the rest of the parameters</span>
+    <span class="c1"># params = compute_rest_params(params)</span>
+
+    <span class="k">return</span> <span class="n">params</span><span class="p">,</span> <span class="n">cmdArgs</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">load_directive_pressure</span><span class="p">(</span><span class="n">silentMode</span><span class="p">,</span> <span class="n">src_or_rec</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Functions for loading sampled directional pressure field on a sphere with radius r0 simulated from COMSOL or simulation</span>
+<span class="sd">    input:</span>
+<span class="sd">        src_or_rec: string, &quot;source&quot; or &quot;receiver&quot;</span>
+<span class="sd">        name: string, the name of the profile</span>
+<span class="sd">    output:</span>
+<span class="sd">        freqs_all: 1D array, the frequencies of the simulated pressure field</span>
+<span class="sd">        pressure: 2D array, number of frequencies x number of sample points, the simulated pressure field</span>
+<span class="sd">        Dir_all: 2D array, number of directions x [azimuth, elevation], the sample points of directivities (pressure field) on the sphere</span>
+<span class="sd">        r0: 1D array, the radius of the transparent sphere</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="s2">&quot;data/sampled_directivity&quot;</span>
+    <span class="c1"># Use try to find the file in the tests/ directory</span>
+    <span class="c1"># if it is found, add tests/ to the file path</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># If the file is found, assign the file path to filePath</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s2">&quot;examples/data&quot;</span><span class="p">):</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="s2">&quot;./examples/&quot;</span> <span class="o">+</span> <span class="n">path</span>
+        <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s2">&quot;data&quot;</span><span class="p">):</span>
+            <span class="c1"># do nothing</span>
+            <span class="k">pass</span>
+        <span class="c1"># If the path is not found, an exception is raised</span>
+    <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2"> doesn&#39;t exist!&quot;</span><span class="p">):</span>
+        <span class="c1"># stop the program and print the error message</span>
+        <span class="k">pass</span>
+    <span class="n">data_location</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">/</span><span class="si">{}</span><span class="s2">/</span><span class="si">{}</span><span class="s2">.mat&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">src_or_rec</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data_location</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+            <span class="n">FEM_data</span> <span class="o">=</span> <span class="n">sio</span><span class="o">.</span><span class="n">loadmat</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;File </span><span class="si">{</span><span class="n">data_location</span><span class="si">}</span><span class="s2"> not found.&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;An error occurred while loading the file: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">freqs_all</span> <span class="o">=</span> <span class="n">FEM_data</span><span class="p">[</span><span class="s2">&quot;freqs_mesh&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+    <span class="n">pressure</span> <span class="o">=</span> <span class="n">FEM_data</span><span class="p">[</span><span class="s2">&quot;Psh&quot;</span><span class="p">]</span>
+    <span class="n">Dir_all</span> <span class="o">=</span> <span class="n">FEM_data</span><span class="p">[</span><span class="s2">&quot;Dir_all&quot;</span><span class="p">]</span>
+    <span class="n">r0</span> <span class="o">=</span> <span class="n">FEM_data</span><span class="p">[</span><span class="s2">&quot;r0&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">silentMode</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Load directivity data from </span><span class="si">{}</span><span class="s2">, &quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">path</span><span class="p">),</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;sampled on </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">Dir_all</span><span class="p">)</span><span class="si">}</span><span class="s2"> directions and </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">freqs_all</span><span class="p">)</span><span class="si">}</span><span class="s2"> frequencies. &quot;</span><span class="p">,</span>
+            <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">freqs_all</span><span class="p">,</span> <span class="n">pressure</span><span class="p">,</span> <span class="n">Dir_all</span><span class="p">,</span> <span class="n">r0</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">load_directpath_pressure</span><span class="p">(</span><span class="n">silentMode</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Function that loads the direct path pressure field simulated from COMSOL</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="s2">&quot;data/sampled_directivity&quot;</span>
+    <span class="c1"># Use try to find the file in the tests/ directory</span>
+    <span class="c1"># if it is found, add tests/ to the file path</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># If the file is found, assign the file path to filePath</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s2">&quot;examples/data&quot;</span><span class="p">):</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="s2">&quot;./examples/&quot;</span> <span class="o">+</span> <span class="n">path</span>
+        <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s2">&quot;data&quot;</span><span class="p">):</span>
+            <span class="c1"># do nothing</span>
+            <span class="k">pass</span>
+        <span class="c1"># If the path is not found, an exception is raised</span>
+    <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2"> doesn&#39;t exist!&quot;</span><span class="p">):</span>
+        <span class="c1"># stop the program and print the error message</span>
+        <span class="k">pass</span>
+    <span class="n">data_location</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">/source/</span><span class="si">{}</span><span class="s2">.mat&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data_location</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+            <span class="n">FEM_data</span> <span class="o">=</span> <span class="n">sio</span><span class="o">.</span><span class="n">loadmat</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;File </span><span class="si">{</span><span class="n">data_location</span><span class="si">}</span><span class="s2"> not found.&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;An error occurred while loading the file: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">freqs_all</span> <span class="o">=</span> <span class="n">FEM_data</span><span class="p">[</span><span class="s2">&quot;freqs_mesh&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+    <span class="n">pressure</span> <span class="o">=</span> <span class="n">FEM_data</span><span class="p">[</span><span class="s2">&quot;Psh&quot;</span><span class="p">]</span>
+    <span class="n">mic_pos</span> <span class="o">=</span> <span class="n">FEM_data</span><span class="p">[</span><span class="s2">&quot;mic_position&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">silentMode</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Data] Load direct path data from </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">. &quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Microphone positions: </span><span class="si">{</span><span class="n">mic_pos</span><span class="si">}</span><span class="s2">. &quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">freqs_all</span><span class="p">,</span> <span class="n">pressure</span><span class="p">,</span> <span class="n">mic_pos</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">load_RTF_data</span><span class="p">(</span><span class="n">silentMode</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    This functions loads the room transfer functions (RTFs) simulated from COMSOL</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="s2">&quot;data/RTF_COMSOL&quot;</span>
+    <span class="c1"># Use try to find the file in the tests/ directory</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># If the file is found, assign the file path to filePath</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s2">&quot;examples/data&quot;</span><span class="p">):</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="s2">&quot;./examples/&quot;</span> <span class="o">+</span> <span class="n">path</span>
+        <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s2">&quot;data&quot;</span><span class="p">):</span>
+            <span class="c1"># do nothing</span>
+            <span class="k">pass</span>
+        <span class="c1"># If the path is not found, an exception is raised</span>
+    <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2"> doesn&#39;t exist!&quot;</span><span class="p">):</span>
+        <span class="c1"># stop the program and print the error message</span>
+        <span class="k">pass</span>
+
+    <span class="n">data_location</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="s2">/</span><span class="si">{}</span><span class="s2">.mat&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data_location</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+            <span class="n">P_COMSOL</span> <span class="o">=</span> <span class="n">sio</span><span class="o">.</span><span class="n">loadmat</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;File </span><span class="si">{</span><span class="n">data_location</span><span class="si">}</span><span class="s2"> not found.&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;An error occurred while loading the file: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Flatten the 2D array to 1D array</span>
+    <span class="n">pressure</span> <span class="o">=</span> <span class="n">P_COMSOL</span><span class="p">[</span><span class="s2">&quot;Psh&quot;</span><span class="p">]</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">freqs_all</span> <span class="o">=</span> <span class="n">P_COMSOL</span><span class="p">[</span><span class="s2">&quot;freqs_mesh&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">mic_pos</span> <span class="o">=</span> <span class="n">P_COMSOL</span><span class="p">[</span><span class="s2">&quot;mic_pos&quot;</span><span class="p">]</span>
+    <span class="c1"># If not freqs_mesh and mic_pos entries in the dictionary, return two zeros</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="n">freqs_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">mic_pos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">silentMode</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Data] Load RTF data from </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">, Done! &quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">freqs_all</span><span class="p">,</span> <span class="n">pressure</span><span class="p">,</span> <span class="n">mic_pos</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Audiolabs Erlangen, Germany.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
