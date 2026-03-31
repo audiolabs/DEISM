@@ -12,7 +12,8 @@ For three position configurations, the following solutions are shown:
 3. FEM
 Note that in configuration 3, the source and receiver are placed on the same loudspeaker.
 Running this script may take around 5 minutes.
-Also notice that the frequencies are from 20 Hz to 1000 Hz, you probably need to confirm this range in the configSingleParam.yaml file
+Also notice that the frequencies are from 20 Hz to 1000 Hz, so confirm this
+range in the active shoebox configuration file.
 """
 
 # -------------------------------------------------------
@@ -38,7 +39,7 @@ from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
 def init_parameters(params):
     """
-    Paramters that are different to the default parameters in configSingleParam.yaml
+    Parameters that differ from the default shoebox configuration.
     """
     # reflection order
     params["maxReflOrder"] = 25

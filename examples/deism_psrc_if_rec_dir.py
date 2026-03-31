@@ -25,7 +25,7 @@ from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
 def init_parameters(params):
     """
-    Paramters that are different to the default parameters in configSingleParam.yaml
+    Parameters that differ from the default shoebox configuration.
     """
     # reflection order
     params["maxReflOrder"] = 25
@@ -41,7 +41,7 @@ def init_parameters(params):
 
 
 def main():
-    # Load the default parameters from the configSingleParam.yaml file
+    # Load the default parameters from the active shoebox configuration file
     params, cmdArgs = cmdArgsToDict()
     # Initialize the parameters related to fig. 8
     params = init_parameters(params)

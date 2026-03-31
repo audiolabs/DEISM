@@ -1,117 +1,54 @@
 API Reference
 =============
 
-This page summarizes the public workflow surface that the current
-documentation treats as primary.
+This page keeps hand-written explanations short and pulls method signatures and
+docstrings from the live code where practical. Workflow guidance belongs in
+:doc:`workflows` and :doc:`parameter_dependencies`; this page focuses on the
+public API surface.
 
 Primary public class
 --------------------
 
-.. py:class:: DEISM(mode, roomtype, silent=False)
+``DEISM`` is the main user-facing entry point.
 
-   Main user-facing workflow class for DEISM and DEISM-ARG.
+Typical usage pattern:
 
-   Parameters
-   ----------
-   ``mode``
-       Either ``"RTF"`` or ``"RIR"``.
-   ``roomtype``
-       Either ``"shoebox"`` or ``"convex"``.
-   ``silent``
-       If ``True``, suppresses most console output.
+1. Instantiate ``DEISM(mode, roomtype)``.
+2. Call ``update_room()``.
+3. Call ``update_wall_materials()``.
+4. Call ``update_freqs()``.
+5. Call ``update_source_receiver()`` and ``update_directivities()`` in the
+   roomtype-appropriate order.
+6. Call ``run_DEISM()``.
 
-   Typical usage pattern
-   ---------------------
+.. currentmodule:: deism.core_deism
 
-   1. Instantiate ``DEISM(mode, roomtype)``.
-   2. Call ``update_room()``.
-   3. Call ``update_wall_materials()``.
-   4. Call ``update_freqs()``.
-   5. Call ``update_source_receiver()`` and ``update_directivities()`` in the
-      roomtype-appropriate order.
-   6. Call ``run_DEISM()``.
-
-Workflow methods
-----------------
-
-.. py:method:: DEISM.update_room(roomDimensions=None, wallCenters=None, roomVolumn=None, roomAreas=None)
-
-   Update geometry-related state.
-
-   For shoebox rooms this updates ``roomSize``, ``roomVolumn``, and
-   ``roomAreas``. For convex rooms this updates ``vertices``,
-   ``wallCenters``, and optionally the derived volume and per-wall areas.
-
-.. py:method:: DEISM.update_wall_materials(datain=None, freqs_bands=None, datatype=None)
-
-   Update and convert wall-material parameters.
-
-   This method maintains ``impedance``, ``absorpCoefficient``,
-   ``reverberationTime``, and ``freqs_bands``. For shoebox rooms it also
-   updates ``n1``, ``n2``, and ``n3``.
-
-.. py:method:: DEISM.update_freqs()
-
-   Update frequency-dependent state.
-
-   This method computes ``freqs`` and ``waveNumbers``, updates
-   ``pointSrcStrength`` when receiver normalization is active, interpolates
-   materials to the working frequency grid, and in convex workflows builds the
-   room engine used by later ARG steps.
-
-.. py:method:: DEISM.update_source_receiver(source=None, receiver=None)
-
-   Update source and receiver positions and regenerate geometry-dependent image
-   data.
-
-   Shoebox workflows update ``images`` from the room dimensions and positions.
-   Convex workflows update ``images`` and ``reflection_matrix`` through the
-   convex room engine.
-
-.. py:method:: DEISM.update_directivities()
-
-   Initialize source and receiver directivity state for the current frequency
-   grid and execution method.
-
-   This step also computes vectorized LC forms and Wigner terms when required
-   by the selected method.
-
-.. py:method:: DEISM.run_DEISM(if_clean_up=True, if_shutdown_ray=True)
-
-   Run the default Numba-backed computation and store the result in
-   ``params["RTF"]``.
-
-   When ``if_clean_up`` is ``True``, large image arrays are removed from
-   ``params`` after the run.
-
-.. py:method:: DEISM.run_DEISM_ray(if_clean_up=True, if_shutdown_ray=True)
-
-   Run the legacy Ray backend.
+.. autoclass:: DEISM
+   :member-order: bysource
+   :members: update_room, update_wall_materials, update_freqs, update_source_receiver, update_directivities, run_DEISM, run_DEISM_ray
 
 Supporting helpers
 ------------------
 
-.. py:function:: detect_conflicts(params)
+.. currentmodule:: deism.data_loader
 
-   Print warnings for inconsistent parameter combinations without modifying the
-   parameter dictionary.
+.. autofunction:: detect_conflicts
 
-.. py:class:: ConflictChecks
-
-   Static validation helpers used internally by the class workflow.
-
-   The main entry point is ``ConflictChecks.check_all_conflicts(params)``.
+.. autoclass:: ConflictChecks
+   :member-order: bysource
+   :members: check_all_conflicts, directivity_checks, distance_spheres_checks, distance_boundaries_checks, wall_material_checks
 
 Convex-room internals
 ---------------------
 
-.. py:class:: Room_deism_cpp(params, *choose_wall_centers)
+New users should normally stay with ``DEISM``. ``Room_deism_cpp`` is a lower
+level helper used by the convex-room path.
 
-   Convex-room helper class used by DEISM-ARG for geometry initialization,
-   visibility checks, and reflection-path generation.
+.. currentmodule:: deism.core_deism_arg
 
-   New users should start with the ``DEISM`` class rather than instantiating
-   ``Room_deism_cpp`` directly.
+.. autoclass:: Room_deism_cpp
+   :member-order: bysource
+   :members: update_images
 
 Important runtime fields
 ------------------------

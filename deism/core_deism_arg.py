@@ -824,6 +824,8 @@ def find_non_convex_walls(walls):
 
 
 class Room_deism_cpp:
+    """Low-level convex-room helper used by DEISM-ARG for room setup and images."""
+
     def __init__(self, params, *choose_wall_centers):
         """
         -----------

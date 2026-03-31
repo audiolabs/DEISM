@@ -4,12 +4,15 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 _version_ns = {}
 exec(
-    (Path(__file__).resolve().parents[1] / "deism" / "version.py").read_text(
-        encoding="utf-8"
-    ),
+    (ROOT / "deism" / "version.py").read_text(encoding="utf-8"),
     _version_ns,
 )
 
@@ -28,6 +31,7 @@ release = _version_ns["__version__"]
 
 extensions = [
     "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
     "sphinx.ext.mathjax",
@@ -50,6 +54,7 @@ html_static_path = []
 # -- Options for autodoc -----------------------------------------------------
 autodoc_typehints = "description"
 autodoc_member_order = "bysource"
+autosummary_generate = True
 
 
 # -- Options for Napoleon ----------------------------------------------------

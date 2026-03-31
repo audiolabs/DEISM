@@ -1,8 +1,8 @@
 Installation
 ============
 
-DEISM can be installed either as a regular Python package or in editable mode
-for development.
+DEISM supports Python 3.9, 3.10, and 3.11 on Windows, macOS, and Linux. This
+page uses the same installation guidance as the repository ``README.md``.
 
 Supported environments
 ----------------------
@@ -10,21 +10,60 @@ Supported environments
 The project metadata requires Python 3.9 or newer. The repository CI currently
 tests Python 3.9, 3.10, and 3.11 on Windows, macOS, and Linux.
 
+Check Python version
+--------------------
+
+On macOS or Linux::
+
+    python3 --version
+
+On Windows PowerShell::
+
+    python --version
+
+Install a supported Python version from ``python.org`` if needed.
+
 Recommended user install
 ------------------------
 
-Install the published package from PyPI::
+On macOS or Linux::
 
+    python3 -m venv ~/.venv/deism
+    source ~/.venv/deism/bin/activate
     python -m pip install --upgrade pip
     python -m pip install deism
+
+On Windows PowerShell::
+
+    python -m venv C:\Users\<YourUsername>\venvs\deism
+    C:\Users\<YourUsername>\venvs\deism\Scripts\Activate.ps1
+    python -m pip install --upgrade pip
+    python -m pip install deism
+
+If PowerShell blocks activation::
+
+    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
 
 Developer install from source
 -----------------------------
 
-Clone the repository and install it in editable mode::
+On macOS or Linux::
 
     git clone https://github.com/audiolabs/DEISM.git
     cd DEISM
+    python3 -m venv ~/.venv/deism_dev
+    source ~/.venv/deism_dev/bin/activate
+    python -m pip install --upgrade pip
+    python -m pip install -r requirements.txt
+    python -m pip install -e .
+
+On Windows PowerShell::
+
+    git clone https://github.com/audiolabs/DEISM.git
+    cd DEISM
+    python -m venv C:\Users\<YourUsername>\venvs\deism_dev
+    C:\Users\<YourUsername>\venvs\deism_dev\Scripts\Activate.ps1
     python -m pip install --upgrade pip
     python -m pip install -r requirements.txt
     python -m pip install -e .
@@ -32,27 +71,52 @@ Clone the repository and install it in editable mode::
 Conda-based environment
 -----------------------
 
-If you prefer Conda, the repository ships environment files::
+End users can create a clean Conda environment and install the published
+package::
+
+    conda create -n deism python=3.9
+    conda activate deism
+    python -m pip install --upgrade pip
+    python -m pip install deism
+
+Developers can create the repository environment and install in editable mode::
 
     conda env create -f deism_env.yml
     conda activate DEISM
     python -m pip install -e .
 
-If the general environment file fails on your machine, try the exact version
+If the general environment file fails on your machine, try the exact-version
 lock file instead::
 
     conda env create -f deism_env_exact.yml
     conda activate DEISM
     python -m pip install -e .
 
-Optional system dependencies
-----------------------------
+Build tools
+-----------
 
 The package builds a C++ extension during installation. A working compiler is
 recommended. If the optional ``count_reflections`` helper cannot be compiled,
 the package still runs, but that specific optimization is unavailable.
 
-Additional optional tools:
+macOS::
+
+    xcode-select --install
+
+Ubuntu or Debian::
+
+    sudo apt-get update
+    sudo apt-get install build-essential g++ python3-dev
+
+RHEL, CentOS, or Fedora::
+
+    sudo yum install gcc-c++ python3-devel
+
+On Windows, install either MinGW-w64 and add it to ``PATH``, or install Visual
+Studio Build Tools with the C++ workload.
+
+Optional tools
+--------------
 
 - ``gmsh`` for geometry-related helper utilities
 - a LaTeX installation for plots that rely on ``matplotlib`` with
@@ -84,6 +148,9 @@ What to expect after installation
 
 Common issues
 -------------
+
+**PowerShell execution policy error**
+    Run ``Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser``.
 
 **Missing compiler**
     The editable install may skip the optional ``count_reflections`` helper if

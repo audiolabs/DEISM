@@ -44,6 +44,8 @@ except (ImportError, RuntimeError):
 # -------------------------------
 # Create a class of DEISM for running every thing
 class DEISM:
+    """User-facing workflow class for shoebox and convex DEISM simulations."""
+
     # Initialize the DEISM class
     def __init__(self, mode, roomtype, silent=False):
         self.mode = mode

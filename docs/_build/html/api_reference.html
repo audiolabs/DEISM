@@ -53,26 +53,31 @@
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#primary-public-class">Primary public class</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#DEISM"><code class="docutils literal notranslate"><span class="pre">DEISM</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#deism.core_deism.DEISM"><code class="docutils literal notranslate"><span class="pre">DEISM</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#deism.core_deism.DEISM.update_source_receiver"><code class="docutils literal notranslate"><span class="pre">DEISM.update_source_receiver()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#deism.core_deism.DEISM.update_room"><code class="docutils literal notranslate"><span class="pre">DEISM.update_room()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#deism.core_deism.DEISM.update_wall_materials"><code class="docutils literal notranslate"><span class="pre">DEISM.update_wall_materials()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#deism.core_deism.DEISM.update_directivities"><code class="docutils literal notranslate"><span class="pre">DEISM.update_directivities()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#deism.core_deism.DEISM.run_DEISM"><code class="docutils literal notranslate"><span class="pre">DEISM.run_DEISM()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#deism.core_deism.DEISM.run_DEISM_ray"><code class="docutils literal notranslate"><span class="pre">DEISM.run_DEISM_ray()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#workflow-methods">Workflow methods</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#DEISM.update_room"><code class="docutils literal notranslate"><span class="pre">DEISM.update_room()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#DEISM.update_wall_materials"><code class="docutils literal notranslate"><span class="pre">DEISM.update_wall_materials()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#DEISM.update_freqs"><code class="docutils literal notranslate"><span class="pre">DEISM.update_freqs()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#DEISM.update_source_receiver"><code class="docutils literal notranslate"><span class="pre">DEISM.update_source_receiver()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#DEISM.update_directivities"><code class="docutils literal notranslate"><span class="pre">DEISM.update_directivities()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#DEISM.run_DEISM"><code class="docutils literal notranslate"><span class="pre">DEISM.run_DEISM()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#DEISM.run_DEISM_ray"><code class="docutils literal notranslate"><span class="pre">DEISM.run_DEISM_ray()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#supporting-helpers">Supporting helpers</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#detect_conflicts"><code class="docutils literal notranslate"><span class="pre">detect_conflicts()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#ConflictChecks"><code class="docutils literal notranslate"><span class="pre">ConflictChecks</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#deism.data_loader.detect_conflicts"><code class="docutils literal notranslate"><span class="pre">detect_conflicts()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#deism.data_loader.ConflictChecks"><code class="docutils literal notranslate"><span class="pre">ConflictChecks</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#deism.data_loader.ConflictChecks.directivity_checks"><code class="docutils literal notranslate"><span class="pre">ConflictChecks.directivity_checks()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#deism.data_loader.ConflictChecks.distance_spheres_checks"><code class="docutils literal notranslate"><span class="pre">ConflictChecks.distance_spheres_checks()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#deism.data_loader.ConflictChecks.wall_material_checks"><code class="docutils literal notranslate"><span class="pre">ConflictChecks.wall_material_checks()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#deism.data_loader.ConflictChecks.distance_boundaries_checks"><code class="docutils literal notranslate"><span class="pre">ConflictChecks.distance_boundaries_checks()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#deism.data_loader.ConflictChecks.check_all_conflicts"><code class="docutils literal notranslate"><span class="pre">ConflictChecks.check_all_conflicts()</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#convex-room-internals">Convex-room internals</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#Room_deism_cpp"><code class="docutils literal notranslate"><span class="pre">Room_deism_cpp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#deism.core_deism_arg.Room_deism_cpp"><code class="docutils literal notranslate"><span class="pre">Room_deism_cpp</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#important-runtime-fields">Important runtime fields</a></li>
@@ -108,27 +113,14 @@
              
   <section id="api-reference">
 <h1>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h1>
-<p>This page summarizes the public workflow surface that the current
-documentation treats as primary.</p>
+<p>This page keeps hand-written explanations short and pulls method signatures and
+docstrings from the live code where practical. Workflow guidance belongs in
+<a class="reference internal" href="workflows.html"><span class="doc">Workflows</span></a> and <a class="reference internal" href="parameter_dependencies.html"><span class="doc">Parameter Dependencies</span></a>; this page focuses on the
+public API surface.</p>
 <section id="primary-public-class">
 <h2>Primary public class<a class="headerlink" href="#primary-public-class" title="Link to this heading"></a></h2>
-<dl class="py class">
-<dt class="sig sig-object py" id="DEISM">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">DEISM</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roomtype</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">silent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM" title="Link to this definition"></a></dt>
-<dd><p>Main user-facing workflow class for DEISM and DEISM-ARG.</p>
-<section id="parameters">
-<h3>Parameters<a class="headerlink" href="#parameters" title="Link to this heading"></a></h3>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">mode</span></code></dt><dd><p>Either <code class="docutils literal notranslate"><span class="pre">&quot;RTF&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;RIR&quot;</span></code>.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">roomtype</span></code></dt><dd><p>Either <code class="docutils literal notranslate"><span class="pre">&quot;shoebox&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;convex&quot;</span></code>.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">silent</span></code></dt><dd><p>If <code class="docutils literal notranslate"><span class="pre">True</span></code>, suppresses most console output.</p>
-</dd>
-</dl>
-</section>
-<section id="typical-usage-pattern">
-<h3>Typical usage pattern<a class="headerlink" href="#typical-usage-pattern" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">DEISM</span></code> is the main user-facing entry point.</p>
+<p>Typical usage pattern:</p>
 <ol class="arabic simple">
 <li><p>Instantiate <code class="docutils literal notranslate"><span class="pre">DEISM(mode,</span> <span class="pre">roomtype)</span></code>.</p></li>
 <li><p>Call <code class="docutils literal notranslate"><span class="pre">update_room()</span></code>.</p></li>
@@ -138,101 +130,139 @@ documentation treats as primary.</p>
 roomtype-appropriate order.</p></li>
 <li><p>Call <code class="docutils literal notranslate"><span class="pre">run_DEISM()</span></code>.</p></li>
 </ol>
-</section>
-</dd></dl>
-
-</section>
-<section id="workflow-methods">
-<h2>Workflow methods<a class="headerlink" href="#workflow-methods" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="deism.core_deism.DEISM">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">deism.core_deism.</span></span><span class="sig-name descname"><span class="pre">DEISM</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roomtype</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">silent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/core_deism.html#DEISM"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.core_deism.DEISM" title="Link to this definition"></a></dt>
+<dd><p>User-facing workflow class for shoebox and convex DEISM simulations.</p>
 <dl class="py method">
-<dt class="sig sig-object py" id="DEISM.update_room">
-<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">update_room</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">roomDimensions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wallCenters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roomVolumn</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roomAreas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.update_room" title="Link to this definition"></a></dt>
-<dd><p>Update geometry-related state.</p>
-<p>For shoebox rooms this updates <code class="docutils literal notranslate"><span class="pre">roomSize</span></code>, <code class="docutils literal notranslate"><span class="pre">roomVolumn</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">roomAreas</span></code>. For convex rooms this updates <code class="docutils literal notranslate"><span class="pre">vertices</span></code>,
-<code class="docutils literal notranslate"><span class="pre">wallCenters</span></code>, and optionally the derived volume and per-wall areas.</p>
+<dt class="sig sig-object py" id="deism.core_deism.DEISM.update_source_receiver">
+<span class="sig-name descname"><span class="pre">update_source_receiver</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">receiver</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/core_deism.html#DEISM.update_source_receiver"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.core_deism.DEISM.update_source_receiver" title="Link to this definition"></a></dt>
+<dd><p>Update source and receiver positions with conflict checking</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="DEISM.update_wall_materials">
-<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">update_wall_materials</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freqs_bands</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">datatype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.update_wall_materials" title="Link to this definition"></a></dt>
-<dd><p>Update and convert wall-material parameters.</p>
-<p>This method maintains <code class="docutils literal notranslate"><span class="pre">impedance</span></code>, <code class="docutils literal notranslate"><span class="pre">absorpCoefficient</span></code>,
-<code class="docutils literal notranslate"><span class="pre">reverberationTime</span></code>, and <code class="docutils literal notranslate"><span class="pre">freqs_bands</span></code>. For shoebox rooms it also
-updates <code class="docutils literal notranslate"><span class="pre">n1</span></code>, <code class="docutils literal notranslate"><span class="pre">n2</span></code>, and <code class="docutils literal notranslate"><span class="pre">n3</span></code>.</p>
+<dt class="sig sig-object py" id="deism.core_deism.DEISM.update_room">
+<span class="sig-name descname"><span class="pre">update_room</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">roomDimensions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wallCenters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roomVolumn</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roomAreas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/core_deism.html#DEISM.update_room"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.core_deism.DEISM.update_room" title="Link to this definition"></a></dt>
+<dd><p>Update the room dimensions
+Inputs:
+For shoebox room:
+- roomDimensions: numpy array of size 3, the room dimensions [length, width, height]
+For convex room:
+- roomDimensions: numpy array of size (N, 3), N is the number of vertices of the room
+- wallCenters: numpy array of size (M, 3), M is the number of wall centers, used for more accurate impedance definition
+- roomVolumn: float, the room volumn
+- roomAreas: numpy array of size (M,), M is the number of walls, the areas of the walls</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="DEISM.update_freqs">
-<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">update_freqs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.update_freqs" title="Link to this definition"></a></dt>
-<dd><p>Update frequency-dependent state.</p>
-<p>This method computes <code class="docutils literal notranslate"><span class="pre">freqs</span></code> and <code class="docutils literal notranslate"><span class="pre">waveNumbers</span></code>, updates
-<code class="docutils literal notranslate"><span class="pre">pointSrcStrength</span></code> when receiver normalization is active, interpolates
-materials to the working frequency grid, and in convex workflows builds the
-room engine used by later ARG steps.</p>
+<dt class="sig sig-object py" id="deism.core_deism.DEISM.update_wall_materials">
+<span class="sig-name descname"><span class="pre">update_wall_materials</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freqs_bands</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">datatype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/core_deism.html#DEISM.update_wall_materials"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.core_deism.DEISM.update_wall_materials" title="Link to this definition"></a></dt>
+<dd><p>Update impedance parameters with conflict checking
+Inputs:
+- datain: numpy arrays of size 6 * len(frequency bands) for shoebox rooms (impedance and absorption coefficients), 1D numpy array for reverberation time
+- freqs_bands: numpy array of size len(frequency bands)
+- datatype: str, the type of the parameters to be converted
+1. “imp”: impedance
+2. “abs”: absorption coefficients
+3. “t60”: reverberation time</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="DEISM.update_source_receiver">
-<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">update_source_receiver</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">receiver</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.update_source_receiver" title="Link to this definition"></a></dt>
-<dd><p>Update source and receiver positions and regenerate geometry-dependent image
-data.</p>
-<p>Shoebox workflows update <code class="docutils literal notranslate"><span class="pre">images</span></code> from the room dimensions and positions.
-Convex workflows update <code class="docutils literal notranslate"><span class="pre">images</span></code> and <code class="docutils literal notranslate"><span class="pre">reflection_matrix</span></code> through the
-convex room engine.</p>
+<dt class="sig sig-object py" id="deism.core_deism.DEISM.update_directivities">
+<span class="sig-name descname"><span class="pre">update_directivities</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/core_deism.html#DEISM.update_directivities"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.core_deism.DEISM.update_directivities" title="Link to this definition"></a></dt>
+<dd><p>Update the directivities</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="DEISM.update_directivities">
-<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">update_directivities</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.update_directivities" title="Link to this definition"></a></dt>
-<dd><p>Initialize source and receiver directivity state for the current frequency
-grid and execution method.</p>
-<p>This step also computes vectorized LC forms and Wigner terms when required
-by the selected method.</p>
+<dt class="sig sig-object py" id="deism.core_deism.DEISM.run_DEISM">
+<span class="sig-name descname"><span class="pre">run_DEISM</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">if_clean_up</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">if_shutdown_ray</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/core_deism.html#DEISM.run_DEISM"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.core_deism.DEISM.run_DEISM" title="Link to this definition"></a></dt>
+<dd><p>Run DEISM using the Numba backend (default).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>if_clean_up</strong> (<em>bool</em>) – If True, delete large image arrays after computation.</p></li>
+<li><p><strong>if_shutdown_ray</strong> (<em>bool</em>) – Ignored (kept for backward compatibility).
+Only used by run_DEISM_ray().</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="DEISM.run_DEISM">
-<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">run_DEISM</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">if_clean_up</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">if_shutdown_ray</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.run_DEISM" title="Link to this definition"></a></dt>
-<dd><p>Run the default Numba-backed computation and store the result in
-<code class="docutils literal notranslate"><span class="pre">params[&quot;RTF&quot;]</span></code>.</p>
-<p>When <code class="docutils literal notranslate"><span class="pre">if_clean_up</span></code> is <code class="docutils literal notranslate"><span class="pre">True</span></code>, large image arrays are removed from
-<code class="docutils literal notranslate"><span class="pre">params</span></code> after the run.</p>
+<dt class="sig sig-object py" id="deism.core_deism.DEISM.run_DEISM_ray">
+<span class="sig-name descname"><span class="pre">run_DEISM_ray</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">if_clean_up</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">if_shutdown_ray</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/core_deism.html#DEISM.run_DEISM_ray"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.core_deism.DEISM.run_DEISM_ray" title="Link to this definition"></a></dt>
+<dd><p>Run DEISM using the Ray backend (legacy).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>if_clean_up</strong> (<em>bool</em>)</p></li>
+<li><p><strong>if_shutdown_ray</strong> (<em>bool</em>)</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
-<dl class="py method">
-<dt class="sig sig-object py" id="DEISM.run_DEISM_ray">
-<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">run_DEISM_ray</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">if_clean_up</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">if_shutdown_ray</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.run_DEISM_ray" title="Link to this definition"></a></dt>
-<dd><p>Run the legacy Ray backend.</p>
 </dd></dl>
 
 </section>
 <section id="supporting-helpers">
 <h2>Supporting helpers<a class="headerlink" href="#supporting-helpers" title="Link to this heading"></a></h2>
 <dl class="py function">
-<dt class="sig sig-object py" id="detect_conflicts">
-<span class="sig-name descname"><span class="pre">detect_conflicts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#detect_conflicts" title="Link to this definition"></a></dt>
-<dd><p>Print warnings for inconsistent parameter combinations without modifying the
-parameter dictionary.</p>
+<dt class="sig sig-object py" id="deism.data_loader.detect_conflicts">
+<span class="sig-prename descclassname"><span class="pre">deism.data_loader.</span></span><span class="sig-name descname"><span class="pre">detect_conflicts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/data_loader.html#detect_conflicts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.data_loader.detect_conflicts" title="Link to this definition"></a></dt>
+<dd><p>Print warnings for parameter conflicts. Does not modify params and does not raise.</p>
+<p>Use this for diagnostics only. For enforcement (modify params for monopole,
+raise on invalid config), use ConflictChecks.check_all_conflicts(params) instead.</p>
+<p>Suggested placement: after initializing all parameters, before running
+pre_calc_images_src_rec, run_DEISM, pre_calc_Wigner, init_source_directivity,
+init_receiver_directivity, or other DEISM-ARG functions.</p>
 </dd></dl>
 
 <dl class="py class">
-<dt class="sig sig-object py" id="ConflictChecks">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ConflictChecks</span></span><a class="headerlink" href="#ConflictChecks" title="Link to this definition"></a></dt>
-<dd><p>Static validation helpers used internally by the class workflow.</p>
-<p>The main entry point is <code class="docutils literal notranslate"><span class="pre">ConflictChecks.check_all_conflicts(params)</span></code>.</p>
+<dt class="sig sig-object py" id="deism.data_loader.ConflictChecks">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">deism.data_loader.</span></span><span class="sig-name descname"><span class="pre">ConflictChecks</span></span><a class="reference internal" href="_modules/deism/data_loader.html#ConflictChecks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.data_loader.ConflictChecks" title="Link to this definition"></a></dt>
+<dd><p>Static methods for efficient parameter conflict checking</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="deism.data_loader.ConflictChecks.directivity_checks">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">directivity_checks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/data_loader.html#ConflictChecks.directivity_checks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.data_loader.ConflictChecks.directivity_checks" title="Link to this definition"></a></dt>
+<dd><p>Check directivity-related parameter conflicts</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="deism.data_loader.ConflictChecks.distance_spheres_checks">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">distance_spheres_checks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/data_loader.html#ConflictChecks.distance_spheres_checks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.data_loader.ConflictChecks.distance_spheres_checks" title="Link to this definition"></a></dt>
+<dd><p>Check distance-related parameter conflicts</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="deism.data_loader.ConflictChecks.wall_material_checks">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">wall_material_checks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/data_loader.html#ConflictChecks.wall_material_checks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.data_loader.ConflictChecks.wall_material_checks" title="Link to this definition"></a></dt>
+<dd><p>Check wall material parameter conflicts</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="deism.data_loader.ConflictChecks.distance_boundaries_checks">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">distance_boundaries_checks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/data_loader.html#ConflictChecks.distance_boundaries_checks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.data_loader.ConflictChecks.distance_boundaries_checks" title="Link to this definition"></a></dt>
+<dd><p>Check distance from source and receiver to the boundaries of the room</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="deism.data_loader.ConflictChecks.check_all_conflicts">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">check_all_conflicts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/data_loader.html#ConflictChecks.check_all_conflicts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.data_loader.ConflictChecks.check_all_conflicts" title="Link to this definition"></a></dt>
+<dd><p>Run all conflict checks efficiently</p>
+</dd></dl>
+
 </dd></dl>
 
 </section>
 <section id="convex-room-internals">
 <h2>Convex-room internals<a class="headerlink" href="#convex-room-internals" title="Link to this heading"></a></h2>
+<p>New users should normally stay with <code class="docutils literal notranslate"><span class="pre">DEISM</span></code>. <code class="docutils literal notranslate"><span class="pre">Room_deism_cpp</span></code> is a lower
+level helper used by the convex-room path.</p>
 <dl class="py class">
-<dt class="sig sig-object py" id="Room_deism_cpp">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Room_deism_cpp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">choose_wall_centers</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#Room_deism_cpp" title="Link to this definition"></a></dt>
-<dd><p>Convex-room helper class used by DEISM-ARG for geometry initialization,
-visibility checks, and reflection-path generation.</p>
-<p>New users should start with the <code class="docutils literal notranslate"><span class="pre">DEISM</span></code> class rather than instantiating
-<code class="docutils literal notranslate"><span class="pre">Room_deism_cpp</span></code> directly.</p>
+<dt class="sig sig-object py" id="deism.core_deism_arg.Room_deism_cpp">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">deism.core_deism_arg.</span></span><span class="sig-name descname"><span class="pre">Room_deism_cpp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">choose_wall_centers</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/deism/core_deism_arg.html#Room_deism_cpp"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deism.core_deism_arg.Room_deism_cpp" title="Link to this definition"></a></dt>
+<dd><p>Low-level convex-room helper used by DEISM-ARG for room setup and images.</p>
 </dd></dl>
 
 </section>

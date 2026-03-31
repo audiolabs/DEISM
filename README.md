@@ -20,359 +20,244 @@ In DEISM-ARG, we can model the room transfer function between transducers mounte
 
 **[📖 Read the full documentation on Read the Docs](https://deism.readthedocs.io/)**
 
-# Preparation and installing
+# Installation
 
-DEISM supports Python versions 3.9, 3.10, and 3.11, and works on Windows, macOS, and Linux. You can install DEISM using either **Python virtual environments** or **Conda**.
+DEISM supports Python 3.9, 3.10, and 3.11 on Windows, macOS, and Linux.
+The current documentation is organized around the class-based workflow
+implemented by `deism.core_deism.DEISM`.
 
-## Check Python Version
+Useful entry points:
 
-First, verify you have Python 3.9, 3.10, or 3.11 installed. Click on your operating system below:
+- [Quickstart](docs/quickstart.rst)
+- [Workflows](docs/workflows.rst)
+- [Parameter dependencies](docs/parameter_dependencies.rst)
+- [Configuration](docs/configuration.rst)
 
-<details>
-<summary><b>macOS</b></summary>
+## Check Python version
 
-Open the Terminal by pressing 'Command+Spacebar' and searching for 'Terminal'. Once the Terminal is open, type:
-
-```bash
-python3 --version
-```
-
-> **Tip:** If you have not used the terminal before, you may be prompted to install Xcode Command Line Tools. Follow the prompts to install the package, then try the command again.
-
-If you don't have Python or have an older version, download and install Python from [python.org](https://www.python.org/downloads/).
-
-</details>
-
-<details>
-<summary><b>Linux/WSL</b></summary>
-
-In your shell, run:
+On macOS or Linux:
 
 ```bash
 python3 --version
 ```
 
-To check available Python versions for your distribution:
-
-```bash
-sudo apt update
-apt show python3
-```
-
-If you need to install Python, run:
-
-```bash
-sudo apt install python3 python3-pip python3-venv
-```
-
-</details>
-
-<details>
-<summary><b>Windows</b></summary>
-
-Open PowerShell by typing "PowerShell" in the Windows search bar. Once inside PowerShell, type:
+On Windows PowerShell:
 
 ```powershell
-python3 --version
+python --version
 ```
 
-Alternatively, you can type `python` and press Enter to open the Microsoft Store's installation page for Python.
+If you do not have a supported Python version, install one from
+[python.org](https://www.python.org/downloads/).
 
-If you don't have Python or have an older version, download and install Python from [python.org](https://www.python.org/downloads/).
+## Installation method 1: Python virtual environment
 
-</details>
+### End users
 
----
-
-## Installation Method 1: Python Virtual Environment
-
-### Install DEISM (End Users)
-
-<details>
-<summary><b>macOS</b></summary>
-
-In the terminal, run:
+On macOS or Linux:
 
 ```bash
-# Create virtual environment (recommended location)
 python3 -m venv ~/.venv/deism
 source ~/.venv/deism/bin/activate
-
-# Install DEISM
-pip install --upgrade pip
-pip install deism
+python -m pip install --upgrade pip
+python -m pip install deism
 ```
 
-</details>
-
-<details>
-<summary><b>Linux/WSL</b></summary>
-
-In your shell, run:
-
-```bash
-# Create virtual environment (recommended location)
-python3 -m venv ~/.venv/deism
-source ~/.venv/deism/bin/activate
-
-# Install DEISM
-pip install --upgrade pip
-pip install deism
-```
-
-</details>
-
-<details>
-<summary><b>Windows</b></summary>
-
-In PowerShell, run:
+On Windows PowerShell:
 
 ```powershell
-# Create virtual environment (recommended location)
 python -m venv C:\Users\<YourUsername>\venvs\deism
 C:\Users\<YourUsername>\venvs\deism\Scripts\Activate.ps1
-
-# Install DEISM
 python -m pip install --upgrade pip
-pip install deism
+python -m pip install deism
 ```
 
-> **Tip:** If you get an execution policy error, run PowerShell as Administrator and execute:
-> ```powershell
-> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-> ```
-
-</details>
-
-### Install DEISM (Developers)
-
-<details>
-<summary><b>macOS</b></summary>
-
-In the terminal, run:
-
-```bash
-# Clone repository
-git clone https://github.com/audiolabs/DEISM.git
-cd DEISM
-
-# Create virtual environment (recommended location)
-python3 -m venv ~/.venv/deism_dev
-source ~/.venv/deism_dev/bin/activate
-
-# Install in editable mode
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install -e .
-```
-
-</details>
-
-<details>
-<summary><b>Linux/WSL</b></summary>
-
-In your shell, run:
-
-```bash
-# Clone repository
-git clone https://github.com/audiolabs/DEISM.git
-cd DEISM
-
-# Create virtual environment (recommended location)
-python3 -m venv ~/.venv/deism_dev
-source ~/.venv/deism_dev/bin/activate
-
-# Install in editable mode
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install -e .
-```
-
-</details>
-
-<details>
-<summary><b>Windows</b></summary>
-
-In PowerShell, run:
+If PowerShell blocks activation, run:
 
 ```powershell
-# Clone repository
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+### Developers
+
+On macOS or Linux:
+
+```bash
 git clone https://github.com/audiolabs/DEISM.git
 cd DEISM
+python3 -m venv ~/.venv/deism_dev
+source ~/.venv/deism_dev/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -e .
+```
 
-# Create virtual environment (recommended location)
+On Windows PowerShell:
+
+```powershell
+git clone https://github.com/audiolabs/DEISM.git
+cd DEISM
 python -m venv C:\Users\<YourUsername>\venvs\deism_dev
 C:\Users\<YourUsername>\venvs\deism_dev\Scripts\Activate.ps1
-
-# Install in editable mode
 python -m pip install --upgrade pip
-pip install -r requirements.txt
-pip install -e .
+python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
 
-</details>
+## Installation method 2: Conda environment
 
----
+### End users
 
-## Installation Method 2: Conda Environment
-
-### Install DEISM (End Users)
-
-**All Platforms:**
 ```bash
-# Create conda environment
 conda create -n deism python=3.9
 conda activate deism
-
-# Install DEISM
-pip install --upgrade pip
-pip install deism
+python -m pip install --upgrade pip
+python -m pip install deism
 ```
 
-### Install DEISM (Developers)
+### Developers
 
-**All Platforms:**
 ```bash
-# Clone repository
 git clone https://github.com/audiolabs/DEISM.git
 cd DEISM
-
-# Create conda environment from file
 conda env create -f deism_env.yml
 conda activate DEISM
-
-# Install in editable mode
-pip install -e .
+python -m pip install -e .
 ```
 
-**Alternative:** If `deism_env.yml` doesn't work, try the exact versions file:
+If `deism_env.yml` does not work on your machine, try:
+
 ```bash
 conda env create -f deism_env_exact.yml
 conda activate DEISM
-pip install -e .
+python -m pip install -e .
 ```
 
----
+## Optional build tools
 
-## Build Tools Requirements
+DEISM can build an optional C++ helper during installation. If a compiler is
+missing, the package still runs, but the optional `count_reflections` helper
+will not be available.
 
-DEISM compiles C++ extensions during installation. You'll need a C++ compiler. Click on your operating system:
-
-<details>
-<summary><b>macOS</b></summary>
-
-Install Xcode Command Line Tools:
+macOS:
 
 ```bash
 xcode-select --install
 ```
 
-</details>
+Ubuntu or Debian:
 
-<details>
-<summary><b>Linux/WSL</b></summary>
-
-**Ubuntu/Debian:**
 ```bash
 sudo apt-get update
 sudo apt-get install build-essential g++ python3-dev
 ```
 
-**RHEL/CentOS/Fedora:**
+RHEL, CentOS, or Fedora:
+
 ```bash
 sudo yum install gcc-c++ python3-devel
 ```
 
-</details>
+Windows:
 
-<details>
-<summary><b>Windows</b></summary>
+- Install [MinGW-w64](https://www.mingw-w64.org/downloads/) and add it to `PATH`, or
+- install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with the C++ workload.
 
-**Option 1:** Install [MinGW-w64](https://www.mingw-w64.org/downloads/) and add to PATH
+## Verify the installation
 
-**Option 2:** Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) (select "C++ build tools" during installation)
+Basic import check:
 
-</details>
-
-> **Note:** If the compiler is missing, DEISM will still install but the optional `count_reflections` C++ library won't be compiled (Python fallback will be used).
-
----
-
-## Troubleshooting
-
-**PowerShell execution policy error (Windows):**
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-**"g++: command not found" (Linux/macOS):**
-- Linux: `sudo apt-get install build-essential`
-- macOS: `xcode-select --install`
-
-**"ModuleNotFoundError: No module named 'pybind11'":**
 ```bash
-pip install pybind11>=2.2
-pip install deism  # or pip install -e .
+python -c "import deism; print('DEISM import OK')"
 ```
 
-**Conda environment issues:**
-- If you encounter errors with `deism_env.yml`, try `deism_env_exact.yml` which contains exact package versions
-- Ensure conda is up to date: `conda update conda`
+Quick help check:
 
-## Additional heads up
-- You would need to an external LaTeX installation to render text properly when running the examples, since we enable `plt.rcParams["text.usetex"] = True` when plotting the simulated room transfer functions. Please refer to this page for more information [Matplotlib usetex Documentation](https://matplotlib.org/stable/users/explain/text/usetex.html). 
+```bash
+python examples/deism_singleparam_example.py --help
+```
 
-# Running codes
+Quick smoke run:
 
-## Single set of parameters
+```bash
+python examples/deism_singleparam_example.py
+```
 
-The default parameters are defined in file **configSingleParam.yml** or **configSingleParam_ARG.yml**, depending on whether you want to run for shoebox rooms or more complicated room shapes. Take DEISM-ARG (**configSingleParam_ARG.yml**) as an example, there are two ways of running the codes: 
+## Additional notes
 
-1. You can directly run **deism_arg_singleparam_example.py** in an IDE, which utilizes the parameters defined in **configSingleParam_arg.yml**.
-2. You can run **deism_arg_singleparam_example.py** from the command line after activating the conda environment. In addition, you can access help information quickly by `python deism_arg_singleparam_example.py --help`. You can then change the parameters based on the instructions from the help message, e.g., `python deism_arg_singleparam_example.py -c 350 -zs 20` will change the parameter sound speed and the wall impedance. The new input value of the parameters then overrides the ones in file **configSingleParam_arg.yml**. After choosing the needed values, you can run the codes using, e.g., `python deism_arg_singleparam_example.py -c 350 -zs 20 --run`. 
-3. You need to specify additionally the following parameters in the function `init_parameters` of **deism_arg_singleparam_example.py**:
-   1. The vertices of the room
-   2. If rotate the room w.r.t the origin. This can be useful if you want to have some comparisons with the rooms created using pyroomacoustics.
-   3. The rotation angles of the room if it needs to be rotated.  
-4. You can suppress all output information in the command line by adding flag "--quiet" or by setting the first parameters in the configuration.yml file SilentMode to 1. 
+- Some plotting utilities use `matplotlib` with `text.usetex = True`, so a
+  LaTeX installation may be needed for figure rendering. See the
+  [Matplotlib usetex documentation](https://matplotlib.org/stable/users/explain/text/usetex.html).
+- Most example outputs are written below `outputs/`.
 
+# Running DEISM
 
+The current public workflow is class-based:
 
-# Examples 
+```python
+from deism.core_deism import DEISM
 
-## DEISM-ARG
+deism = DEISM("RIR", "shoebox")
+deism.update_room()
+deism.update_wall_materials()
+deism.update_freqs()
+deism.update_directivities()
+deism.update_source_receiver()
+deism.run_DEISM()
+```
 
-- An example of running DEISM-ARG is **examples/deism_arg_single_example.py**
-  - You can run this from IDEs or via the command line, as introduced in the previous section
-- An example of comparing different versions of DEISM-ARG is given in **examples/deism_args_compare.py**. A frequency- and wall-dependent impedance definition can also be applied for a convex room. The room transfer functions are compared among:
-  - Original version (most computation-costly)
-  - LC version (fastest)
-  - Mix version (Trade-offs between Original and LC versions): Early reflections up to some changeable order (default is 2) are calculated using the original version and the higher orders are calculated using the LC version. 
-- An example of comparing DEISM-ARG and pyroomacoustics is **examples/deism_arg_pra_compare.py**, Comparisons are done regarding if the following results are identical or mismatched only by a small deviation:
-  - number of images
-  - the positions of the images
+## Default configuration files
 
-## DEISM for shoebox
+DEISM selects its default YAML configuration from the pair `(mode, roomtype)`:
 
-We provide two examples for running the original DEISM for shoebox rooms 
+| Mode | Room type | Default config file |
+| --- | --- | --- |
+| `RTF` | `shoebox` | `examples/configSingleParam_RTF.yml` |
+| `RIR` | `shoebox` | `examples/configSingleParam_RIR.yml` |
+| `RTF` | `convex` | `examples/configSingleParam_ARG_RTF.yml` |
+| `RIR` | `convex` | `examples/configSingleParam_ARG_RIR.yml` |
 
-- An example of running DEISM-shoebox is **examples/deism_singleparam_example.py**
-  - You can either run this from IDEs or via the cmd
-- An example of comparing different DEISM versions are shown in **examples/deisms_lc_mix_test.py**. In this script, the following methods are compared
-  - DEISM - original
-  - DEISM - MIX (original + LC vectorized)
-  - DEISM - LC vectorized 
-  - FEM as groundtruth (only for this specific parameter settings)
+## Workflow order
 
+Shoebox workflow:
 
+- `update_room()`
+- `update_wall_materials()`
+- `update_freqs()`
+- `update_directivities()` and `update_source_receiver()` in either order
+- `run_DEISM()`
 
+Convex workflow:
 
-## Tips
+- `update_room()`
+- `update_wall_materials()`
+- `update_freqs()`
+- `update_source_receiver()`
+- `update_directivities()`
+- `run_DEISM()`
 
-The example code only provides essential functionalities based on DEISM. For more complex scenarios, please contact the authors (zeyu.xu@audiolabs-erlangen.de) for support. In the following, a few important tips might be helpful for you: 
+The convex order is stricter because ARG directivity setup depends on
+reflection-path state computed during `update_source_receiver()`.
 
-- If you want to simulate the scenario where both the source and receiver are positioned on the same speaker, you need to run DEISM for all reflection path except for the direct path. 
-- It is recommended to set the distance at least 1m between the transducers and the walls. 
+## Recommended starting examples
+
+Beginner examples:
+
+- `examples/deism_singleparam_example.py` for the current shoebox path
+- `examples/deism_arg_singleparam_example.py` for the current convex path
+
+Advanced or research-oriented examples:
+
+- `examples/deisms_lc_mix_test.py`
+- `examples/shoebox_images_cal_compare.py`
+- `examples/deism_args_compare.py`
+- `examples/deism_arg_pra_compare.py`
+- `examples/deism_arg_IWAENC_fig5_fig6.py`
+- `examples/deism_JASA_fig8.py`
+- `examples/deism_JASA_fig9.py`
+
+For more detail, use the docs pages linked above instead of relying only on the
+older example scripts.
 
 
 
@@ -423,21 +308,14 @@ If you use this package in your research, please cite [our paper](https://doi.or
 
 
 
-# Description of the codes and functions
+# Configuration files
 
-## configSingleParam_ARG.yml
+The current default configuration files are:
 
-In this file you define the default parameters for DEISM-ARG to run. Note that this file is different from the  configSingleParam.yml on these parameters:
+- `examples/configSingleParam_RTF.yml` for shoebox `RTF`
+- `examples/configSingleParam_RIR.yml` for shoebox `RIR`
+- `examples/configSingleParam_ARG_RTF.yml` for convex `RTF`
+- `examples/configSingleParam_ARG_RIR.yml` for convex `RIR`
 
-- The dimensions are defined separately in the example script. 
-- You also need to specify if you want to rotate the room, and the rotation angles as well. 
-
-
-
-## configSingleParam.yml
-
-In this file you define the default parameters for DEISM-shoebox to run.
-
-
-
-[^Euler]: https://mathworld.wolfram.com/EulerAngles.html
+See [docs/configuration.rst](docs/configuration.rst) for the configuration
+groups and runtime parameter mappings.
