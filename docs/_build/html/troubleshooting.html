@@ -1,0 +1,258 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Troubleshooting &mdash; DEISM 2.2.1.11 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=247ccb63"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="API Reference" href="api_reference.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DEISM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="workflows.html">Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="parameter_dependencies.html">Parameter Dependencies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Troubleshooting</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#wrong-update-order">Wrong update order</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#directivity-frequency-mismatch">Directivity frequency mismatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#convex-room-ordering-problems">Convex-room ordering problems</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#missing-directivity-or-reference-data-files">Missing directivity or reference data files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#optional-compiler-issues">Optional compiler issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#latex-plotting-failures">LaTeX plotting failures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#legacy-example-confusion">Legacy example confusion</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#ray-backend-questions">Ray backend questions</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DEISM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Troubleshooting</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/troubleshooting.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="troubleshooting">
+<h1>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading"></a></h1>
+<p>This page collects the most common issues encountered when using the current
+DEISM workflow.</p>
+<section id="wrong-update-order">
+<h2>Wrong update order<a class="headerlink" href="#wrong-update-order" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt>Symptom:</dt><dd><p>unexpected values, stale results, or missing geometry-dependent state.</p>
+</dd>
+</dl>
+<p>What to check:</p>
+<ul class="simple">
+<li><p>Did you call <code class="docutils literal notranslate"><span class="pre">update_wall_materials()</span></code> before <code class="docutils literal notranslate"><span class="pre">update_freqs()</span></code>?</p></li>
+<li><p>Did you call <code class="docutils literal notranslate"><span class="pre">update_freqs()</span></code> before <code class="docutils literal notranslate"><span class="pre">update_directivities()</span></code>?</p></li>
+<li><p>For convex rooms, did you call <code class="docutils literal notranslate"><span class="pre">update_source_receiver()</span></code> before
+<code class="docutils literal notranslate"><span class="pre">update_directivities()</span></code>?</p></li>
+</ul>
+<p>See <a class="reference internal" href="parameter_dependencies.html"><span class="doc">Parameter Dependencies</span></a> for the exact dependency rules.</p>
+</section>
+<section id="directivity-frequency-mismatch">
+<h2>Directivity frequency mismatch<a class="headerlink" href="#directivity-frequency-mismatch" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt>Symptom:</dt><dd><p>a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> indicating that the directivity-data frequencies do not
+match <code class="docutils literal notranslate"><span class="pre">params[&quot;freqs&quot;]</span></code>.</p>
+</dd>
+</dl>
+<p>Cause:</p>
+<ul class="simple">
+<li><p>the active DEISM frequency grid does not match the external directivity data</p></li>
+<li><p>frequency settings were changed without rerunning later update steps</p></li>
+</ul>
+<p>What to do:</p>
+<ul class="simple">
+<li><p>check the active <code class="docutils literal notranslate"><span class="pre">mode</span></code> and its frequency settings</p></li>
+<li><p>rerun <code class="docutils literal notranslate"><span class="pre">update_freqs()</span></code> before <code class="docutils literal notranslate"><span class="pre">update_directivities()</span></code></p></li>
+<li><p>make sure the loaded directivity data was generated for the same frequency grid</p></li>
+</ul>
+</section>
+<section id="convex-room-ordering-problems">
+<h2>Convex-room ordering problems<a class="headerlink" href="#convex-room-ordering-problems" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt>Symptom:</dt><dd><p>missing reflection-path state or failures during ARG directivity setup.</p>
+</dd>
+</dl>
+<p>Cause:</p>
+<ul class="simple">
+<li><p>convex workflows require reflection-path state before ARG source
+directivities are initialized</p></li>
+</ul>
+<p>What to do:</p>
+<ul class="simple">
+<li><p>call <code class="docutils literal notranslate"><span class="pre">update_freqs()</span></code></p></li>
+<li><p>call <code class="docutils literal notranslate"><span class="pre">update_source_receiver()</span></code></p></li>
+<li><p>only then call <code class="docutils literal notranslate"><span class="pre">update_directivities()</span></code></p></li>
+</ul>
+</section>
+<section id="missing-directivity-or-reference-data-files">
+<h2>Missing directivity or reference data files<a class="headerlink" href="#missing-directivity-or-reference-data-files" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt>Symptom:</dt><dd><p>file-not-found errors while running examples that load measured or simulated
+data.</p>
+</dd>
+</dl>
+<p>What to check:</p>
+<ul class="simple">
+<li><p>whether the expected <code class="docutils literal notranslate"><span class="pre">examples/data</span></code> content is present</p></li>
+<li><p>whether the selected directivity names match the available files</p></li>
+<li><p>whether the example depends on external reference data such as COMSOL results</p></li>
+</ul>
+</section>
+<section id="optional-compiler-issues">
+<h2>Optional compiler issues<a class="headerlink" href="#optional-compiler-issues" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt>Symptom:</dt><dd><p>installation succeeds, but optional C++ acceleration helpers are unavailable.</p>
+</dd>
+</dl>
+<p>Cause:</p>
+<ul class="simple">
+<li><p>the optional <code class="docutils literal notranslate"><span class="pre">count_reflections</span></code> helper could not be compiled</p></li>
+</ul>
+<p>What to do:</p>
+<ul class="simple">
+<li><p>install a working C++ compiler</p></li>
+<li><p>reinstall the package in editable mode</p></li>
+<li><p>note that the rest of the package can still run without that helper</p></li>
+</ul>
+</section>
+<section id="latex-plotting-failures">
+<h2>LaTeX plotting failures<a class="headerlink" href="#latex-plotting-failures" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt>Symptom:</dt><dd><p>plotting scripts fail when saving figures.</p>
+</dd>
+</dl>
+<p>Cause:</p>
+<ul class="simple">
+<li><p>some utilities enable <code class="docutils literal notranslate"><span class="pre">matplotlib</span></code> <code class="docutils literal notranslate"><span class="pre">usetex</span></code></p></li>
+</ul>
+<p>What to do:</p>
+<ul class="simple">
+<li><p>install a LaTeX distribution</p></li>
+<li><p>or avoid the plotting path that requires <code class="docutils literal notranslate"><span class="pre">usetex</span></code></p></li>
+</ul>
+</section>
+<section id="legacy-example-confusion">
+<h2>Legacy example confusion<a class="headerlink" href="#legacy-example-confusion" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt>Symptom:</dt><dd><p>example scripts appear to use different config files or lower-level helper
+paths.</p>
+</dd>
+</dl>
+<p>Cause:</p>
+<ul class="simple">
+<li><p>the repository contains both current class-based examples and older research
+scripts</p></li>
+</ul>
+<p>What to do:</p>
+<ul class="simple">
+<li><p>start with <code class="docutils literal notranslate"><span class="pre">deism_singleparam_example.py</span></code> or
+<code class="docutils literal notranslate"><span class="pre">deism_arg_singleparam_example.py</span></code></p></li>
+<li><p>treat <code class="docutils literal notranslate"><span class="pre">deism_args_compare.py</span></code> and <code class="docutils literal notranslate"><span class="pre">deism_arg_pra_compare.py</span></code> as advanced
+or legacy examples</p></li>
+</ul>
+</section>
+<section id="ray-backend-questions">
+<h2>Ray backend questions<a class="headerlink" href="#ray-backend-questions" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt>Symptom:</dt><dd><p>uncertainty about whether to use <code class="docutils literal notranslate"><span class="pre">run_DEISM()</span></code> or <code class="docutils literal notranslate"><span class="pre">run_DEISM_ray()</span></code>.</p>
+</dd>
+</dl>
+<p>Recommendation:</p>
+<ul class="simple">
+<li><p>prefer <code class="docutils literal notranslate"><span class="pre">run_DEISM()</span></code> for normal use</p></li>
+<li><p>treat <code class="docutils literal notranslate"><span class="pre">run_DEISM_ray()</span></code> as a legacy backend for specialized cases</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="api_reference.html" class="btn btn-neutral float-left" title="API Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Audiolabs Erlangen, Germany.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
