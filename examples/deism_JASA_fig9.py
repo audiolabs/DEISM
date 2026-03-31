@@ -11,7 +11,8 @@ For three shapes with the same position configuration 3, the following solutions
 2. DEISM-LC
 3. FEM
 Note that the direct path is simulated using the FEM method.
-Also notice that the frequencies are from 20 Hz to 1000 Hz, you probably need to confirm this range in the configSingleParam.yaml file
+Also notice that the frequencies are from 20 Hz to 1000 Hz, so confirm this
+range in the active shoebox configuration file.
 """
 
 # -------------------------------------------------------
@@ -37,7 +38,7 @@ from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
 def init_parameters(params):
     """
-    Paramters that are different to the default parameters in configSingleParam.yaml
+    Parameters that differ from the default shoebox configuration.
     """
     # reflection order
     params["maxReflOrder"] = 25
