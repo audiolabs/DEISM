@@ -1,0 +1,332 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Reference &mdash; DEISM 2.2.1.11 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=247ccb63"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Troubleshooting" href="troubleshooting.html" />
+    <link rel="prev" title="Examples" href="examples.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DEISM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="workflows.html">Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="parameter_dependencies.html">Parameter Dependencies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#primary-public-class">Primary public class</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#DEISM"><code class="docutils literal notranslate"><span class="pre">DEISM</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#workflow-methods">Workflow methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#DEISM.update_room"><code class="docutils literal notranslate"><span class="pre">DEISM.update_room()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#DEISM.update_wall_materials"><code class="docutils literal notranslate"><span class="pre">DEISM.update_wall_materials()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#DEISM.update_freqs"><code class="docutils literal notranslate"><span class="pre">DEISM.update_freqs()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#DEISM.update_source_receiver"><code class="docutils literal notranslate"><span class="pre">DEISM.update_source_receiver()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#DEISM.update_directivities"><code class="docutils literal notranslate"><span class="pre">DEISM.update_directivities()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#DEISM.run_DEISM"><code class="docutils literal notranslate"><span class="pre">DEISM.run_DEISM()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#DEISM.run_DEISM_ray"><code class="docutils literal notranslate"><span class="pre">DEISM.run_DEISM_ray()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#supporting-helpers">Supporting helpers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#detect_conflicts"><code class="docutils literal notranslate"><span class="pre">detect_conflicts()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ConflictChecks"><code class="docutils literal notranslate"><span class="pre">ConflictChecks</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#convex-room-internals">Convex-room internals</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#Room_deism_cpp"><code class="docutils literal notranslate"><span class="pre">Room_deism_cpp</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#important-runtime-fields">Important runtime fields</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#directivity-data-expectations">Directivity data expectations</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DEISM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">API Reference</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/api_reference.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="api-reference">
+<h1>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h1>
+<p>This page summarizes the public workflow surface that the current
+documentation treats as primary.</p>
+<section id="primary-public-class">
+<h2>Primary public class<a class="headerlink" href="#primary-public-class" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="DEISM">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">DEISM</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roomtype</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">silent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM" title="Link to this definition"></a></dt>
+<dd><p>Main user-facing workflow class for DEISM and DEISM-ARG.</p>
+<section id="parameters">
+<h3>Parameters<a class="headerlink" href="#parameters" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">mode</span></code></dt><dd><p>Either <code class="docutils literal notranslate"><span class="pre">&quot;RTF&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;RIR&quot;</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">roomtype</span></code></dt><dd><p>Either <code class="docutils literal notranslate"><span class="pre">&quot;shoebox&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;convex&quot;</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">silent</span></code></dt><dd><p>If <code class="docutils literal notranslate"><span class="pre">True</span></code>, suppresses most console output.</p>
+</dd>
+</dl>
+</section>
+<section id="typical-usage-pattern">
+<h3>Typical usage pattern<a class="headerlink" href="#typical-usage-pattern" title="Link to this heading"></a></h3>
+<ol class="arabic simple">
+<li><p>Instantiate <code class="docutils literal notranslate"><span class="pre">DEISM(mode,</span> <span class="pre">roomtype)</span></code>.</p></li>
+<li><p>Call <code class="docutils literal notranslate"><span class="pre">update_room()</span></code>.</p></li>
+<li><p>Call <code class="docutils literal notranslate"><span class="pre">update_wall_materials()</span></code>.</p></li>
+<li><p>Call <code class="docutils literal notranslate"><span class="pre">update_freqs()</span></code>.</p></li>
+<li><p>Call <code class="docutils literal notranslate"><span class="pre">update_source_receiver()</span></code> and <code class="docutils literal notranslate"><span class="pre">update_directivities()</span></code> in the
+roomtype-appropriate order.</p></li>
+<li><p>Call <code class="docutils literal notranslate"><span class="pre">run_DEISM()</span></code>.</p></li>
+</ol>
+</section>
+</dd></dl>
+
+</section>
+<section id="workflow-methods">
+<h2>Workflow methods<a class="headerlink" href="#workflow-methods" title="Link to this heading"></a></h2>
+<dl class="py method">
+<dt class="sig sig-object py" id="DEISM.update_room">
+<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">update_room</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">roomDimensions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wallCenters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roomVolumn</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">roomAreas</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.update_room" title="Link to this definition"></a></dt>
+<dd><p>Update geometry-related state.</p>
+<p>For shoebox rooms this updates <code class="docutils literal notranslate"><span class="pre">roomSize</span></code>, <code class="docutils literal notranslate"><span class="pre">roomVolumn</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">roomAreas</span></code>. For convex rooms this updates <code class="docutils literal notranslate"><span class="pre">vertices</span></code>,
+<code class="docutils literal notranslate"><span class="pre">wallCenters</span></code>, and optionally the derived volume and per-wall areas.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="DEISM.update_wall_materials">
+<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">update_wall_materials</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">datain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freqs_bands</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">datatype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.update_wall_materials" title="Link to this definition"></a></dt>
+<dd><p>Update and convert wall-material parameters.</p>
+<p>This method maintains <code class="docutils literal notranslate"><span class="pre">impedance</span></code>, <code class="docutils literal notranslate"><span class="pre">absorpCoefficient</span></code>,
+<code class="docutils literal notranslate"><span class="pre">reverberationTime</span></code>, and <code class="docutils literal notranslate"><span class="pre">freqs_bands</span></code>. For shoebox rooms it also
+updates <code class="docutils literal notranslate"><span class="pre">n1</span></code>, <code class="docutils literal notranslate"><span class="pre">n2</span></code>, and <code class="docutils literal notranslate"><span class="pre">n3</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="DEISM.update_freqs">
+<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">update_freqs</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.update_freqs" title="Link to this definition"></a></dt>
+<dd><p>Update frequency-dependent state.</p>
+<p>This method computes <code class="docutils literal notranslate"><span class="pre">freqs</span></code> and <code class="docutils literal notranslate"><span class="pre">waveNumbers</span></code>, updates
+<code class="docutils literal notranslate"><span class="pre">pointSrcStrength</span></code> when receiver normalization is active, interpolates
+materials to the working frequency grid, and in convex workflows builds the
+room engine used by later ARG steps.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="DEISM.update_source_receiver">
+<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">update_source_receiver</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">receiver</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.update_source_receiver" title="Link to this definition"></a></dt>
+<dd><p>Update source and receiver positions and regenerate geometry-dependent image
+data.</p>
+<p>Shoebox workflows update <code class="docutils literal notranslate"><span class="pre">images</span></code> from the room dimensions and positions.
+Convex workflows update <code class="docutils literal notranslate"><span class="pre">images</span></code> and <code class="docutils literal notranslate"><span class="pre">reflection_matrix</span></code> through the
+convex room engine.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="DEISM.update_directivities">
+<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">update_directivities</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.update_directivities" title="Link to this definition"></a></dt>
+<dd><p>Initialize source and receiver directivity state for the current frequency
+grid and execution method.</p>
+<p>This step also computes vectorized LC forms and Wigner terms when required
+by the selected method.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="DEISM.run_DEISM">
+<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">run_DEISM</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">if_clean_up</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">if_shutdown_ray</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.run_DEISM" title="Link to this definition"></a></dt>
+<dd><p>Run the default Numba-backed computation and store the result in
+<code class="docutils literal notranslate"><span class="pre">params[&quot;RTF&quot;]</span></code>.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">if_clean_up</span></code> is <code class="docutils literal notranslate"><span class="pre">True</span></code>, large image arrays are removed from
+<code class="docutils literal notranslate"><span class="pre">params</span></code> after the run.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="DEISM.run_DEISM_ray">
+<span class="sig-prename descclassname"><span class="pre">DEISM.</span></span><span class="sig-name descname"><span class="pre">run_DEISM_ray</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">if_clean_up</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">if_shutdown_ray</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#DEISM.run_DEISM_ray" title="Link to this definition"></a></dt>
+<dd><p>Run the legacy Ray backend.</p>
+</dd></dl>
+
+</section>
+<section id="supporting-helpers">
+<h2>Supporting helpers<a class="headerlink" href="#supporting-helpers" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="detect_conflicts">
+<span class="sig-name descname"><span class="pre">detect_conflicts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#detect_conflicts" title="Link to this definition"></a></dt>
+<dd><p>Print warnings for inconsistent parameter combinations without modifying the
+parameter dictionary.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="ConflictChecks">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ConflictChecks</span></span><a class="headerlink" href="#ConflictChecks" title="Link to this definition"></a></dt>
+<dd><p>Static validation helpers used internally by the class workflow.</p>
+<p>The main entry point is <code class="docutils literal notranslate"><span class="pre">ConflictChecks.check_all_conflicts(params)</span></code>.</p>
+</dd></dl>
+
+</section>
+<section id="convex-room-internals">
+<h2>Convex-room internals<a class="headerlink" href="#convex-room-internals" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="Room_deism_cpp">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Room_deism_cpp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">choose_wall_centers</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#Room_deism_cpp" title="Link to this definition"></a></dt>
+<dd><p>Convex-room helper class used by DEISM-ARG for geometry initialization,
+visibility checks, and reflection-path generation.</p>
+<p>New users should start with the <code class="docutils literal notranslate"><span class="pre">DEISM</span></code> class rather than instantiating
+<code class="docutils literal notranslate"><span class="pre">Room_deism_cpp</span></code> directly.</p>
+</dd></dl>
+
+</section>
+<section id="important-runtime-fields">
+<h2>Important runtime fields<a class="headerlink" href="#important-runtime-fields" title="Link to this heading"></a></h2>
+<p>The most important entries in <code class="docutils literal notranslate"><span class="pre">deism.params</span></code> during the workflow are:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 75.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Runtime key</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">roomSize</span></code> / <code class="docutils literal notranslate"><span class="pre">vertices</span></code></p></td>
+<td><p>Active room geometry</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">impedance</span></code></p></td>
+<td><p>Working wall-impedance values, usually interpolated to the active grid</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">freqs</span></code></p></td>
+<td><p>Working frequency grid</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">waveNumbers</span></code></p></td>
+<td><p>Derived wavenumber grid</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">images</span></code></p></td>
+<td><p>Image-source and path-related state used by the computation</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">reflection_matrix</span></code></p></td>
+<td><p>Convex-room reflection-path state required by ARG source directivities</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">C_nm_s</span></code> / <code class="docutils literal notranslate"><span class="pre">C_nm_s_ARG</span></code></p></td>
+<td><p>Source directivity coefficients</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">C_vu_r</span></code></p></td>
+<td><p>Receiver directivity coefficients</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RTF</span></code></p></td>
+<td><p>Final computed result</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">updated_where</span></code></p></td>
+<td><p>Optional provenance tracking for when parameters were last refreshed</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="directivity-data-expectations">
+<h2>Directivity data expectations<a class="headerlink" href="#directivity-data-expectations" title="Link to this heading"></a></h2>
+<p>For custom directivities, the loaded data is expected to be compatible with the
+active DEISM frequency grid:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">frequencies</span></code>: <code class="docutils literal notranslate"><span class="pre">(N_freq,)</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">directions</span></code>: <code class="docutils literal notranslate"><span class="pre">(N_dir,</span> <span class="pre">2)</span></code> with azimuth and inclination in radians</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pressure_data</span></code>: <code class="docutils literal notranslate"><span class="pre">(N_freq,</span> <span class="pre">N_dir)</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">radius</span></code>: sampling sphere radius</p></li>
+</ul>
+<p>Directivity initialization checks that the data frequencies match the current
+<code class="docutils literal notranslate"><span class="pre">params[&quot;freqs&quot;]</span></code>.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="examples.html" class="btn btn-neutral float-left" title="Examples" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="troubleshooting.html" class="btn btn-neutral float-right" title="Troubleshooting" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Audiolabs Erlangen, Germany.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
