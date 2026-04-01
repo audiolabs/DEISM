@@ -1,23 +1,20 @@
 import time
 import os
 import sys
-import psutil
 import numpy as np
-import ray
 import scipy.special as scy
 import matplotlib.pyplot as plt
 
 from deism.core_deism import (
     pre_calc_Wigner,
     get_directivity_coefs,
-    ray_run_DEISM_ARG_ORG,
     init_source_directivities_ARG,
     init_receiver_directivities_ARG,
     vectorize_C_vu_r,
     vectorize_C_nm_s_ARG,
-    ray_run_DEISM_ARG_LC_matrix,
-    ray_run_DEISM_ARG_MIX,
 )
+
+from deism.parallel_backends import run_DEISM_ARG
 
 from deism.core_deism_arg import (
     Room_deism_cpp,
@@ -26,7 +23,7 @@ from deism.core_deism_arg import (
     find_wall_centers,
 )
 from deism.data_loader import (
-    cmdArgsToDict_ARG,
+    cmdArgsToDict,
     printDict,
     detect_conflicts,
 )
@@ -36,7 +33,7 @@ from deism.utilities import plot_RTFs
 def init_parameters_convex(params):
     """
     Initialize some important additional parameters for DEISM-ARG
-    In addition to the ones defined in configSingleParam_ARG.yaml
+    In addition to the ones defined in configSingleParam_ARG_RTF.yml
     """
     # Room vertices
     vertices = np.array(
@@ -92,7 +89,7 @@ def init_parameters_convex(params):
 
 
 def main():
-    params, cmdArgs = cmdArgsToDict_ARG("configSingleParam_arg.yml")
+    params, cmdArgs = cmdArgsToDict(roomtype="convex")
     params = init_parameters_convex(params)
     # detect conflicts
     detect_conflicts(params)
@@ -142,13 +139,9 @@ def main():
         params = vectorize_C_vu_r(params)
         params = vectorize_C_nm_s_ARG(params)
 
-        # Initialize Ray
-        num_cpus = psutil.cpu_count(logical=False)
-        if not ray.is_initialized():
-            ray.init(num_cpus=num_cpus, log_to_driver=False)
-            print("\n")
-        # run DEISM-ARG using LC versionyaok
-        P_DEISM_ARG_LC = ray_run_DEISM_ARG_LC_matrix(params, params["images"])
+        # Run DEISM-ARG using LC version (Numba backend)
+        params["DEISM_method"] = "LC"
+        P_DEISM_ARG_LC = run_DEISM_ARG(params)
         # -------------------------------------------------------
         # -- Calculate Wigner 3J matrices for some DEISM modes --
         # -------------------------------------------------------
@@ -157,14 +150,12 @@ def main():
         # ------------------------------------------------------------------------
         # ------ Run DEISM-ARG using the original version and mixed version ------
         # ------------------------------------------------------------------------
-        # Run DEISM
-        P_DEISM_ARG = ray_run_DEISM_ARG_ORG(params, params["images"], params["Wigner"])
+        # Run DEISM-ARG ORG
+        params["DEISM_method"] = "ORG"
+        P_DEISM_ARG = run_DEISM_ARG(params)
         # Run DEISM-ARG with mixed version
-        P_DEISM_ARG_MIX = ray_run_DEISM_ARG_MIX(
-            params, params["images"], params["Wigner"]
-        )
-        # Shutdown Ray
-        ray.shutdown()
+        params["DEISM_method"] = "MIX"
+        P_DEISM_ARG_MIX = run_DEISM_ARG(params)
         # -------------------------------------------------------
         # -- Plot the RTFs for the three versions of DEISM-ARG --
         # -------------------------------------------------------

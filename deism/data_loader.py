@@ -756,9 +756,8 @@ def parseCmdArgs_ARG(mode="RTF"):
 
 def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     """
-    Directly read the configSingleParam.yml file to obtain parameters,
-    without first writing the parameters to yml,
-    and then reconfiguring the parameters by reading the written yml file.
+    Directly read the selected configuration YAML file to obtain parameters,
+    without first writing parameters back to YAML and then reading them again.
     Determine whether the command line has entered some parameters.
     If so, override the corresponding parameters in yaml.
     If not, keep the configuration values in yaml
@@ -1031,7 +1030,8 @@ def printDict(dict):
 
 def cmdArgsToDict(mode="RTF", roomtype="shoebox"):
     """
-    Takes the command line arguments and the parameters from the configSingleParam.yml file
+    Takes the command line arguments and the parameters from the selected
+    default configuration YAML file.
     outputs:
     - params: the final configuration dictionary
     - cmdArgs: the command line arguments
@@ -1053,7 +1053,7 @@ def cmdArgsToDict(mode="RTF", roomtype="shoebox"):
             raise ValueError(f"Invalid mode: {mode}")
     else:
         raise ValueError(f"Invalid room: {roomtype}, must be 'shoebox' or 'convex'")
-    # First load the parameters in the configSingleParam.yml file directly as params,
+    # First load the selected configuration YAML file directly as params,
     configsInYaml = readYaml(yml_name)
     # parse the command line arguments
     # TODO: merge the two functions parseCmdArgs and parseCmdArgs_ARG later
@@ -1069,33 +1069,6 @@ def cmdArgsToDict(mode="RTF", roomtype="shoebox"):
     params = compute_rest_params(params)
 
     return params, cmdArgs
-
-
-# def cmdArgsToDict_ARG(mode="RTF"):
-#     """
-#     Takes the command line arguments and the parameters from the configSingleParam.yml file
-#     outputs:
-#     - params: the final configuration dictionary
-#     - cmdArgs: the command line arguments
-#     """
-#     # Decide with default yml name to load
-#     if mode == "RTF":
-#         yml_name = "configSingleParam_ARG_RTF.yml"
-#     elif mode == "RIR":
-#         yml_name = "configSingleParam_ARG_RIR.yml"
-#     else:
-#         raise ValueError(f"Invalid mode: {mode}")
-#     # First load the parameters in the configSingleParam.yml file directly as params,
-#     configsInYaml = readYaml(yml_name)
-#     # parse the command line arguments
-#     cmdArgs = parseCmdArgs_ARG(mode)
-#     # replace the corresponding variables in configsInYaml with the values entered from the command line
-#     params = loadSingleParam(configsInYaml, cmdArgs, mode)
-#     # Compute the rest of the parameters
-#     params = compute_rest_params(params)
-
-#     return params, cmdArgs
-
 
 def load_directive_pressure(silentMode, src_or_rec, name):
     """

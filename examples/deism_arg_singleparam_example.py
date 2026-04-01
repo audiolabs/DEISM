@@ -51,7 +51,7 @@ def init_parameters_convex(params):
 
 def main():
     # Use DEISM class for a convex (ARG) room
-    deism = DEISM("RTF", "convex")
+    deism = DEISM("RIR", "convex")
     params = deism.params
 
     # Override geometry/rotation with this example's convex room

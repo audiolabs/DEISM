@@ -2,12 +2,16 @@ outputs/RTFs/*
 .DS_Store
 .vscode/
 deism/__pycache__/
+**/__pycache__/
 build/
 outputs/
 var/
 deism.egg-info/
 dist/
 **/*.so
+**/*.pyd
 **/*.pyc
 media/
 new_features/
+tools/reports/
+examples/benchmarks/*.json

@@ -18,13 +18,23 @@ from deism.core_deism import DEISM
 def main():
     # Instantiate DEISM in RTF/shoebox mode.
     # Parameters are loaded from configSingleParam_RTF.yml (see data_loader).
-    deism = DEISM("RTF", "shoebox")
-
+    deism = DEISM("RIR", "shoebox")
+    room_dims = [10.0, 8.0, 2.5]
+    deism.update_room(roomDimensions=np.array(room_dims))
     params_save = deism.params.copy()
+    T60 = 1
+    deism.update_wall_materials(datain=T60, datatype="reverberationTime")
 
-    deism.update_wall_materials()
+    # sampling rate 48000 Hz
+    deism.params["sampleRate"] = 48000
+    # reverberation time 4 seconds
+    deism.params["reverberationTime"] = T60
     deism.update_freqs()
     deism.update_directivities()
+    # numba version
+    # deism.params["shoeboxImageCalcVersion"] = "v2-numba"
+    # reflection order 30
+    deism.params["maxReflOrder"] = 30
     deism.update_source_receiver()
 
     deism.run_DEISM(if_clean_up=True, if_shutdown_ray=True)
