@@ -1,40 +1,17 @@
-import os
-import yaml
+import os, sys
 import numpy as np
 import matplotlib.pyplot as plt
 from deism.core_deism import DEISM
 from deism.directivity_visualizer import Dir_Visualizer
-from deism.data_loader import detect_conflicts
 from netCDF4 import Dataset
-
-def load_custom_yaml(yaml_path, default_params):
-    """
-    Helper function to safely load a custom YAML configuration 
-    and merge it into DEISM's default parameters dictionary.
-    """
-    if not os.path.exists(yaml_path):
-        raise FileNotFoundError(f"Configuration file {yaml_path} not found!")
-        
-    with open(yaml_path, 'r', encoding='utf-8') as f:
-        custom_config = yaml.safe_load(f)
-    
-    # Flatten the YAML hierarchy into a single-level dictionary (DEISM standard)
-    for section, settings in custom_config.items():
-        if isinstance(settings, dict):
-            for k, v in settings.items():
-                default_params[k] = v
-        else:
-            default_params[section] = settings
-            
-    return default_params
 
 def get_real_brir(sofa_path, measurement_idx=0, ear_idx=0):
     """
-    Helper function to extract the real time-domain BRIR from the dataset.
+    Extract the real time-domain BRIR from the dataset.
     ear_idx: 0 for Left ear, 1 for Right ear.
+    measurement_idx=0 refers to the first angle.
     """
-    ds = Dataset(sofa_path, "r")
-    
+    ds = Dataset(sofa_path, "r")   
     # Read variables or attributes depending on the SOFA structure
     ir = ds.variables["Data.IR"][measurement_idx, ear_idx, :]
     if "Data.SamplingRate" in ds.variables:
@@ -49,18 +26,12 @@ def main():
     # 1. Instantiate DEISM in RTF/shoebox mode
     model = DEISM("RIR", "shoebox")
     
-    # 2. Load custom YAML configuration and check for conflicts
-    custom_yml_path = r"D:\Projects\DEISM\DEISM_main\DEISM\examples\configSingleParam_RTF_verify.yml"
-    print(f"Loading custom configuration from: {custom_yml_path}")
-    model.params = load_custom_yaml(custom_yml_path, model.params)
-    detect_conflicts(model.params) 
-    
-    # 3. Initialize DEISM core parameters based on the new YAML
+    # 2. Standard initialization sequence
     model.update_wall_materials()  
     model.update_freqs()           
     model.update_directivities()
     
-    # 4. Inject Directivities (KEMAR Dummy Head)
+    # 3. Inject Directivities (KEMAR Dummy Head)
     sofa_file = "./examples/data/sampled_directivity/sofa/mit_kemar_normal_pinna.sofa"
     use_recip = bool(model.params.get("ifReciprocal", 0))
 
@@ -75,53 +46,51 @@ def main():
     # Calculate image sources and paths based on the accurate coordinates
     model.update_source_receiver()
     
-    # 5. Run DEISM Simulation
+    # 4. Run DEISM Simulation
     print("Running DEISM-MIX calculation...")
     model.run_DEISM(if_clean_up=True)
     
-    # 6. Post-Processing: Convert frequency-domain RTF to time-domain RIR
-    print("Converting RTF to time-domain Impulse Response (RIR)...")
-    # get_results() performs the Inverse FFT (IFFT)
-    simulated_rir = model.get_results() 
-    
-    # 7. Load Real Measurement Data for Comparison
-    # Make sure this path points to the '003.sofa' (or whichever position you modeled)
+    simulated_rir = model.get_results(highpass_filter=False, bandpass_window=True)
+
+    # 5. Load Real Measurement
+    # Load dataset 003.sofa (Assuming this matches Grid A03)
     real_sofa_path = r"D:\Projects\DEISM\DEISM_main\DEISM\examples\data\sampled_directivity\sofa\BRIRs_from_a_room\A\003.sofa"
-    print(f"Loading real measurement from: {os.path.basename(real_sofa_path)}")
-    real_rir, fs_real = get_real_brir(real_sofa_path, measurement_idx=0, ear_idx=0)
     
-    # 8. Visualization & Validation
-    # Calculate time axes based on sampling rates
-    # model.params["fs"] is usually calculated as endFrequency * 2
-    fs_sim = model.params.get("fs", 44100.0) 
-    t_sim = np.arange(len(simulated_rir)) / fs_sim
-    t_real = np.arange(len(real_rir)) / fs_real
+    # KEY STEP: Extract measurement_idx = 70 (where Dummy Head faces the Source)
+    idx_facing_source = 70 
+    real_rir, fs_real = get_real_brir(real_sofa_path, measurement_idx=idx_facing_source, ear_idx=0)
     
-    # Normalize amplitudes to [-1, 1] for visual comparison of envelopes and reflections
-    simulated_rir_norm = simulated_rir / np.max(np.abs(simulated_rir))
-    real_rir_norm = real_rir / np.max(np.abs(real_rir))
+    # Hardware Latency Alignment (Shift simulated RIR to match real RIR's first peak)
+    peak_idx_sim = np.argmax(np.abs(simulated_rir[:int(0.05 * 44100)]))
+    peak_idx_real = np.argmax(np.abs(real_rir[:int(0.05 * fs_real)]))
+    shift_amount = peak_idx_real - peak_idx_sim
+    
+    if shift_amount > 0:
+        simulated_rir_aligned = np.roll(simulated_rir, shift_amount)
+        simulated_rir_aligned[:shift_amount] = 0
+    else:
+        simulated_rir_aligned = simulated_rir
+    
+    # 6. Plotting
+    sim_norm = simulated_rir_aligned / np.max(np.abs(simulated_rir_aligned))
+    real_norm = real_rir / np.max(np.abs(real_rir))
+    
+    t_axis = np.arange(len(real_norm)) / fs_real
     
     plt.figure(figsize=(14, 6))
+    plt.plot(t_axis, real_norm, label=f"Real BRIR (Measurement {idx_facing_source})", color='gray', alpha=0.5, linewidth=1.5)
     
-    # Plot real measurement (Dataset) in background
-    plt.plot(t_real, real_rir_norm, label="Real BRIR (TU Ilmenau Dataset)", 
-             color='gray', alpha=0.5, linewidth=1.5)
-             
-    # Plot simulated measurement (DEISM) in foreground
-    plt.plot(t_sim, simulated_rir_norm, label="Simulated BRIR (DEISM)", 
-             color='#F15A24', alpha=0.8, linewidth=1.0) # Audiolabs Orange
+    min_len = min(len(sim_norm), len(t_axis))
+    plt.plot(t_axis[:min_len], sim_norm[:min_len], label="Simulated BRIR (DEISM Native)", color='#F15A24', alpha=0.8, linewidth=1.0)
     
-    # Zoom in to the first 0.1 seconds (100 ms) to clearly see the direct sound 
-    # and the early reflections generated by the image source method (ISM)
     plt.xlim(0, 0.1) 
     plt.ylim(-1.1, 1.1)
     plt.xlabel("Time [seconds]")
     plt.ylabel("Normalized Amplitude")
-    plt.title("RIR Validation: DEISM Simulation vs. Real Measurement (First 100ms)")
+    plt.title("Native RIR Validation: DEISM Simulation vs. Real Measurement")
     plt.legend(loc="upper right")
     plt.grid(True, linestyle="--", alpha=0.6)
     
-    print("Plotting validation results...")
     plt.tight_layout()
     plt.show()
 
