@@ -9,10 +9,10 @@ Environment:
 
 # 2. 3D size of the room
 # (unit: meter)
-Dimensions:
-  length: 4.84
-  width: 4.68
-  height: 3.22
+Dimensions:  # infinite plane, so assume a larger dimension
+  length: 15.0
+  width: 15.0
+  height: 15.0
 
 # 3. Boundary conditions and max. reflection order
 Reflections:
@@ -21,21 +21,21 @@ Reflections:
   # x1, x2 means the walls perpendicular to the x-axis, x = 0 or x = length
   # y1, y2 means the walls perpendicular to the y-axis, y = 0 or y = width
   # z1, z2 means the walls perpendicular to the z-axis, z = 0 or z = height
-  # impedance: [18, 18, 18, 18, 18, 18]
+  #impedance: [18, 18, 18, 18, 18, 18]
   # Input format for impedance
   # 1. AcoustImpedance: 18+0j # A single value for 6 walls, no frequency-dependency
   # 2. AcoustImpedance: [18, 20, 8, 5, 30, 19] # Different values for 6 walls, no frequency-dependency
   # ------------------------------------------------------------
-  # absorpCoefficient: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1] # Absorption coefficients
+  absorpCoefficient: [1.0, 1.0, 1.0, 1.0, 0.05, 1.0] # Absorption coefficients
   # Notes, the format of the absorption coefficients are the same as the acoustImpedance
   # ------------------------------------------------------------
-  reverberationTime: 0.421 # Reverberation time
+  # reverberationTime: 0.421 # Reverberation time
   # You can only define one of the three parameters, a warning will be shown in the console if more than one is defined
   # The relationship between the three parameters is:
   # 1. When you define impedance, T60 will be calculated and used in the following calculations
   # 2. When you define absorption coefficient, impedance will be calculated, followed by T60
   # 3. When you define reverberation time, impedance will be calculated
-  maxReflectionOrder: 25 
+  maxReflectionOrder: 1 # 1-order floor reflection 
 
 # Simulation parameters # 
 # 4. positions of sound source and receiver in 3-dimensional Cartesian coordinate
@@ -44,15 +44,15 @@ Reflections:
 # The source and receiver should be at least 1m away from the walls;
 # The distance between the source and receiver should be not less than the sum of the radii of transparent spheres
 Positions:
-  source:
-    x: 3.803
-    y: 1.84
-    z: 1.3
+  source: #LS02
+    x: 3.379
+    y: 2.985
+    z: 2.121
 
-  receiver:
-    x: 2.68
-    y: 2.34
-    z: 1.3
+  receiver: #MP02
+    x: 7.621
+    y: 2.985
+    z: 2.121
 
 # 5. About the result signal terms
 Signal:
@@ -73,11 +73,11 @@ MaxSphDirectivityOrder:
 # https://doc.comsol.com/5.5/doc/com.comsol.help.comsol/comsol_ref_definitions.12.092.html
 Orientations:
   source:  
-    alpha: 180
-    beta: 0 
+    alpha: 0
+    beta: 135 
     gamma: 0 
   receiver:
-    alpha: 0
+    alpha: 180
     beta: 0 
     gamma: 0 
 

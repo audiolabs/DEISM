@@ -68,6 +68,6 @@ def print_initial_angles(filepath):
     nc.close()
 
 if __name__ == "__main__":
-    file_path = r"D:\Projects\DEISM\DEISM_main\DEISM\examples\data\sampled_directivity\sofa\BRIRs_from_a_room\A\023.sofa"
+    file_path = r"D:\Projects\DEISM\DEISM_main\DEISM\examples\data\sampled_directivity\sofa\01 single reflection (infinite plate)\RIRs\scene1_RIRs_Rigid.sofa"
     xray_sofa_raw(file_path)
     print_initial_angles(file_path)

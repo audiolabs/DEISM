@@ -597,13 +597,16 @@ class Dir_Visualizer:
         
         # Create control axes with Audiolabs styling ([left, bottom, width, height])
         control_bg_color = self.AUDIOLABS_LIGHT_GRAY
-        self.ax_freq = plt.axes([0.2, 0.2, 0.6, 0.03], facecolor=control_bg_color)
+        self.ax_freq = plt.axes([0.2, 0.25, 0.6, 0.03], facecolor=control_bg_color)
         self.ax_freq_left = plt.axes([0.812, 0.182, 0.02, 0.02], facecolor=control_bg_color)
         self.ax_freq_right = plt.axes([0.832, 0.182, 0.02, 0.02], facecolor=control_bg_color)
-        self.ax_r0 = plt.axes([0.2, 0.15, 0.6, 0.03], facecolor=control_bg_color)
-        self.ax_sh = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
+        self.ax_r0 = plt.axes([0.2, 0.2, 0.6, 0.03], facecolor=control_bg_color)
+        self.ax_sh = plt.axes([0.2, 0.15, 0.6, 0.03], facecolor=control_bg_color)
         self.ax_browse = plt.axes([0.2, 0.25, 0.6, 0.05], facecolor=control_bg_color)
         self.ax_freq_input = plt.axes([0.81, 0.25, 0.085, 0.03])
+        self.ax_alpha = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
+        self.ax_beta = plt.axes([0.2, 0.5, 0.6, 0.03], facecolor=control_bg_color)
+        self.ax_gamma = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
         
         fmt = lambda f: f"{f:.1f}"
         self.text_box_freq = mpl.widgets.TextBox(self.ax_freq_input, "", initial=fmt(initial_freq))
@@ -1043,6 +1046,10 @@ class Dir_Visualizer:
             color=self.AUDIOLABS_BLACK,
         )
 
+        self.alpha_slider = Slider(self.ax_alpha, 'Alpha (Z1)', 0, 180.0, valinit=0.0)
+        self.beta_slider = Slider(self.ax_beta,  'Beta (X)',   0, 180.0, valinit=0.0)
+        self.gamma_slider = Slider(self.ax_gamma, 'Gamma (Z2)', 0, 180.0, valinit=0.0)
+
         # Add Audiolabs logo to the figure
         try:
             logo_img = self.load_audiolabs_logo()
@@ -1060,6 +1067,9 @@ class Dir_Visualizer:
         self.freq_slider.on_changed(self.update)
         self.r0_slider.on_changed(self.update)
         self.sh_slider.on_changed(self.update)
+        self.alpha_slider.on_changed(self.update)
+        self.beta_slider.on_changed(self.update)
+        self.gamma_slider.on_changed(self.update)
 
         # Connect mouse movement for tooltips
         self.fig.canvas.mpl_connect("motion_notify_event", self._ui_on_move)
@@ -1178,6 +1188,9 @@ class Dir_Visualizer:
         freq = self.freq_slider.val
         r0_rec = self.r0_slider.val
         current_sh_order = int(self.sh_slider.val)
+        alpha = self.alpha_slider.val
+        beta  = self.beta_slider.val
+        gamma = self.gamma_slider.val
 
         freq_idx = np.argmin(np.abs(self.freqs - freq))
 
@@ -1218,6 +1231,12 @@ class Dir_Visualizer:
                 return
 
         # Plot reconstructed
+        self.plot_pattern(
+                self.ax, self.mag, self.dirs, 
+                title=f"SOFA: {os.path.basename(self.current_file)}\nRotation: {alpha:.1f}°, {beta:.1f}°, {gamma:.1f}°",
+                orientation=(alpha, beta, gamma)
+            )
+
         self.plot_balloon_rec(
             current_sh_order,
             Pnm_rec[0],
@@ -1616,6 +1635,50 @@ class Dir_Visualizer:
             fig2.colorbar(sc2, ax=ax_ph, orientation="horizontal", pad=0.08, fraction=0.05, aspect=30)
 
         fig1.tight_layout()
+    
+    @classmethod
+    def plot_pattern(cls, ax, mag, dirs, title="", color_map="viridis", orientation=(0, 0, 0)):
+        """
+        orientation: (alpha, beta, gamma) in degree
+        """
+        # calculate rotate matrix
+        alpha, beta, gamma = orientation
+        rot_mat = rotation_matrix_ZXZ(np.deg2rad(alpha), np.deg2rad(beta), np.deg2rad(gamma))
+        
+        # rotate the original unit vector
+        original_xyz = dirs.unit_vectors 
+        rotated_xyz = rotate_directions(original_xyz.T, rot_mat).T
+        
+        # scale the 3D coordinate
+        X = mag * rotated_xyz[0]
+        Y = mag * rotated_xyz[1]
+        Z = mag * rotated_xyz[2]
+
+        n_phi = len(np.unique(dirs.azimuth))
+        n_theta = len(np.unique(dirs.colatitude))
+        
+        X_grid = X.reshape(n_theta, n_phi)
+        Y_grid = Y.reshape(n_theta, n_phi)
+        Z_grid = Z.reshape(n_theta, n_phi)
+        mag_grid = mag.reshape(n_theta, n_phi)
+
+        # plot
+        ax.clear()
+        surf = ax.plot_surface(
+            X_grid, Y_grid, Z_grid, 
+            facecolors=plt.cm.get_cmap(color_map)(mag_grid / np.max(mag_grid)),
+            antialiased=True, rstride=1, cstride=1
+        )
+        ax.set_title(title)
+        max_range = np.max(mag)
+        ax.set_xlim(-max_range, max_range)
+        ax.set_ylim(-max_range, max_range)
+        ax.set_zlim(-max_range, max_range)
+   
+        try:
+            ax.set_box_aspect((1, 1, 1))
+        except AttributeError:
+            pass
 
     @classmethod
     def analyze_reciprocity(cls, path, ear="L", max_order=6, r0_rec=None, if_fill_missing_dirs=True):
