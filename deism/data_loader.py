@@ -823,7 +823,7 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
         pass
     try:
         params["absorpCoefficient"] = (
-            args.absp or configs["Reflections"]["absorpCoefficienticient"]
+            args.absp or configs["Reflections"]["absorpCoefficient"]
         )
         givenMaterials.append("absorpCoefficient")
     except:

@@ -10,9 +10,9 @@ Environment:
 # 2. 3D size of the room
 # (unit: meter)
 Dimensions:  # infinite plane, so assume a larger dimension
-  length: 15.0
-  width: 15.0
-  height: 15.0
+  length: 30.0
+  width: 30.0
+  height: 30.0
 
 # 3. Boundary conditions and max. reflection order
 Reflections:
@@ -52,7 +52,7 @@ Positions:
   receiver: #MP02
     x: 7.621
     y: 2.985
-    z: 2.121
+    z: 2.361 # 2.121
 
 # 5. About the result signal terms
 Signal:
@@ -74,8 +74,8 @@ MaxSphDirectivityOrder:
 Orientations:
   source:  
     alpha: 0
-    beta: 135 
-    gamma: 0 
+    beta: -45
+    gamma: 0
   receiver:
     alpha: 180
     beta: 0 

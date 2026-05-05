@@ -579,8 +579,8 @@ class Dir_Visualizer:
 
         # Create figure with Audiolabs styling
         plt.style.use("seaborn-v0_8")  # Start with a clean style    
-        self.fig = plt.figure(figsize=(6, 8), facecolor=self.AUDIOLABS_WHITE)  
-        plt.subplots_adjust(bottom=0.35, right=0.85)
+        self.fig = plt.figure(figsize=(6.5, 8), facecolor=self.AUDIOLABS_WHITE)  
+        plt.subplots_adjust(bottom=0.40, right=0.85)
         
         # status box
         self.status_text = self.fig.text( 
@@ -597,36 +597,36 @@ class Dir_Visualizer:
         
         # Create control axes with Audiolabs styling ([left, bottom, width, height])
         control_bg_color = self.AUDIOLABS_LIGHT_GRAY
-        self.ax_freq = plt.axes([0.2, 0.25, 0.6, 0.03], facecolor=control_bg_color)
-        self.ax_freq_left = plt.axes([0.812, 0.182, 0.02, 0.02], facecolor=control_bg_color)
-        self.ax_freq_right = plt.axes([0.832, 0.182, 0.02, 0.02], facecolor=control_bg_color)
-        self.ax_r0 = plt.axes([0.2, 0.2, 0.6, 0.03], facecolor=control_bg_color)
-        self.ax_sh = plt.axes([0.2, 0.15, 0.6, 0.03], facecolor=control_bg_color)
-        self.ax_browse = plt.axes([0.2, 0.25, 0.6, 0.05], facecolor=control_bg_color)
-        self.ax_freq_input = plt.axes([0.81, 0.25, 0.085, 0.03])
-        self.ax_alpha = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
-        self.ax_beta = plt.axes([0.2, 0.5, 0.6, 0.03], facecolor=control_bg_color)
-        self.ax_gamma = plt.axes([0.2, 0.1, 0.6, 0.03], facecolor=control_bg_color)
+        self.ax_browse = plt.axes([0.2, 0.30, 0.6, 0.05], facecolor=control_bg_color)
+        self.ax_freq = plt.axes([0.2, 0.27, 0.6, 0.03], facecolor=control_bg_color)
+        self.ax_freq_input = plt.axes([0.81, 0.27, 0.085, 0.03])
+        self.ax_freq_left = plt.axes([0.812, 0.25, 0.02, 0.02], facecolor=control_bg_color)
+        self.ax_freq_right = plt.axes([0.832, 0.25, 0.02, 0.02], facecolor=control_bg_color)
+        self.ax_r0 = plt.axes([0.2, 0.22, 0.6, 0.03], facecolor=control_bg_color)
+        self.ax_sh = plt.axes([0.2, 0.19, 0.6, 0.03], facecolor=control_bg_color)       
+        self.ax_alpha = plt.axes([0.2, 0.16, 0.6, 0.03], facecolor=control_bg_color)
+        self.ax_beta = plt.axes([0.2, 0.13, 0.6, 0.03], facecolor=control_bg_color)
+        self.ax_gamma = plt.axes([0.2, 0.10, 0.6, 0.03], facecolor=control_bg_color)
         
         fmt = lambda f: f"{f:.1f}"
         self.text_box_freq = mpl.widgets.TextBox(self.ax_freq_input, "", initial=fmt(initial_freq))
-        self.fig.text(0.895, 0.257, "Hz", fontsize=10, color=self.AUDIOLABS_BLACK)
+        self.fig.text(0.896, 0.28, "Hz", fontsize=10, color=self.AUDIOLABS_BLACK)
         
         # Display frequency range
         self.fmm_text = self.fig.text(
-            0.81, 0.235,
+            0.853, 0.26,
             f"[{fmt(freqs.min())}, {fmt(freqs.max())}]",
             fontsize=9, color=self.AUDIOLABS_GRAY, ha="left", va="center"
         )
 
         # Add checkbox for receiver directivity normalization
-        self.ax_norm = plt.axes([0.2, 0.04, 0.31, 0.035], facecolor=self.AUDIOLABS_LIGHT_GRAY)
+        self.ax_norm = plt.axes([0.2, 0.05, 0.31, 0.035], facecolor=self.AUDIOLABS_LIGHT_GRAY)
         self.norm_checkbox = mpl.widgets.CheckButtons(
             self.ax_norm, ["Normalize Receiver"], [bool(params.get("ifReceiverNormalize", 0))]
         )  
         
         # Add checkbox for the reciprocal relation 
-        self.ax_recip = plt.axes([0.53, 0.04, 0.20, 0.035], facecolor=self.AUDIOLABS_LIGHT_GRAY)
+        self.ax_recip = plt.axes([0.53, 0.05, 0.20, 0.035], facecolor=self.AUDIOLABS_LIGHT_GRAY)
         self.recip_checkbox = mpl.widgets.CheckButtons(
             self.ax_recip, ["Reciprocity"], [bool(params.get("ifReciprocal", 0))]
         )
@@ -652,8 +652,8 @@ class Dir_Visualizer:
             txt.set_va("center")
             txt.set_clip_on(False)
         
-        self.ax_help = plt.axes([0.475, 0.055, 0.005, 0.005])
-        self.ax_help2 = plt.axes([0.7, 0.055, 0.005, 0.005])
+        self.ax_help = plt.axes([0.475, 0.065, 0.005, 0.005])
+        self.ax_help2 = plt.axes([0.7, 0.065, 0.005, 0.005])
         self.ax_help.axis("off")
         self.ax_help2.axis("off")
         
@@ -991,64 +991,36 @@ class Dir_Visualizer:
 
         self.freq_slider = Slider(
             ax=self.ax_freq,
-            label="",
+            label="Frequency (Hz)",
             valmin=self.freqs.min(),
             valmax=self.freqs.max(),
             valinit=500,
             valstep=2,
+            valfmt="%1.1f",
             **slider_params,
         )
-        self.fig.text(
-            0.2,
-            0.197,
-            "Frequency (Hz)",
-            ha="left",
-            va="top",
-            fontsize=10,
-            color=self.AUDIOLABS_BLACK,
-        )
-
         self.r0_slider = Slider(
             ax=self.ax_r0,
-            label="",
+            label="Recon. Radius (m)",
             valmin=self.r0,
             valmax=2.0,
             valinit=max(self.r0, self.initial_r0_rec),
             valstep=0.1,
             **slider_params,
         )
-        self.fig.text(
-            0.2,
-            0.147,
-            "Reconstruction Radius (m)",
-            ha="left",
-            va="top",
-            fontsize=10,
-            color=self.AUDIOLABS_BLACK,
-        )
-
         self.sh_slider = Slider(
             ax=self.ax_sh,
-            label="",
+            label="SH Order",
             valmin=0,
             valmax=self.max_sh_order,
             valinit=self.initial_sh_order,
             valstep=1,
             **slider_params,
         )
-        self.fig.text(
-            0.2,
-            0.097,
-            "Spherical Harmonics Order",
-            ha="left",
-            va="top",
-            fontsize=10,
-            color=self.AUDIOLABS_BLACK,
-        )
-
-        self.alpha_slider = Slider(self.ax_alpha, 'Alpha (Z1)', 0, 180.0, valinit=0.0)
-        self.beta_slider = Slider(self.ax_beta,  'Beta (X)',   0, 180.0, valinit=0.0)
-        self.gamma_slider = Slider(self.ax_gamma, 'Gamma (Z2)', 0, 180.0, valinit=0.0)
+    
+        self.alpha_slider = Slider(self.ax_alpha, 'Alpha (Z1)', 0, 360.0, valinit=0.0, **slider_params,)
+        self.beta_slider = Slider(self.ax_beta,  'Beta (X)',   0, 180.0, valinit=0.0, **slider_params,)
+        self.gamma_slider = Slider(self.ax_gamma, 'Gamma (Z2)', 0, 360.0, valinit=0.0, **slider_params,)
 
         # Add Audiolabs logo to the figure
         try:
@@ -1231,16 +1203,11 @@ class Dir_Visualizer:
                 return
 
         # Plot reconstructed
-        self.plot_pattern(
-                self.ax, self.mag, self.dirs, 
-                title=f"SOFA: {os.path.basename(self.current_file)}\nRotation: {alpha:.1f}°, {beta:.1f}°, {gamma:.1f}°",
-                orientation=(alpha, beta, gamma)
-            )
-
         self.plot_balloon_rec(
             current_sh_order,
             Pnm_rec[0],
-            f"Reconstructed balloon plot"
+            f"Reconstructed balloon plot",
+            orientation=(alpha, beta, gamma)
         )
 
         # Request to refresh the images when the GUI is idle to improve interaction efficiency
@@ -1264,7 +1231,7 @@ class Dir_Visualizer:
         cmap = plt.get_cmap("twilight")
 
         # Create a new axis to display the color bar
-        cbar_ax = self.fig.add_axes([0.85, 0.3, 0.02, 0.6])
+        cbar_ax = self.fig.add_axes([0.85, 0.38, 0.02, 0.46])
         norm = mpl.colors.Normalize(vmin=-np.pi, vmax=np.pi)
         cb = mpl.colorbar.ColorbarBase(
             cbar_ax, cmap=cmap, norm=norm, orientation="vertical"
@@ -1282,7 +1249,7 @@ class Dir_Visualizer:
         cbar_ax.spines["left"].set_color(self.AUDIOLABS_GRAY)
         cbar_ax.spines["right"].set_color(self.AUDIOLABS_GRAY)
 
-    def plot_balloon_rec(self, order, Pnm, title):
+    def plot_balloon_rec(self, order, Pnm, title, orientation=(0,0,0)):
         """Plot a reconstructed balloon plot with Audiolabs styling"""
         # Initialize the direction response vector D
         D = np.zeros(self.dirs.shape[0], dtype=complex)
@@ -1296,27 +1263,30 @@ class Dir_Visualizer:
         # Magnitude
         D_abs = np.abs(D)
         # (elevation, azimuth), D_abs is one-dimensional, reshape to 2D (res, 2*res+1)
-        D_plot = D_abs.reshape(self.el_m.shape)
+        maxval = D_abs.max() if D_abs.max() > 1e-12 else 1.0
+        norm_amp = D_abs / maxval # Amplitude normalized to [0,1]
         # Phase (in radians, unwrapped), the range of np.angle(D) is [-π, π]
-        D_phase = np.angle(D)
-        D_phase_plot = D_phase.reshape(self.el_m.shape)
+        D_phase = np.angle(D).reshape(self.el_m.shape)
+        norm_phase = (D_phase + np.pi) / (2 * np.pi)
 
-        # Amplitude and phase normalized to [0,1]
-        maxval = D_plot.max()
-        if maxval < 1e-12:  # zero guard to avoid 0/0 → NaN
-            maxval = 1.0
-        norm_amp = D_plot / maxval
-        norm_phase = (D_phase_plot + np.pi) / (2 * np.pi)
+        colors = plt.get_cmap("twilight")(norm_phase) # color mapping
+
+        # rotate orientation
+        alpha, beta, gamma = orientation
+        rot_mat = rotation_matrix_ZXZ(np.deg2rad(alpha), np.deg2rad(beta), np.deg2rad(gamma))
 
         # Spherical coordinates -> Cartesian coordinates
-        x = norm_amp * np.sin(self.el_m) * np.cos(self.az_m)
-        y = norm_amp * np.sin(self.el_m) * np.sin(self.az_m)
-        z = norm_amp * np.cos(self.el_m)
+        u_x = np.sin(self.el_m) * np.cos(self.az_m)
+        u_y = np.sin(self.el_m) * np.sin(self.az_m)
+        u_z = np.cos(self.el_m)
 
-        # color mapping
-        cmap = plt.get_cmap("twilight")
-        colors = cmap(norm_phase)
+        u_flat = np.stack([u_x.ravel(), u_y.ravel(), u_z.ravel()], axis=0) # (N, 3)
+        u_rotated = rot_mat @ u_flat # rotate_directions(u_flat, rot_mat) 
 
+        x_rot = (norm_amp.ravel() * u_rotated[0, :]).reshape(self.el_m.shape)
+        y_rot = (norm_amp.ravel() * u_rotated[1, :]).reshape(self.el_m.shape)
+        z_rot = (norm_amp.ravel() * u_rotated[2, :]).reshape(self.el_m.shape)
+       
         # Plot; Set the tick range and labels
         lim = 1
         self.ax_recon.set_xlim([-lim, lim])
@@ -1335,17 +1305,13 @@ class Dir_Visualizer:
         for pane in [self.ax_recon.xaxis.pane, self.ax_recon.yaxis.pane, self.ax_recon.zaxis.pane]:
             pane.set_facecolor(self.AUDIOLABS_LIGHT_GRAY)
             pane.set_edgecolor(self.AUDIOLABS_GRAY)
-
+ 
         self.ax_recon.plot_surface(
-            x,
-            y,
-            z,
+            x_rot, y_rot, z_rot,
             facecolors=colors,
-            rstride=1,
-            cstride=1,
-            linewidth=0,
             antialiased=True,
-            alpha=0.95,
+            rstride=1, cstride=1,
+            alpha=0.9
         )
         self.ax_recon.set_title(title, fontsize=10, color=self.AUDIOLABS_BLACK)
         self.ax_recon.set_box_aspect([1, 1, 1])
