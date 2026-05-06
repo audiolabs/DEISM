@@ -15,3 +15,5 @@ media/
 new_features/
 tools/reports/
 examples/benchmarks/*.json
+examples/BRAS_results/
+BRAS_results/
