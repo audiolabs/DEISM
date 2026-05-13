@@ -31,7 +31,7 @@ def main():
     model.update_directivities()
 
     model.update_source_receiver()
-    
+
     print("Running DEISM calculation...")
     model.run_DEISM(if_clean_up=True)
 
