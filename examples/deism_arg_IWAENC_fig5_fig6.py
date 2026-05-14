@@ -10,9 +10,7 @@ Uses the DEISM class with convex (ARG) workflow.
 """
 
 import os
-import psutil
 import numpy as np
-import ray
 import matplotlib.pyplot as plt
 
 from deism.core_deism import DEISM
@@ -151,12 +149,7 @@ def main():
     deism.update_source_receiver()
     deism.update_directivities()
 
-    # Limit Ray CPUs and run
-    num_cpus = min(psutil.cpu_count(logical=False) or 4, 8)
-    if not ray.is_initialized():
-        ray.init(num_cpus=num_cpus)
-
-    deism.run_DEISM(if_clean_up=True, if_shutdown_ray=True)
+    deism.run_DEISM(if_clean_up=True)
 
     P_DEISM_ARG = deism.params["RTF"]
 

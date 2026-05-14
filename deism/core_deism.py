@@ -13,17 +13,22 @@ from scipy.optimize import least_squares
 from scipy.interpolate import PchipInterpolator
 from scipy.fft import ifft
 from sympy.physics.wigner import wigner_3j
-import ray
-import psutil
-
-# from ray.experimental import tqdm_ray
 from sound_field_analysis.sph import sphankel2
 from deism.utilities import *
 from deism.data_loader import *
 
 # from deism.core_deism_arg import Room_deism_cpp  # Moved to avoid circular import
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from multiprocessing import cpu_count
+
+try:
+    import numba
+    from numba import njit, prange
+
+    SHOEBOX_IMAGE_NUMBA_AVAILABLE = True
+except ImportError:
+    numba = None
+    SHOEBOX_IMAGE_NUMBA_AVAILABLE = False
 
 # Try to import C++ wrapper for fast counting (optional)
 try:
@@ -33,15 +38,19 @@ try:
 except (ImportError, RuntimeError):
     CPP_COUNTING_AVAILABLE = False
 
+
 # -------------------------------
 # About new features
 # -------------------------------
 # Create a class of DEISM for running every thing
 class DEISM:
+    """User-facing workflow class for shoebox and convex DEISM simulations."""
+
     # Initialize the DEISM class
-    def __init__(self, mode, roomtype):
+    def __init__(self, mode, roomtype, silent=False):
         self.mode = mode
         self.roomtype = roomtype
+        self.silent = silent
         self.auto_update = True  # TODO, keep it or not?
         self.track_updated_where = True
         # Some notes for the auto_update feature:
@@ -56,7 +65,7 @@ class DEISM:
         params["roomType"] = self.roomtype
         params["mode"] = self.mode
         # print the parameters or not
-        if cmdArgs.quiet:
+        if cmdArgs.quiet or self.silent:
             params["silentMode"] = 1
         printDict(params)
         # If run DEISM function, run if --run flag is set in the cmd
@@ -100,7 +109,45 @@ class DEISM:
         # -----------------------------------------------------------
         # Calculate images
         if self.roomtype == "shoebox":
-            self.params["images"] = pre_calc_images_src_rec_optimized_nofs(self.params)
+            default_image_calc_version = "v2-numba"
+            image_calc_version = (
+                str(
+                    self.params.get(
+                        "shoeboxImageCalcVersion", default_image_calc_version
+                    )
+                )
+                .lower()
+                .replace("_", "-")
+            )
+            if (
+                image_calc_version in ("numba", "v2-numba", "numba-v2")
+                and not SHOEBOX_IMAGE_NUMBA_AVAILABLE
+            ):
+                if "shoeboxImageCalcVersion" in self.params:
+                    raise ImportError(
+                        "Numba is required for shoeboxImageCalcVersion='v2-numba'."
+                    )
+                image_calc_version = "v2"
+            if image_calc_version in ("v1", "1"):
+                self.params["images"] = pre_calc_images_src_rec_optimized_nofs_v1(
+                    self.params
+                )
+            elif image_calc_version in ("v1-parallel", "parallel-v1"):
+                self.params["images"] = (
+                    pre_calc_images_src_rec_optimized_nofs_v1_parallel(self.params)
+                )
+            elif image_calc_version in ("parallel", "v2-parallel", "parallel-v2"):
+                self.params["images"] = (
+                    pre_calc_images_src_rec_optimized_nofs_v2_parallel(self.params)
+                )
+            elif image_calc_version in ("numba", "v2-numba", "numba-v2"):
+                self.params["images"] = pre_calc_images_src_rec_optimized_nofs_v2_numba(
+                    self.params
+                )
+            else:
+                self.params["images"] = pre_calc_images_src_rec_optimized_nofs_v2(
+                    self.params
+                )
             # Add the function name "update_source_receiver" to the updated_where dictionary
             for key in ["posSource", "posReceiver", "images"]:
                 self._update_where_tracking(key, "update_source_receiver")
@@ -116,8 +163,9 @@ class DEISM:
                 self._update_where_tracking(key, "update_source_receiver")
 
         # -----------------------------------------------------------
-        # If use DEISM-ORG or DEISM-LC, merge images
-        if self.params["DEISM_method"] == "ORG" or self.params["DEISM_method"] == "LC":
+        # If use DEISM-ORG or DEISM-LC in shoebox, merge early/late images
+        # (convex rooms don't split into early/late for ORG/LC)
+        if self.roomtype == "shoebox" and self.params["DEISM_method"] in ("ORG", "LC"):
             self.params["images"] = merge_images(self.params["images"])
         # -----------------------------------------------------------
 
@@ -195,6 +243,7 @@ class DEISM:
             if roomVolumn is None or roomAreas is None:
                 if self.params.get("vertices") is not None:
                     from deism.core_deism_arg import convex_room_volume_and_areas
+
                     vol, areas = convex_room_volume_and_areas(self.params["vertices"])
                     if roomVolumn is None:
                         self.params["roomVolumn"] = vol
@@ -566,29 +615,48 @@ class DEISM:
 
     def run_DEISM(self, if_clean_up: bool = True, if_shutdown_ray: bool = True):
         """
-        Run DEISM
+        Run DEISM using the Numba backend (default).
+
+        Args:
+            if_clean_up: If True, delete large image arrays after computation.
+            if_shutdown_ray: Ignored (kept for backward compatibility).
+                             Only used by run_DEISM_ray().
         """
-        # Initialize Ray
+        from deism.parallel_backends import run_DEISM as _run_DEISM
+        from deism.parallel_backends import run_DEISM_ARG as _run_DEISM_ARG
+
+        if self.roomtype == "shoebox":
+            self.params["RTF"] = _run_DEISM(self.params)
+        elif self.roomtype == "convex":
+            self.params["RTF"] = _run_DEISM_ARG(self.params)
+        # Clean up large matrices in self.params, e.g., params["images"]
+        if if_clean_up:
+            if "images" in self.params:
+                del self.params["images"]
+            gc.collect()
+
+    def run_DEISM_ray(self, if_clean_up: bool = True, if_shutdown_ray: bool = True):
+        """
+        Run DEISM using the Ray backend (legacy).
+        """
+        import ray
+        import psutil
+        from deism.parallel_backends import run_DEISM_ray as _run_DEISM_ray
+        from deism.parallel_backends import run_DEISM_ARG_ray as _run_DEISM_ARG_ray
+
         num_cpus = psutil.cpu_count(logical=False)
         if not ray.is_initialized():
             ray.init(num_cpus=num_cpus)
             print("\n")
         if self.roomtype == "shoebox":
-            self.params["RTF"] = run_DEISM(self.params)
+            self.params["RTF"] = _run_DEISM_ray(self.params)
         elif self.roomtype == "convex":
-            self.params["RTF"] = run_DEISM_ARG(self.params)
-        # Shutdown Ray
+            self.params["RTF"] = _run_DEISM_ARG_ray(self.params)
         if if_shutdown_ray:
             ray.shutdown()
-        # Clean up large matrices in self.params, e.g., params["images"]
         if if_clean_up:
-            # Delete the images dictionary (and all its contents)
-            # Note: In CPython, del dict[key] immediately decrements reference counts
-            # of all values, so deleting contents first is not necessary, but we do it
-            # for explicitness and to ensure memory is freed even if there are edge cases
             if "images" in self.params:
                 del self.params["images"]
-            # Force garbage collection to free memory immediately
             gc.collect()
         # -------------------------------------------------------
         # # Save the results to local directory with .npz format
@@ -1873,7 +1941,8 @@ def pre_calc_images_src_rec_original_nofs(params):
     RefCoef_angdep_flag = params["angDepFlag"]
     # If RefCoef_angdep_flag is 1
     if RefCoef_angdep_flag == 1:
-        print("using angle-dependent reflection coefficients, ", end="")
+        if not params["silentMode"]:
+            print("using angle-dependent reflection coefficients, ", end="")
     N_o = params["maxReflOrder"]
     Z_S = params["impedance"]
     T60 = params["reverberationTime"]
@@ -1944,31 +2013,14 @@ def pre_calc_images_src_rec_original_nofs(params):
                                 if np.linalg.norm(I_s - x_r) - (c * T60) > 0:
                                     continue
 
-                                # Receiver images
-                                # R_p_r = np.array([x_r[0] - 2*p_x*x_r[0], x_r[1] - 2*p_y*x_r[1], x_r[2] - 2*p_z*x_r[2]])
-                                # I_r = R_p_r + R_q
-                                [i, j, k] = [
-                                    2 * q_x - p_x,
-                                    2 * q_y - p_y,
-                                    2 * q_z - p_z,
-                                ]
-                                cross_i = int(np.cos(int((i % 2) == 0) * np.pi) * i)
-                                cross_j = int(np.cos(int((j % 2) == 0) * np.pi) * j)
-                                cross_k = int(np.cos(int((k % 2) == 0) * np.pi) * k)
-                                # v_ijk = (
-                                #     T_x(i, LL[0])
-                                #     @ T_y(j, LL[1])
-                                #     @ T_z(k, LL[2])
-                                #     @ v_src
-                                # )
-                                r_ijk = (
-                                    T_x(cross_i, LL[0])
-                                    @ T_y(cross_j, LL[1])
-                                    @ T_z(cross_k, LL[2])
-                                    @ v_rec
+                                # Receiver images (closed-form, replaces recursive T_x @ T_y @ T_z)
+                                I_r = np.array(
+                                    [
+                                        (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
+                                        (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
+                                        (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
+                                    ]
                                 )
-                                I_r = r_ijk[0:3] + LL / 2
-                                # I_r_all.append(I_r)
 
                                 # Vector from source images to receiver
                                 R_sI_r = x_r - I_s
@@ -2183,14 +2235,28 @@ def get_reflection_path_number_from_order(order, surfaceNumber):
         return 0
 
 
-def pre_calc_images_src_rec_optimized_nofs(params):
+def _pre_calc_images_src_rec_optimized_nofs_impl(
+    params,
+    use_closed_form_receiver_image,
+    image_dtype,
+    atten_dtype,
+    version_name,
+):
     """
-    Optimized version: Calculate images, reflection paths, and attenuation due to reflections
-    This version directly generates combinations that satisfy the reflection order constraint
-    instead of iterating through all possible combinations and filtering.
+    Optimized no-FS shoebox image generation implementation.
+
+    Args:
+        params: DEISM parameter dictionary.
+        use_closed_form_receiver_image: True for closed-form I_r, False for recursive T_x/T_y/T_z I_r.
+        image_dtype: dtype for angle/radius image arrays.
+        atten_dtype: dtype for attenuation array.
+        version_name: label shown in logs.
     """
     if not params["silentMode"]:
-        print("[Calculating] Images and attenuations (OPTIMIZED), ", end="")
+        print(
+            f"[Calculating] Images and attenuations (OPTIMIZED nofs {version_name}), ",
+            end="",
+        )
     start = time.perf_counter()
 
     LL = np.asarray(params["roomSize"], dtype=np.float64)
@@ -2200,7 +2266,8 @@ def pre_calc_images_src_rec_optimized_nofs(params):
     RefCoef_angdep_flag = int(params["angDepFlag"])
 
     if RefCoef_angdep_flag == 1:
-        print("using angle-dependent reflection coefficients, ", end="")
+        if not params["silentMode"]:
+            print("using angle-dependent reflection coefficients, ", end="")
 
     N_o = params["maxReflOrder"]
     Z_S = params["impedance"]
@@ -2228,12 +2295,12 @@ def pre_calc_images_src_rec_optimized_nofs(params):
     num_early_ref_paths = int(num_early_ref_paths_estimate * 1.1)
     # Use total count as an upper bound, then truncate after filling
     # Allocate enough space for early reflections
-    R_sI_r_all_early = np.zeros((num_early_ref_paths, 3))
+    R_sI_r_all_early = np.zeros((num_early_ref_paths, 3), dtype=image_dtype)
     R_s_rI_all_early = R_sI_r_all_early.copy()
     R_r_sI_all_early = R_sI_r_all_early.copy()
     # Attenuation should have frequency dependence
     numFreqs = Z_S.shape[1]
-    atten_all_early = np.zeros((num_early_ref_paths, numFreqs), dtype=np.complex128)
+    atten_all_early = np.zeros((num_early_ref_paths, numFreqs), dtype=atten_dtype)
     A_early = np.zeros((num_early_ref_paths, 6), dtype=np.int32)
     early_idx = 0
     # Late reflections: use total count minus original early count as estimate
@@ -2242,10 +2309,10 @@ def pre_calc_images_src_rec_optimized_nofs(params):
         int((num_ref_paths_shoebox - num_early_ref_paths_estimate) * 1.1),
         1000,
     )
-    R_sI_r_all_late = np.zeros((num_late_ref_paths, 3))
+    R_sI_r_all_late = np.zeros((num_late_ref_paths, 3), dtype=image_dtype)
     R_s_rI_all_late = R_sI_r_all_late.copy()
     R_r_sI_all_late = R_sI_r_all_late.copy()
-    atten_all_late = np.zeros((num_late_ref_paths, numFreqs), dtype=np.complex128)
+    atten_all_late = np.zeros((num_late_ref_paths, numFreqs), dtype=atten_dtype)
     A_late = np.zeros((num_late_ref_paths, 6), dtype=np.int32)
     late_idx = 0
     # Other variables
@@ -2253,7 +2320,8 @@ def pre_calc_images_src_rec_optimized_nofs(params):
     x_r_room_c = x_r - room_c
     v_rec = np.array([x_r_room_c[0], x_r_room_c[1], x_r_room_c[2], 1])
 
-    print(f"maxReflectionOrder: {N_o}")
+    if not params["silentMode"]:
+        print(f"maxReflectionOrder: {N_o}")
 
     # Optimized approach: directly generate combinations that satisfy reflection order constraint
     for p_x in range(2):
@@ -2316,31 +2384,46 @@ def pre_calc_images_src_rec_optimized_nofs(params):
                                                 continue
 
                                             # Receiver images
-                                            [i_calc, j_calc, k_calc] = [
-                                                2 * q_x - p_x,
-                                                2 * q_y - p_y,
-                                                2 * q_z - p_z,
-                                            ]
-                                            cross_i = int(
-                                                np.cos(int((i_calc % 2) == 0) * np.pi)
-                                                * i_calc
-                                            )
-                                            cross_j = int(
-                                                np.cos(int((j_calc % 2) == 0) * np.pi)
-                                                * j_calc
-                                            )
-                                            cross_k = int(
-                                                np.cos(int((k_calc % 2) == 0) * np.pi)
-                                                * k_calc
-                                            )
-
-                                            r_ijk = (
-                                                T_x(cross_i, LL[0])
-                                                @ T_y(cross_j, LL[1])
-                                                @ T_z(cross_k, LL[2])
-                                                @ v_rec
-                                            )
-                                            I_r = r_ijk[0:3] + LL / 2
+                                            if use_closed_form_receiver_image:
+                                                I_r = np.array(
+                                                    [
+                                                        (1 - 2 * p_x)
+                                                        * (x_r[0] - 2 * q_x * LL[0]),
+                                                        (1 - 2 * p_y)
+                                                        * (x_r[1] - 2 * q_y * LL[1]),
+                                                        (1 - 2 * p_z)
+                                                        * (x_r[2] - 2 * q_z * LL[2]),
+                                                    ]
+                                                )
+                                            else:
+                                                i_calc = 2 * q_x - p_x
+                                                j_calc = 2 * q_y - p_y
+                                                k_calc = 2 * q_z - p_z
+                                                cross_i = int(
+                                                    np.cos(
+                                                        int((i_calc % 2) == 0) * np.pi
+                                                    )
+                                                    * i_calc
+                                                )
+                                                cross_j = int(
+                                                    np.cos(
+                                                        int((j_calc % 2) == 0) * np.pi
+                                                    )
+                                                    * j_calc
+                                                )
+                                                cross_k = int(
+                                                    np.cos(
+                                                        int((k_calc % 2) == 0) * np.pi
+                                                    )
+                                                    * k_calc
+                                                )
+                                                r_ijk = (
+                                                    T_x(cross_i, LL[0])
+                                                    @ T_y(cross_j, LL[1])
+                                                    @ T_z(cross_k, LL[2])
+                                                    @ v_rec
+                                                )
+                                                I_r = r_ijk[0:3] + LL / 2
 
                                             # Vector from source images to receiver
                                             R_sI_r = x_r - I_s
@@ -2514,6 +2597,901 @@ def pre_calc_images_src_rec_optimized_nofs(params):
     return images
 
 
+def _shoebox_image_array_or_empty(rows, cols, dtype):
+    """Convert a list of rows to a 2D array with a stable empty shape."""
+    if not rows:
+        return np.empty((0, cols), dtype=dtype)
+    return np.asarray(rows, dtype=dtype)
+
+
+if SHOEBOX_IMAGE_NUMBA_AVAILABLE:
+
+    @njit(cache=True)
+    def _shoebox_parity_components_numba(parity_idx):
+        """Map the flattened parity index to (p_x, p_y, p_z)."""
+        p_x = parity_idx // 4
+        p_y = (parity_idx // 2) % 2
+        p_z = parity_idx % 2
+        return p_x, p_y, p_z
+
+    @njit(cache=True)
+    def _shoebox_task_components_numba(task_idx, n_ref_orders):
+        """
+        Map the flattened shoebox task index to one parity block and one
+        reflection order.
+
+        Splitting work by parity alone creates only eight parallel tasks. For
+        higher reflection orders that leaves many CPU threads idle, especially
+        in long-reverberation cases. Adding reflection order to the work index
+        preserves deterministic output ordering while exposing much finer
+        parallel granularity.
+        """
+        parity_idx = task_idx // n_ref_orders
+        ref_order = task_idx % n_ref_orders
+        p_x, p_y, p_z = _shoebox_parity_components_numba(parity_idx)
+        return p_x, p_y, p_z, ref_order
+
+    @njit(cache=True)
+    def _cart2sph_polar_numba(x, y, z):
+        """Return azimuth, polar angle, and radius for one 3D vector."""
+        h_xy = np.hypot(x, y)
+        r = np.hypot(h_xy, z)
+        el = np.arctan2(z, h_xy)
+        az = np.arctan2(y, x)
+        theta = np.pi / 2 - el
+        return az, theta, r
+
+    @njit(cache=True)
+    def _ref_coef_from_cos_numba(cos_theta, zeta):
+        """Reflection coefficient using cos(theta) directly."""
+        return (zeta * cos_theta - 1.0) / (zeta * cos_theta + 1.0)
+
+    @njit(cache=True)
+    def _complex_pow_int_numba(base, exponent):
+        """Fast non-negative integer power for complex values."""
+        out = 1.0 + 0.0j
+        for _ in range(exponent):
+            out *= base
+        return out
+
+    @njit(parallel=True, cache=True)
+    def _count_shoebox_images_nofs_v2_numba(
+        LL,
+        x_s,
+        x_r,
+        max_distance_squared,
+        N_o,
+        N_o_ORG,
+    ):
+        """Count exact early/late image counts per parity/reflection-order task."""
+        n_ref_orders = N_o + 1
+        n_tasks = 8 * n_ref_orders
+        early_counts = np.zeros(n_tasks, dtype=np.int64)
+        late_counts = np.zeros(n_tasks, dtype=np.int64)
+
+        for task_idx in prange(n_tasks):
+            p_x, p_y, p_z, ref_order = _shoebox_task_components_numba(
+                task_idx, n_ref_orders
+            )
+            source_offset_x = x_s[0] - 2 * p_x * x_s[0]
+            source_offset_y = x_s[1] - 2 * p_y * x_s[1]
+            source_offset_z = x_s[2] - 2 * p_z * x_s[2]
+            early_count = 0
+            late_count = 0
+
+            for i_abs in range(ref_order + 1):
+                for j_abs in range(ref_order - i_abs + 1):
+                    k_abs = ref_order - i_abs - j_abs
+
+                    i_count = 1 if i_abs == 0 else 2
+                    j_count = 1 if j_abs == 0 else 2
+                    k_count = 1 if k_abs == 0 else 2
+
+                    for i_idx in range(i_count):
+                        i = i_abs if i_abs == 0 else (-i_abs if i_idx == 0 else i_abs)
+                        for j_idx in range(j_count):
+                            j = (
+                                j_abs
+                                if j_abs == 0
+                                else (-j_abs if j_idx == 0 else j_abs)
+                            )
+                            for k_idx in range(k_count):
+                                k = (
+                                    k_abs
+                                    if k_abs == 0
+                                    else (-k_abs if k_idx == 0 else k_abs)
+                                )
+
+                                if (
+                                    (i + p_x) % 2 != 0
+                                    or (j + p_y) % 2 != 0
+                                    or (k + p_z) % 2 != 0
+                                ):
+                                    continue
+
+                                q_x = (i + p_x) // 2
+                                q_y = (j + p_y) // 2
+                                q_z = (k + p_z) // 2
+
+                                I_s_x = 2 * q_x * LL[0] + source_offset_x
+                                I_s_y = 2 * q_y * LL[1] + source_offset_y
+                                I_s_z = 2 * q_z * LL[2] + source_offset_z
+                                dist_squared = (
+                                    (I_s_x - x_r[0]) ** 2
+                                    + (I_s_y - x_r[1]) ** 2
+                                    + (I_s_z - x_r[2]) ** 2
+                                )
+
+                                if dist_squared > max_distance_squared:
+                                    continue
+
+                                if ref_order <= N_o_ORG:
+                                    early_count += 1
+                                else:
+                                    late_count += 1
+
+            early_counts[task_idx] = early_count
+            late_counts[task_idx] = late_count
+
+        return early_counts, late_counts
+
+    @njit(parallel=True, cache=True)
+    def _fill_shoebox_images_nofs_v2_numba(
+        LL,
+        x_s,
+        x_r,
+        Z_S,
+        max_distance_squared,
+        RefCoef_angdep_flag,
+        N_o,
+        N_o_ORG,
+        store_attenuation,
+        early_offsets,
+        late_offsets,
+        R_sI_r_all_early,
+        R_s_rI_all_early,
+        R_r_sI_all_early,
+        atten_all_early,
+        A_early,
+        R_sI_r_all_late,
+        R_s_rI_all_late,
+        R_r_sI_all_late,
+        atten_all_late,
+        A_late,
+    ):
+        """Fill preallocated shoebox image arrays using compiled loops."""
+        num_freqs = Z_S.shape[1]
+        n_ref_orders = N_o + 1
+        n_tasks = 8 * n_ref_orders
+
+        for task_idx in prange(n_tasks):
+            p_x, p_y, p_z, ref_order = _shoebox_task_components_numba(
+                task_idx, n_ref_orders
+            )
+            source_offset_x = x_s[0] - 2 * p_x * x_s[0]
+            source_offset_y = x_s[1] - 2 * p_y * x_s[1]
+            source_offset_z = x_s[2] - 2 * p_z * x_s[2]
+            early_idx = early_offsets[task_idx]
+            late_idx = late_offsets[task_idx]
+
+            for i_abs in range(ref_order + 1):
+                for j_abs in range(ref_order - i_abs + 1):
+                    k_abs = ref_order - i_abs - j_abs
+
+                    i_count = 1 if i_abs == 0 else 2
+                    j_count = 1 if j_abs == 0 else 2
+                    k_count = 1 if k_abs == 0 else 2
+
+                    for i_idx in range(i_count):
+                        i = i_abs if i_abs == 0 else (-i_abs if i_idx == 0 else i_abs)
+                        for j_idx in range(j_count):
+                            j = (
+                                j_abs
+                                if j_abs == 0
+                                else (-j_abs if j_idx == 0 else j_abs)
+                            )
+                            for k_idx in range(k_count):
+                                k = (
+                                    k_abs
+                                    if k_abs == 0
+                                    else (-k_abs if k_idx == 0 else k_abs)
+                                )
+
+                                if (
+                                    (i + p_x) % 2 != 0
+                                    or (j + p_y) % 2 != 0
+                                    or (k + p_z) % 2 != 0
+                                ):
+                                    continue
+
+                                q_x = (i + p_x) // 2
+                                q_y = (j + p_y) // 2
+                                q_z = (k + p_z) // 2
+
+                                I_s_x = 2 * q_x * LL[0] + source_offset_x
+                                I_s_y = 2 * q_y * LL[1] + source_offset_y
+                                I_s_z = 2 * q_z * LL[2] + source_offset_z
+                                dist_squared = (
+                                    (I_s_x - x_r[0]) ** 2
+                                    + (I_s_y - x_r[1]) ** 2
+                                    + (I_s_z - x_r[2]) ** 2
+                                )
+
+                                if dist_squared > max_distance_squared:
+                                    continue
+
+                                I_r_x = (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0])
+                                I_r_y = (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1])
+                                I_r_z = (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2])
+
+                                R_sI_r_x = x_r[0] - I_s_x
+                                R_sI_r_y = x_r[1] - I_s_y
+                                R_sI_r_z = x_r[2] - I_s_z
+                                phi_R_sI_r, theta_R_sI_r, r_R_sI_r = (
+                                    _cart2sph_polar_numba(R_sI_r_x, R_sI_r_y, R_sI_r_z)
+                                )
+
+                                R_s_rI_x = I_r_x - x_s[0]
+                                R_s_rI_y = I_r_y - x_s[1]
+                                R_s_rI_z = I_r_z - x_s[2]
+                                phi_R_s_rI, theta_R_s_rI, r_R_s_rI = (
+                                    _cart2sph_polar_numba(R_s_rI_x, R_s_rI_y, R_s_rI_z)
+                                )
+
+                                R_r_sI_x = I_s_x - x_r[0]
+                                R_r_sI_y = I_s_y - x_r[1]
+                                R_r_sI_z = I_s_z - x_r[2]
+                                phi_R_r_sI, theta_R_r_sI, r_R_r_sI = (
+                                    _cart2sph_polar_numba(R_r_sI_x, R_r_sI_y, R_r_sI_z)
+                                )
+
+                                if RefCoef_angdep_flag == 1:
+                                    r_norm = np.sqrt(dist_squared)
+                                    cos_x = np.abs(R_sI_r_x) / r_norm
+                                    cos_y = np.abs(R_sI_r_y) / r_norm
+                                    cos_z = np.abs(R_sI_r_z) / r_norm
+                                else:
+                                    cos_x = 1.0
+                                    cos_y = 1.0
+                                    cos_z = 1.0
+
+                                exp_x1 = np.abs(q_x - p_x)
+                                exp_x2 = np.abs(q_x)
+                                exp_y1 = np.abs(q_y - p_y)
+                                exp_y2 = np.abs(q_y)
+                                exp_z1 = np.abs(q_z - p_z)
+                                exp_z2 = np.abs(q_z)
+
+                                if ref_order <= N_o_ORG:
+                                    target_idx = early_idx
+                                    early_idx += 1
+                                    A_target = A_early
+                                    R_sI_r_target = R_sI_r_all_early
+                                    R_s_rI_target = R_s_rI_all_early
+                                    R_r_sI_target = R_r_sI_all_early
+                                    atten_target = atten_all_early
+                                else:
+                                    target_idx = late_idx
+                                    late_idx += 1
+                                    A_target = A_late
+                                    R_sI_r_target = R_sI_r_all_late
+                                    R_s_rI_target = R_s_rI_all_late
+                                    R_r_sI_target = R_r_sI_all_late
+                                    atten_target = atten_all_late
+
+                                A_target[target_idx, 0] = q_x
+                                A_target[target_idx, 1] = q_y
+                                A_target[target_idx, 2] = q_z
+                                A_target[target_idx, 3] = p_x
+                                A_target[target_idx, 4] = p_y
+                                A_target[target_idx, 5] = p_z
+
+                                R_sI_r_target[target_idx, 0] = phi_R_sI_r
+                                R_sI_r_target[target_idx, 1] = theta_R_sI_r
+                                R_sI_r_target[target_idx, 2] = r_R_sI_r
+
+                                R_s_rI_target[target_idx, 0] = phi_R_s_rI
+                                R_s_rI_target[target_idx, 1] = theta_R_s_rI
+                                R_s_rI_target[target_idx, 2] = r_R_s_rI
+
+                                R_r_sI_target[target_idx, 0] = phi_R_r_sI
+                                R_r_sI_target[target_idx, 1] = theta_R_r_sI
+                                R_r_sI_target[target_idx, 2] = r_R_r_sI
+
+                                if store_attenuation == 1:
+                                    for fi in range(num_freqs):
+                                        beta_x1 = _ref_coef_from_cos_numba(
+                                            cos_x, Z_S[0, fi]
+                                        )
+                                        beta_x2 = _ref_coef_from_cos_numba(
+                                            cos_x, Z_S[1, fi]
+                                        )
+                                        beta_y1 = _ref_coef_from_cos_numba(
+                                            cos_y, Z_S[2, fi]
+                                        )
+                                        beta_y2 = _ref_coef_from_cos_numba(
+                                            cos_y, Z_S[3, fi]
+                                        )
+                                        beta_z1 = _ref_coef_from_cos_numba(
+                                            cos_z, Z_S[4, fi]
+                                        )
+                                        beta_z2 = _ref_coef_from_cos_numba(
+                                            cos_z, Z_S[5, fi]
+                                        )
+
+                                        atten_target[target_idx, fi] = (
+                                            _complex_pow_int_numba(beta_x1, exp_x1)
+                                            * _complex_pow_int_numba(beta_x2, exp_x2)
+                                            * _complex_pow_int_numba(beta_y1, exp_y1)
+                                            * _complex_pow_int_numba(beta_y2, exp_y2)
+                                            * _complex_pow_int_numba(beta_z1, exp_z1)
+                                            * _complex_pow_int_numba(beta_z2, exp_z2)
+                                        )
+
+
+def _shoebox_use_compact_storage(params):
+    """
+    Use compact shoebox image storage by default for the Numba image generator.
+
+    The compact format stores only geometry and reflection metadata; attenuation
+    is reconstructed in the solver backend on demand. Users can override the
+    default via ``shoeboxCompactImages``.
+
+    Compact storage is supported for shoebox `v2-numba` in both `RIR` and
+    `RTF`, so the default is enabled unless explicitly disabled.
+    """
+    if "shoeboxCompactImages" in params:
+        return bool(params["shoeboxCompactImages"])
+    return True
+
+
+def _process_shoebox_parity_combination_nofs(args):
+    """
+    Calculate all shoebox images for one parity tuple.
+
+    Splitting by (p_x, p_y, p_z) gives us eight independent chunks that can be
+    processed in parallel while preserving deterministic output ordering when
+    they are concatenated in submission order.
+    """
+    (
+        p_x,
+        p_y,
+        p_z,
+        N_o,
+        N_o_ORG,
+        LL,
+        x_s,
+        x_r,
+        Z_S,
+        max_distance_squared,
+        RefCoef_angdep_flag,
+        use_closed_form_receiver_image,
+        image_dtype,
+        atten_dtype,
+    ) = args
+
+    num_freqs = Z_S.shape[1]
+    source_offset_x = x_s[0] - 2 * p_x * x_s[0]
+    source_offset_y = x_s[1] - 2 * p_y * x_s[1]
+    source_offset_z = x_s[2] - 2 * p_z * x_s[2]
+
+    room_c = LL / 2
+    x_r_room_c = x_r - room_c
+    v_rec = np.array([x_r_room_c[0], x_r_room_c[1], x_r_room_c[2], 1])
+
+    local_early = {"A": [], "R_sI_r": [], "R_s_rI": [], "R_r_sI": [], "atten": []}
+    local_late = {"A": [], "R_sI_r": [], "R_s_rI": [], "R_r_sI": [], "atten": []}
+
+    for ref_order in range(N_o + 1):
+        for i_abs in range(ref_order + 1):
+            for j_abs in range(ref_order - i_abs + 1):
+                k_abs = ref_order - i_abs - j_abs
+
+                i_values = [i_abs] if i_abs == 0 else [-i_abs, i_abs]
+                j_values = [j_abs] if j_abs == 0 else [-j_abs, j_abs]
+                k_values = [k_abs] if k_abs == 0 else [-k_abs, k_abs]
+
+                for i in i_values:
+                    for j in j_values:
+                        for k in k_values:
+                            if (
+                                (i + p_x) % 2 != 0
+                                or (j + p_y) % 2 != 0
+                                or (k + p_z) % 2 != 0
+                            ):
+                                continue
+
+                            q_x = (i + p_x) // 2
+                            q_y = (j + p_y) // 2
+                            q_z = (k + p_z) // 2
+
+                            I_s = np.array(
+                                [
+                                    2 * q_x * LL[0] + source_offset_x,
+                                    2 * q_y * LL[1] + source_offset_y,
+                                    2 * q_z * LL[2] + source_offset_z,
+                                ]
+                            )
+                            dist_squared = (
+                                (I_s[0] - x_r[0]) ** 2
+                                + (I_s[1] - x_r[1]) ** 2
+                                + (I_s[2] - x_r[2]) ** 2
+                            )
+                            if dist_squared > max_distance_squared:
+                                continue
+
+                            if use_closed_form_receiver_image:
+                                I_r = np.array(
+                                    [
+                                        (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
+                                        (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
+                                        (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
+                                    ]
+                                )
+                            else:
+                                i_calc = 2 * q_x - p_x
+                                j_calc = 2 * q_y - p_y
+                                k_calc = 2 * q_z - p_z
+                                cross_i = int(
+                                    np.cos(int((i_calc % 2) == 0) * np.pi) * i_calc
+                                )
+                                cross_j = int(
+                                    np.cos(int((j_calc % 2) == 0) * np.pi) * j_calc
+                                )
+                                cross_k = int(
+                                    np.cos(int((k_calc % 2) == 0) * np.pi) * k_calc
+                                )
+                                r_ijk = (
+                                    T_x(cross_i, LL[0])
+                                    @ T_y(cross_j, LL[1])
+                                    @ T_z(cross_k, LL[2])
+                                    @ v_rec
+                                )
+                                I_r = r_ijk[0:3] + LL / 2
+
+                            R_sI_r = x_r - I_s
+                            phi_R_sI_r, theta_R_sI_r, r_R_sI_r = cart2sph(
+                                R_sI_r[0], R_sI_r[1], R_sI_r[2]
+                            )
+                            theta_R_sI_r = np.pi / 2 - theta_R_sI_r
+
+                            R_s_rI = I_r - x_s
+                            phi_R_s_rI, theta_R_s_rI, r_R_s_rI = cart2sph(
+                                R_s_rI[0], R_s_rI[1], R_s_rI[2]
+                            )
+                            theta_R_s_rI = np.pi / 2 - theta_R_s_rI
+
+                            R_r_sI = I_s - x_r
+                            phi_R_r_sI, theta_R_r_sI, r_R_r_sI = cart2sph(
+                                R_r_sI[0], R_r_sI[1], R_r_sI[2]
+                            )
+                            theta_R_r_sI = np.pi / 2 - theta_R_r_sI
+
+                            if RefCoef_angdep_flag == 1:
+                                r_norm = np.linalg.norm(R_sI_r)
+                                inc_angle_x = np.arccos(np.abs(R_sI_r[0]) / r_norm)
+                                inc_angle_y = np.arccos(np.abs(R_sI_r[1]) / r_norm)
+                                inc_angle_z = np.arccos(np.abs(R_sI_r[2]) / r_norm)
+                                beta_x1 = ref_coef(inc_angle_x, Z_S[0, :])
+                                beta_x2 = ref_coef(inc_angle_x, Z_S[1, :])
+                                beta_y1 = ref_coef(inc_angle_y, Z_S[2, :])
+                                beta_y2 = ref_coef(inc_angle_y, Z_S[3, :])
+                                beta_z1 = ref_coef(inc_angle_z, Z_S[4, :])
+                                beta_z2 = ref_coef(inc_angle_z, Z_S[5, :])
+                            else:
+                                beta_x1 = ref_coef(0, Z_S[0, :])
+                                beta_x2 = ref_coef(0, Z_S[1, :])
+                                beta_y1 = ref_coef(0, Z_S[2, :])
+                                beta_y2 = ref_coef(0, Z_S[3, :])
+                                beta_z1 = ref_coef(0, Z_S[4, :])
+                                beta_z2 = ref_coef(0, Z_S[5, :])
+
+                            atten = (
+                                beta_x1 ** np.abs(q_x - p_x)
+                                * beta_x2 ** np.abs(q_x)
+                                * beta_y1 ** np.abs(q_y - p_y)
+                                * beta_y2 ** np.abs(q_y)
+                                * beta_z1 ** np.abs(q_z - p_z)
+                                * beta_z2 ** np.abs(q_z)
+                            )
+
+                            target = local_early if ref_order <= N_o_ORG else local_late
+                            target["A"].append([q_x, q_y, q_z, p_x, p_y, p_z])
+                            target["R_sI_r"].append(
+                                [phi_R_sI_r, theta_R_sI_r, r_R_sI_r]
+                            )
+                            target["R_s_rI"].append(
+                                [phi_R_s_rI, theta_R_s_rI, r_R_s_rI]
+                            )
+                            target["R_r_sI"].append(
+                                [phi_R_r_sI, theta_R_r_sI, r_R_r_sI]
+                            )
+                            target["atten"].append(atten)
+
+    early = {
+        "A": _shoebox_image_array_or_empty(local_early["A"], 6, np.int32),
+        "R_sI_r": _shoebox_image_array_or_empty(local_early["R_sI_r"], 3, image_dtype),
+        "R_s_rI": _shoebox_image_array_or_empty(local_early["R_s_rI"], 3, image_dtype),
+        "R_r_sI": _shoebox_image_array_or_empty(local_early["R_r_sI"], 3, image_dtype),
+        "atten": _shoebox_image_array_or_empty(
+            local_early["atten"], num_freqs, atten_dtype
+        ),
+    }
+    late = {
+        "A": _shoebox_image_array_or_empty(local_late["A"], 6, np.int32),
+        "R_sI_r": _shoebox_image_array_or_empty(local_late["R_sI_r"], 3, image_dtype),
+        "R_s_rI": _shoebox_image_array_or_empty(local_late["R_s_rI"], 3, image_dtype),
+        "R_r_sI": _shoebox_image_array_or_empty(local_late["R_r_sI"], 3, image_dtype),
+        "atten": _shoebox_image_array_or_empty(
+            local_late["atten"], num_freqs, atten_dtype
+        ),
+    }
+    return early, late
+
+
+def _concat_shoebox_image_blocks(blocks, key, cols, dtype):
+    """Concatenate per-worker blocks while preserving a stable empty shape."""
+    arrays = [block[key] for block in blocks if block[key].size]
+    if not arrays:
+        return np.empty((0, cols), dtype=dtype)
+    return np.concatenate(arrays, axis=0)
+
+
+def _pre_calc_images_src_rec_optimized_nofs_parallel_impl(
+    params,
+    use_closed_form_receiver_image,
+    image_dtype,
+    atten_dtype,
+    version_name,
+):
+    """Parallel shoebox no-FS image generation split across parity tuples."""
+    max_workers = params.get("shoeboxImageCalcWorkers")
+    if max_workers is None:
+        max_workers = min(8, cpu_count())
+    else:
+        max_workers = max(1, min(int(max_workers), 8))
+
+    if max_workers <= 1:
+        return _pre_calc_images_src_rec_optimized_nofs_impl(
+            params=params,
+            use_closed_form_receiver_image=use_closed_form_receiver_image,
+            image_dtype=image_dtype,
+            atten_dtype=atten_dtype,
+            version_name=f"{version_name} serial fallback",
+        )
+
+    if not params["silentMode"]:
+        print(
+            f"[Calculating] Images and attenuations (OPTIMIZED nofs {version_name}), ",
+            end="",
+        )
+    start = time.perf_counter()
+
+    LL = np.asarray(params["roomSize"], dtype=np.float64)
+    x_r = np.asarray(params["posReceiver"], dtype=np.float64)
+    x_s = np.asarray(params["posSource"], dtype=np.float64)
+    max_distance_squared = (params["soundSpeed"] * params["reverberationTime"]) ** 2
+    RefCoef_angdep_flag = int(params["angDepFlag"])
+
+    if RefCoef_angdep_flag == 1 and not params["silentMode"]:
+        print("using angle-dependent reflection coefficients, ", end="")
+
+    N_o = params["maxReflOrder"]
+    Z_S = params["impedance"]
+    N_o_ORG = params["mixEarlyOrder"]
+
+    if N_o < N_o_ORG:
+        N_o_ORG = N_o
+
+    if not params["silentMode"]:
+        print(
+            f"maxReflectionOrder: {N_o}, "
+            f"processing 8 parity combinations in parallel with {max_workers} workers"
+        )
+
+    args_list = []
+    for p_x in range(2):
+        for p_y in range(2):
+            for p_z in range(2):
+                args_list.append(
+                    (
+                        p_x,
+                        p_y,
+                        p_z,
+                        N_o,
+                        N_o_ORG,
+                        LL,
+                        x_s,
+                        x_r,
+                        Z_S,
+                        max_distance_squared,
+                        RefCoef_angdep_flag,
+                        use_closed_form_receiver_image,
+                        image_dtype,
+                        atten_dtype,
+                    )
+                )
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(
+            executor.map(_process_shoebox_parity_combination_nofs, args_list)
+        )
+
+    early_blocks = [result[0] for result in results]
+    late_blocks = [result[1] for result in results]
+    num_freqs = Z_S.shape[1]
+
+    A_early = _concat_shoebox_image_blocks(early_blocks, "A", 6, np.int32)
+    R_sI_r_all_early = _concat_shoebox_image_blocks(
+        early_blocks, "R_sI_r", 3, image_dtype
+    )
+    R_s_rI_all_early = _concat_shoebox_image_blocks(
+        early_blocks, "R_s_rI", 3, image_dtype
+    )
+    R_r_sI_all_early = _concat_shoebox_image_blocks(
+        early_blocks, "R_r_sI", 3, image_dtype
+    )
+    atten_all_early = _concat_shoebox_image_blocks(
+        early_blocks, "atten", num_freqs, atten_dtype
+    )
+
+    A_late = _concat_shoebox_image_blocks(late_blocks, "A", 6, np.int32)
+    R_sI_r_all_late = _concat_shoebox_image_blocks(
+        late_blocks, "R_sI_r", 3, image_dtype
+    )
+    R_s_rI_all_late = _concat_shoebox_image_blocks(
+        late_blocks, "R_s_rI", 3, image_dtype
+    )
+    R_r_sI_all_late = _concat_shoebox_image_blocks(
+        late_blocks, "R_r_sI", 3, image_dtype
+    )
+    atten_all_late = _concat_shoebox_image_blocks(
+        late_blocks, "atten", num_freqs, atten_dtype
+    )
+
+    if params["ifRemoveDirectPath"]:
+        direct_path_mask = np.all(A_early == 0, axis=1)
+        if np.any(direct_path_mask):
+            direct_path_idx = np.where(direct_path_mask)[0][0]
+            A_early = np.delete(A_early, direct_path_idx, axis=0)
+            R_sI_r_all_early = np.delete(R_sI_r_all_early, direct_path_idx, axis=0)
+            R_s_rI_all_early = np.delete(R_s_rI_all_early, direct_path_idx, axis=0)
+            R_r_sI_all_early = np.delete(R_r_sI_all_early, direct_path_idx, axis=0)
+            atten_all_early = np.delete(atten_all_early, direct_path_idx, axis=0)
+
+    images = {
+        "R_sI_r_all_early": R_sI_r_all_early,
+        "R_s_rI_all_early": R_s_rI_all_early,
+        "R_r_sI_all_early": R_r_sI_all_early,
+        "atten_all_early": atten_all_early,
+        "A_early": A_early,
+        "R_sI_r_all_late": R_sI_r_all_late,
+        "R_s_rI_all_late": R_s_rI_all_late,
+        "R_r_sI_all_late": R_r_sI_all_late,
+        "atten_all_late": atten_all_late,
+        "A_late": A_late,
+    }
+
+    end = time.perf_counter()
+    if not params["silentMode"]:
+        minutes, seconds = divmod(end - start, 60)
+        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
+
+    return images
+
+
+def pre_calc_images_src_rec_optimized_nofs_v1(params):
+    """
+    Shoebox no-FS optimized image generation v1.
+    Uses recursive T_x/T_y/T_z receiver image computation and float64/complex128 storage.
+    """
+    return _pre_calc_images_src_rec_optimized_nofs_impl(
+        params=params,
+        use_closed_form_receiver_image=False,
+        image_dtype=np.float64,
+        atten_dtype=np.complex128,
+        version_name="v1",
+    )
+
+
+def pre_calc_images_src_rec_optimized_nofs_v1_parallel(params):
+    """
+    Parallel shoebox no-FS image generation v1.
+    Uses recursive T_x/T_y/T_z receiver images and float64/complex128 storage.
+    """
+    return _pre_calc_images_src_rec_optimized_nofs_parallel_impl(
+        params=params,
+        use_closed_form_receiver_image=False,
+        image_dtype=np.float64,
+        atten_dtype=np.complex128,
+        version_name="v1 parallel",
+    )
+
+
+def pre_calc_images_src_rec_optimized_nofs_v2(params):
+    """
+    Shoebox no-FS optimized image generation v2 (default).
+    Uses closed-form receiver image computation and float32/complex64 storage.
+    """
+    return _pre_calc_images_src_rec_optimized_nofs_impl(
+        params=params,
+        use_closed_form_receiver_image=True,
+        image_dtype=np.float32,
+        atten_dtype=np.complex64,
+        version_name="v2",
+    )
+
+
+def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
+    """
+    Shoebox no-FS optimized image generation v2 using Numba.
+
+    This preserves the serial v2 output structure and ordering while compiling
+    the hot image-generation loop.
+    """
+    if not SHOEBOX_IMAGE_NUMBA_AVAILABLE:
+        raise ImportError("Numba is required for shoeboxImageCalcVersion='v2-numba'.")
+
+    if not params["silentMode"]:
+        print(
+            "[Calculating] Images and attenuations (OPTIMIZED nofs v2 numba), ",
+            end="",
+        )
+    start = time.perf_counter()
+
+    LL = np.asarray(params["roomSize"], dtype=np.float64)
+    x_r = np.asarray(params["posReceiver"], dtype=np.float64)
+    x_s = np.asarray(params["posSource"], dtype=np.float64)
+    max_distance_squared = (params["soundSpeed"] * params["reverberationTime"]) ** 2
+    RefCoef_angdep_flag = int(params["angDepFlag"])
+
+    if RefCoef_angdep_flag == 1 and not params["silentMode"]:
+        print("using angle-dependent reflection coefficients, ", end="")
+
+    N_o = params["maxReflOrder"]
+    Z_S = np.asarray(params["impedance"], dtype=np.complex128)
+    N_o_ORG = params["mixEarlyOrder"]
+    compact_storage = _shoebox_use_compact_storage(params)
+    store_attenuation = 0 if compact_storage else 1
+
+    if N_o < N_o_ORG:
+        N_o_ORG = N_o
+
+    if (
+        "shoeboxImageCalcWorkers" in params
+        and params["shoeboxImageCalcWorkers"] is not None
+    ):
+        num_threads = max(
+            1,
+            min(
+                int(params["shoeboxImageCalcWorkers"]),
+                int(numba.config.NUMBA_NUM_THREADS),
+            ),
+        )
+        numba.set_num_threads(num_threads)
+    else:
+        num_threads = numba.get_num_threads()
+
+    if not params["silentMode"]:
+        print(
+            f"maxReflectionOrder: {N_o}, numba_threads={num_threads}, "
+            f"storage={'compact' if compact_storage else 'materialized'}",
+        )
+
+    early_counts, late_counts = _count_shoebox_images_nofs_v2_numba(
+        LL=LL,
+        x_s=x_s,
+        x_r=x_r,
+        max_distance_squared=max_distance_squared,
+        N_o=N_o,
+        N_o_ORG=N_o_ORG,
+    )
+
+    early_offsets = np.zeros(early_counts.shape[0], dtype=np.int64)
+    late_offsets = np.zeros(late_counts.shape[0], dtype=np.int64)
+    for idx in range(1, early_counts.shape[0]):
+        early_offsets[idx] = early_offsets[idx - 1] + early_counts[idx - 1]
+        late_offsets[idx] = late_offsets[idx - 1] + late_counts[idx - 1]
+
+    num_early_ref_paths = int(np.sum(early_counts))
+    num_late_ref_paths = int(np.sum(late_counts))
+    num_freqs = Z_S.shape[1]
+
+    R_sI_r_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
+    R_s_rI_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
+    R_r_sI_all_early = np.empty((num_early_ref_paths, 3), dtype=np.float32)
+    if compact_storage:
+        atten_all_early = np.empty((num_early_ref_paths, 0), dtype=np.complex64)
+    else:
+        atten_all_early = np.empty((num_early_ref_paths, num_freqs), dtype=np.complex64)
+    A_early = np.empty((num_early_ref_paths, 6), dtype=np.int32)
+
+    R_sI_r_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
+    R_s_rI_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
+    R_r_sI_all_late = np.empty((num_late_ref_paths, 3), dtype=np.float32)
+    if compact_storage:
+        atten_all_late = np.empty((num_late_ref_paths, 0), dtype=np.complex64)
+    else:
+        atten_all_late = np.empty((num_late_ref_paths, num_freqs), dtype=np.complex64)
+    A_late = np.empty((num_late_ref_paths, 6), dtype=np.int32)
+
+    _fill_shoebox_images_nofs_v2_numba(
+        LL=LL,
+        x_s=x_s,
+        x_r=x_r,
+        Z_S=Z_S,
+        max_distance_squared=max_distance_squared,
+        RefCoef_angdep_flag=RefCoef_angdep_flag,
+        N_o=N_o,
+        N_o_ORG=N_o_ORG,
+        store_attenuation=store_attenuation,
+        early_offsets=early_offsets,
+        late_offsets=late_offsets,
+        R_sI_r_all_early=R_sI_r_all_early,
+        R_s_rI_all_early=R_s_rI_all_early,
+        R_r_sI_all_early=R_r_sI_all_early,
+        atten_all_early=atten_all_early,
+        A_early=A_early,
+        R_sI_r_all_late=R_sI_r_all_late,
+        R_s_rI_all_late=R_s_rI_all_late,
+        R_r_sI_all_late=R_r_sI_all_late,
+        atten_all_late=atten_all_late,
+        A_late=A_late,
+    )
+
+    if params["ifRemoveDirectPath"]:
+        direct_path_mask = np.all(A_early == 0, axis=1)
+        if np.any(direct_path_mask):
+            direct_path_idx = np.where(direct_path_mask)[0][0]
+            A_early = np.delete(A_early, direct_path_idx, axis=0)
+            R_sI_r_all_early = np.delete(R_sI_r_all_early, direct_path_idx, axis=0)
+            R_s_rI_all_early = np.delete(R_s_rI_all_early, direct_path_idx, axis=0)
+            R_r_sI_all_early = np.delete(R_r_sI_all_early, direct_path_idx, axis=0)
+            if not compact_storage:
+                atten_all_early = np.delete(atten_all_early, direct_path_idx, axis=0)
+
+    images = {
+        "storage": "compact" if compact_storage else "materialized",
+        "R_sI_r_all_early": R_sI_r_all_early,
+        "R_s_rI_all_early": R_s_rI_all_early,
+        "R_r_sI_all_early": R_r_sI_all_early,
+        "A_early": A_early,
+        "R_sI_r_all_late": R_sI_r_all_late,
+        "R_s_rI_all_late": R_s_rI_all_late,
+        "R_r_sI_all_late": R_r_sI_all_late,
+        "A_late": A_late,
+    }
+    if not compact_storage:
+        images["atten_all_early"] = atten_all_early
+        images["atten_all_late"] = atten_all_late
+
+    end = time.perf_counter()
+    if not params["silentMode"]:
+        minutes, seconds = divmod(end - start, 60)
+        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
+
+    return images
+
+
+def pre_calc_images_src_rec_optimized_nofs_v2_parallel(params):
+    """
+    Parallel shoebox no-FS image generation v2.
+    Uses closed-form receiver images and float32/complex64 storage.
+    """
+    return _pre_calc_images_src_rec_optimized_nofs_parallel_impl(
+        params=params,
+        use_closed_form_receiver_image=True,
+        image_dtype=np.float32,
+        atten_dtype=np.complex64,
+        version_name="v2 parallel",
+    )
+
+
+def pre_calc_images_src_rec_optimized_nofs(params):
+    """Backward-compatible alias; default to v2 implementation."""
+    return pre_calc_images_src_rec_optimized_nofs_v2(params)
+
+
 def pre_calc_images_src_rec_original(params):
     """Calculate images, reflection paths, and attenuation due to reflections"""
     if not params["silentMode"]:
@@ -2528,7 +3506,8 @@ def pre_calc_images_src_rec_original(params):
     RefCoef_angdep_flag = params["angDepFlag"]
     # If RefCoef_angdep_flag is 1
     if RefCoef_angdep_flag == 1:
-        print("using angle-dependent reflection coefficients, ", end="")
+        if not params["silentMode"]:
+            print("using angle-dependent reflection coefficients, ", end="")
     N_o = params["maxReflOrder"]
     Z_S = params["acousImpend"]
     # Maximum reflection order for the original DEISM in the DEISM-MIX mode
@@ -2600,31 +3579,14 @@ def pre_calc_images_src_rec_original(params):
                                 ):
                                     continue
 
-                                # Receiver images
-                                # R_p_r = np.array([x_r[0] - 2*p_x*x_r[0], x_r[1] - 2*p_y*x_r[1], x_r[2] - 2*p_z*x_r[2]])
-                                # I_r = R_p_r + R_q
-                                [i, j, k] = [
-                                    2 * q_x - p_x,
-                                    2 * q_y - p_y,
-                                    2 * q_z - p_z,
-                                ]
-                                cross_i = int(np.cos(int((i % 2) == 0) * np.pi) * i)
-                                cross_j = int(np.cos(int((j % 2) == 0) * np.pi) * j)
-                                cross_k = int(np.cos(int((k % 2) == 0) * np.pi) * k)
-                                # v_ijk = (
-                                #     T_x(i, LL[0])
-                                #     @ T_y(j, LL[1])
-                                #     @ T_z(k, LL[2])
-                                #     @ v_src
-                                # )
-                                r_ijk = (
-                                    T_x(cross_i, LL[0])
-                                    @ T_y(cross_j, LL[1])
-                                    @ T_z(cross_k, LL[2])
-                                    @ v_rec
+                                # Receiver images (closed-form, replaces recursive T_x @ T_y @ T_z)
+                                I_r = np.array(
+                                    [
+                                        (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
+                                        (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
+                                        (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
+                                    ]
                                 )
-                                I_r = r_ijk[0:3] + LL / 2
-                                # I_r_all.append(I_r)
 
                                 # Vector from source images to receiver
                                 R_sI_r = x_r - I_s
@@ -2753,7 +3715,8 @@ def pre_calc_images_src_rec_optimized(params):
     RefCoef_angdep_flag = params["angDepFlag"]
 
     if RefCoef_angdep_flag == 1:
-        print("using angle-dependent reflection coefficients, ", end="")
+        if not params["silentMode"]:
+            print("using angle-dependent reflection coefficients, ", end="")
 
     N_o = params["maxReflOrder"]
     Z_S = params["acousImpend"]
@@ -2780,7 +3743,8 @@ def pre_calc_images_src_rec_optimized(params):
     x_r_room_c = x_r - room_c
     v_rec = np.array([x_r_room_c[0], x_r_room_c[1], x_r_room_c[2], 1])
 
-    print(f"maxReflectionOrder: {N_o}")
+    if not params["silentMode"]:
+        print(f"maxReflectionOrder: {N_o}")
     # count = 0
 
     # Optimized approach: directly generate combinations that satisfy reflection order constraint
@@ -2854,32 +3818,17 @@ def pre_calc_images_src_rec_optimized(params):
                                             ):
                                                 continue
 
-                                            # Receiver images
-                                            [i_calc, j_calc, k_calc] = [
-                                                2 * q_x - p_x,
-                                                2 * q_y - p_y,
-                                                2 * q_z - p_z,
-                                            ]
-                                            cross_i = int(
-                                                np.cos(int((i_calc % 2) == 0) * np.pi)
-                                                * i_calc
+                                            # Receiver images (closed-form)
+                                            I_r = np.array(
+                                                [
+                                                    (1 - 2 * p_x)
+                                                    * (x_r[0] - 2 * q_x * LL[0]),
+                                                    (1 - 2 * p_y)
+                                                    * (x_r[1] - 2 * q_y * LL[1]),
+                                                    (1 - 2 * p_z)
+                                                    * (x_r[2] - 2 * q_z * LL[2]),
+                                                ]
                                             )
-                                            cross_j = int(
-                                                np.cos(int((j_calc % 2) == 0) * np.pi)
-                                                * j_calc
-                                            )
-                                            cross_k = int(
-                                                np.cos(int((k_calc % 2) == 0) * np.pi)
-                                                * k_calc
-                                            )
-
-                                            r_ijk = (
-                                                T_x(cross_i, LL[0])
-                                                @ T_y(cross_j, LL[1])
-                                                @ T_z(cross_k, LL[2])
-                                                @ v_rec
-                                            )
-                                            I_r = r_ijk[0:3] + LL / 2
 
                                             # Vector from source images to receiver
                                             R_sI_r = x_r - I_s
@@ -3054,14 +4003,14 @@ def calculate_single_image_source(args):
     )
     I_s = R_p_s + R_q
 
-    # Receiver images
-    [i_calc, j_calc, k_calc] = [2 * q_x - p_x, 2 * q_y - p_y, 2 * q_z - p_z]
-    cross_i = int(np.cos(int((i_calc % 2) == 0) * np.pi) * i_calc)
-    cross_j = int(np.cos(int((j_calc % 2) == 0) * np.pi) * j_calc)
-    cross_k = int(np.cos(int((k_calc % 2) == 0) * np.pi) * k_calc)
-
-    r_ijk = T_x(cross_i, LL[0]) @ T_y(cross_j, LL[1]) @ T_z(cross_k, LL[2]) @ v_rec
-    I_r = r_ijk[0:3] + LL / 2
+    # Receiver images (closed-form, replaces recursive T_x @ T_y @ T_z)
+    I_r = np.array(
+        [
+            (1 - 2 * p_x) * (x_r[0] - 2 * q_x * LL[0]),
+            (1 - 2 * p_y) * (x_r[1] - 2 * q_y * LL[1]),
+            (1 - 2 * p_z) * (x_r[2] - 2 * q_z * LL[2]),
+        ]
+    )
 
     # Vector calculations
     R_sI_r = x_r - I_s
@@ -3206,7 +4155,8 @@ def pre_calc_images_src_rec_optimized_parallel(params):
     RefCoef_angdep_flag = params["angDepFlag"]
 
     if RefCoef_angdep_flag == 1:
-        print("using angle-dependent reflection coefficients, ", end="")
+        if not params["silentMode"]:
+            print("using angle-dependent reflection coefficients, ", end="")
 
     N_o = params["maxReflOrder"]
     Z_S = params["acousImpend"]
@@ -3215,7 +4165,8 @@ def pre_calc_images_src_rec_optimized_parallel(params):
     if N_o < N_o_ORG:
         N_o_ORG = N_o
 
-    print(f"maxReflectionOrder: {N_o}")
+    if not params["silentMode"]:
+        print(f"maxReflectionOrder: {N_o}")
 
     # Prepare arguments for 8 parallel tasks (one per (p_x, p_y, p_z) combination)
     room_c = LL / 2
@@ -3332,6 +4283,9 @@ def merge_images(images):
         late = np.asarray(late)
         return np.concatenate([early, late], axis=0)
 
+    if "storage" in images:
+        merged["storage"] = images["storage"]
+
     merged["A"] = concat_early_late(images["A_early"], images["A_late"])
     merged["R_sI_r_all"] = concat_early_late(
         images["R_sI_r_all_early"], images["R_sI_r_all_late"]
@@ -3342,9 +4296,10 @@ def merge_images(images):
     merged["R_r_sI_all"] = concat_early_late(
         images["R_r_sI_all_early"], images["R_r_sI_all_late"]
     )
-    merged["atten_all"] = concat_early_late(
-        images["atten_all_early"], images["atten_all_late"]
-    )
+    if "atten_all_early" in images and "atten_all_late" in images:
+        merged["atten_all"] = concat_early_late(
+            images["atten_all_early"], images["atten_all_late"]
+        )
     return merged
 
 
@@ -3392,916 +4347,3 @@ def T_z(k, Lz):
                 [0, 0, 0, 1],
             ]
         ) @ T_z(-k + np.sign(k), Lz)
-
-
-# -------------------------------
-# About DEISM calculations
-# -------------------------------
-
-
-@ray.remote
-def calc_DEISM_ORG_single_reflection(
-    N_src_dir, V_rec_dir, C_nm_s, C_vu_r, A_i, atten, x0, W_1_all, W_2_all, k
-):
-    """DEISM: Run each image using parallel computation"""
-
-    P_single_reflection = np.zeros([k.size], dtype="complex")
-    [q_x, q_y, q_z, p_x, p_y, p_z] = A_i
-    [phi_x0, theta_x0, r_x0] = x0
-    l_list = np.arange(N_src_dir + V_rec_dir + 1)
-    l_list_2D = np.broadcast_to(l_list[..., None], l_list.shape + (k.shape[0],))
-    k_2D = np.broadcast_to(k, (len(l_list),) + k.shape)
-    sphan2_all = sphankel2(l_list_2D, k_2D * r_x0)
-
-    for n in range(N_src_dir + 1):
-        for m in range(-n, n + 1):
-            mirror_effect = (-1.0) ** ((p_y + p_z) * m + p_z * n)
-            # (p_x + p_y) is always 0, 1, or 2, so this stays an integer
-            m_mod = (-1) ** (p_x + p_y) * m
-            for v in range(V_rec_dir + 1):
-                # hn_rx0 = sphankel2(v,k*r_x0)
-                for u in range(-1 * v, v + 1):
-                    local_sum = np.zeros(k.size, dtype="complex")
-                    for l in range(np.abs(n - v), n + v + 1):
-                        if np.abs(u - m_mod) <= l:
-                            if (
-                                W_1_all[n, v, l] != 0
-                                and W_2_all[n, v, l, m_mod, u] != 0
-                            ):
-                                Xi = np.sqrt(
-                                    (2 * n + 1)
-                                    * (2 * v + 1)
-                                    * (2 * l + 1)
-                                    / (4 * np.pi)
-                                )
-                                # local_sum = local_sum + (1j)**l * sphankel2(l,k*r_x0) * scy.sph_harm(m_mod-u, l, phi_x0, theta_x0) * W_1_all[n,v,l] * W_2_all[n,v,l,-m_mod,u,m_mod-u] * Xi # Version 1, no precalculation of sphhankel2
-                                local_sum = (
-                                    local_sum
-                                    + (1j) ** l
-                                    * sphan2_all[l, :]
-                                    * scy.sph_harm(m_mod - u, l, phi_x0, theta_x0)
-                                    * W_1_all[n, v, l]
-                                    * W_2_all[n, v, l, m_mod, u]
-                                    * Xi
-                                )  # Version 2, precalculation of sphhankel2
-                    S_nv_mu = 4 * np.pi * (1j) ** (v - n) * (-1.0) ** m_mod * local_sum
-                    P_single_reflection = (
-                        P_single_reflection
-                        + mirror_effect
-                        * atten
-                        * C_nm_s[:, n, m]
-                        * S_nv_mu
-                        * C_vu_r[:, v, -u]
-                        * 1j
-                        / k
-                        * (-1.0) ** u
-                    )
-
-    return P_single_reflection
-
-
-def ray_run_DEISM(params, images, Wigner):
-    """Complete DEISM run"""
-    import gc
-
-    if not params["silentMode"]:
-        print("[Calculating] DEISM Original ... ", end="")
-    start = time.time()
-    N_src_dir = params["sourceOrder"]
-    V_rec_dir = params["receiverOrder"]
-    W_1_all = Wigner["W_1_all"]
-    W_2_all = Wigner["W_2_all"]
-    k = params["waveNumbers"]
-    C_nm_s = params["C_nm_s"]
-    C_vu_r = params["C_vu_r"]
-    A = images["A"]
-    R_sI_r_all = images["R_sI_r_all"]
-    atten_all = images["atten_all"]
-    W_1_all_id = ray.put(W_1_all)
-    W_2_all_id = ray.put(W_2_all)
-    N_src_dir_id = ray.put(N_src_dir)
-    V_rec_dir_id = ray.put(V_rec_dir)
-    C_nm_s_id = ray.put(C_nm_s)
-    C_vu_r_id = ray.put(C_vu_r)
-    k_id = ray.put(k)
-    P_DEISM = np.zeros(k.size, dtype="complex")
-    # You can specify the batch size for better dynamic management of RAM
-    n_images = len(A)
-    batch_size = params["numParaImages"]
-    if not params["silentMode"]:
-        print("{} images, ".format(n_images), end="")
-    for n in range(int(n_images / batch_size) + 1):
-        # Run each image in parallel within each batch
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > n_images:
-            end_ind = n_images
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            result_refs.append(
-                calc_DEISM_ORG_single_reflection.remote(
-                    N_src_dir_id,
-                    V_rec_dir_id,
-                    C_nm_s_id,
-                    C_vu_r_id,
-                    A[i],
-                    atten_all[i],
-                    R_sI_r_all[i],
-                    W_1_all_id,
-                    W_2_all_id,
-                    k_id,
-                )
-            )
-        results = ray.get(result_refs)
-        P_DEISM += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id, k_id
-    gc.collect()
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
-    return P_DEISM
-
-
-@ray.remote
-def calc_DEISM_LC_single_reflection(
-    N_src_dir, V_rec_dir, C_nm_s, C_vu_r, R_s_rI, R_r_sI, atten, k
-):
-    """DEISM LC: Run each image using parallel computation"""
-    [phi_R_s_rI, theta_R_s_rI, r_R_s_rI] = R_s_rI
-    [phi_R_r_sI, theta_R_r_sI, r_R_r_sI] = R_r_sI
-    P_single_reflection = np.zeros([k.size], dtype="complex")
-    factor = -1 * atten * 4 * np.pi / k * np.exp(-(1j) * k * r_R_s_rI) / k / r_R_s_rI
-
-    for n in range(N_src_dir + 1):
-        for m in range(-n, n + 1):
-            factor_nm = (
-                (1j) ** (-n)
-                * (-1.0) ** n
-                * C_nm_s[:, n, m]
-                * scy.sph_harm(m, n, phi_R_s_rI, theta_R_s_rI)
-            )
-            for v in range(V_rec_dir + 1):
-                for u in range(-1 * v, v + 1):
-                    factor_vu = (
-                        (1j) ** v
-                        * C_vu_r[:, v, u]
-                        * scy.sph_harm(u, v, phi_R_r_sI, theta_R_r_sI)
-                    )
-                    P_single_reflection = P_single_reflection + factor_nm * factor_vu
-
-    return P_single_reflection * factor
-
-
-def ray_run_DEISM_LC(params, images):
-    """Complete DEISM LC run"""
-    import gc
-
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM LC ... ", end="")
-    N_src_dir = params["sourceOrder"]
-    V_rec_dir = params["receiverOrder"]
-    k = params["waveNumbers"]
-    C_nm_s = params["C_nm_s"]
-    C_vu_r = params["C_vu_r"]
-    A = images["A"]
-    atten_all = images["atten_all"]
-    R_s_rI_all = images["R_s_rI_all"]
-    R_r_sI_all = images["R_r_sI_all"]
-    # S = 1j * params["k"] * params["c"] * params["rho0"] * params["Q"]
-    N_src_dir_id = ray.put(N_src_dir)
-    V_rec_dir_id = ray.put(V_rec_dir)
-    C_nm_s_id = ray.put(C_nm_s)
-    C_vu_r_id = ray.put(C_vu_r)
-    k_id = ray.put(k)
-    P_DEISM = np.zeros(k.size, dtype="complex")
-
-    # You can specify the batch size for better dynamic management of RAM
-    n_images = len(A)
-    batch_size = params["numParaImages"]
-    if not params["silentMode"]:
-        print("{} images, ".format(n_images), end="")
-    for n in range(int(n_images / batch_size) + 1):
-        # Run each image in parallel within each batch
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > n_images:
-            end_ind = n_images
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            result_refs.append(
-                calc_DEISM_LC_single_reflection.remote(
-                    N_src_dir_id,
-                    V_rec_dir_id,
-                    C_nm_s_id,
-                    C_vu_r_id,
-                    R_s_rI_all[i],
-                    R_r_sI_all[i],
-                    atten_all[i],
-                    k_id,
-                )
-            )
-        results = ray.get(result_refs)
-        P_DEISM += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id, k_id
-    gc.collect()
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
-
-    return P_DEISM
-
-
-@ray.remote
-def calc_DEISM_LC_single_reflection_matrix(
-    n_all, m_all, v_all, u_all, C_nm_s_vec, C_vu_r_vec, R_s_rI, R_r_sI, atten, k
-):
-    """DEISM LC matrix form: Run each image using parallel computation"""
-    # source spherical harmonics
-    Y_s_rI = scy.sph_harm(
-        m_all,
-        n_all,
-        R_s_rI[0],
-        R_s_rI[1],
-    )
-    # vector multiplication for source
-    source_vec = ((1j) ** n_all * C_nm_s_vec) @ Y_s_rI
-    # receiver spherical harmonics
-    Y_r_sI = scy.sph_harm(
-        u_all,
-        v_all,
-        R_r_sI[0],
-        R_r_sI[1],
-    )
-    # vector multiplication for receiver
-    receiver_vec = ((1j) ** v_all * C_vu_r_vec) @ Y_r_sI
-    return (
-        -1
-        * atten
-        * 4
-        * np.pi
-        / k
-        * np.exp(-(1j) * k * R_s_rI[2])
-        / k
-        / R_s_rI[2]
-        * source_vec
-        * receiver_vec
-    )
-
-
-def ray_run_DEISM_LC_matrix(params, images):
-    """Complete DEISM LC in matrix form"""
-    import gc
-
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM LC vectorized ... ", end="")
-
-    k = params["waveNumbers"]
-    n_all = params["n_all"]
-    m_all = params["m_all"]
-    v_all = params["v_all"]
-    u_all = params["u_all"]
-    C_nm_s_vec = params["C_nm_s_vec"]
-    C_vu_r_vec = params["C_vu_r_vec"]
-    A = images["A"]
-    atten_all = images["atten_all"]
-    R_s_rI_all = images["R_s_rI_all"]
-    R_r_sI_all = images["R_r_sI_all"]
-
-    # Ray object store setup
-    n_all_id = ray.put(n_all)
-    m_all_id = ray.put(m_all)
-    v_all_id = ray.put(v_all)
-    u_all_id = ray.put(u_all)
-    C_nm_s_vec_id = ray.put(C_nm_s_vec)
-    C_vu_r_vec_id = ray.put(C_vu_r_vec)
-    k_id = ray.put(k)
-
-    P_DEISM = np.zeros(k.size, dtype="complex")
-    n_images = len(A)
-    batch_size = params["numParaImages"]
-
-    if not params["silentMode"]:
-        print("{} images, ".format(n_images), end="")
-
-    # 🟢 MEMORY-OPTIMIZED BATCH PROCESSING
-    for n in range(int(n_images / batch_size) + 1):
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > n_images:
-            end_ind = n_images
-
-        if start_ind >= end_ind:  # Skip empty batches
-            continue
-
-        # Submit batch of tasks
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            result_refs.append(
-                calc_DEISM_LC_single_reflection_matrix.remote(
-                    n_all_id,
-                    m_all_id,
-                    v_all_id,
-                    u_all_id,
-                    C_nm_s_vec_id,
-                    C_vu_r_vec_id,
-                    R_s_rI_all[i],
-                    R_r_sI_all[i],
-                    atten_all[i],
-                    k_id,
-                )
-            )
-
-        # Get results
-        results = ray.get(result_refs)
-        P_DEISM += sum(results)
-
-        # 🟢 EXPLICIT MEMORY CLEANUP
-        # Clear Ray task references
-        del result_refs
-        # Clear results from local memory
-        del results
-        # Force garbage collection
-        gc.collect()
-
-    # 🟢 FINAL CLEANUP: Remove Ray objects
-    del n_all_id, m_all_id, v_all_id, u_all_id, C_nm_s_vec_id, C_vu_r_vec_id, k_id
-    gc.collect()
-
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(
-            f"Done! [{minutes} minutes, {seconds:.1f} seconds]",
-            end="\n\n",
-        )
-
-    return P_DEISM
-
-
-def ray_run_DEISM_MIX(params, images, Wigner):
-    """
-    Run DEISM with mixed versions
-    Early reflections are calculation using the original DEISM method
-    Higher order reflections are calculated using the LC method in vectorized form
-    """
-    import gc
-
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM MIX ... ", end="")
-    # ------- Parameters for DEISM-ORG -------
-    N_src_dir = params["sourceOrder"]
-    V_rec_dir = params["receiverOrder"]
-    W_1_all = Wigner["W_1_all"]
-    W_2_all = Wigner["W_2_all"]
-    C_nm_s = params["C_nm_s"]
-    C_vu_r = params["C_vu_r"]
-    # Images, early reflections
-    A_early = images["A_early"]
-    R_sI_r_all_early = images["R_sI_r_all_early"]
-    atten_all_early = images["atten_all_early"]
-    # -------- parameters for DEISM-LC vectorized ------
-    n_all = params["n_all"]
-    m_all = params["m_all"]
-    v_all = params["v_all"]
-    u_all = params["u_all"]
-    C_nm_s_vec = params["C_nm_s_vec"]
-    C_vu_r_vec = params["C_vu_r_vec"]
-    # Images, late reflections
-    A_late = images["A_late"]
-    R_s_rI_all_late = images["R_s_rI_all_late"]
-    R_r_sI_all_late = images["R_r_sI_all_late"]
-    atten_all_late = images["atten_all_late"]
-    # -------- shared parameters --------
-    k = params["waveNumbers"]
-    # number of parallel images for calculation
-    batch_size = params["numParaImages"]
-    # Start initialization
-    # ----- Ray initialization -----
-    # For DEISM-ORG
-    W_1_all_id = ray.put(W_1_all)
-    W_2_all_id = ray.put(W_2_all)
-    N_src_dir_id = ray.put(N_src_dir)
-    V_rec_dir_id = ray.put(V_rec_dir)
-    C_nm_s_id = ray.put(C_nm_s)
-    C_vu_r_id = ray.put(C_vu_r)
-    # For DEISM-LC vectorized
-    n_all_id = ray.put(n_all)
-    m_all_id = ray.put(m_all)
-    v_all_id = ray.put(v_all)
-    u_all_id = ray.put(u_all)
-    C_nm_s_vec_id = ray.put(C_nm_s_vec)
-    C_vu_r_vec_id = ray.put(C_vu_r_vec)
-    # For shared parameters
-    k_id = ray.put(k)
-    # Start calculation
-    P_DEISM = np.zeros(k.size, dtype="complex")
-    if not params["silentMode"]:
-        print(
-            "{} early images, {} late images, ".format(len(A_early), len(A_late)),
-            end="",
-        )
-    # For early reflections
-    result_refs = []
-    for i in range(len(A_early)):
-        result_refs.append(
-            calc_DEISM_ORG_single_reflection.remote(
-                N_src_dir_id,
-                V_rec_dir_id,
-                C_nm_s_id,
-                C_vu_r_id,
-                A_early[i],
-                atten_all_early[i],
-                R_sI_r_all_early[i],
-                W_1_all_id,
-                W_2_all_id,
-                k_id,
-            )
-        )
-    # Wait for the results and sum them up
-    results = ray.get(result_refs)
-    P_DEISM += sum(results)
-    del result_refs
-    gc.collect()
-    # For late reflections
-    for n in range(int(len(A_late) / batch_size) + 1):
-        # Run each image in parallel within each batch
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > len(A_late):
-            end_ind = len(A_late)
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            result_refs.append(
-                calc_DEISM_LC_single_reflection_matrix.remote(
-                    n_all_id,
-                    m_all_id,
-                    v_all_id,
-                    u_all_id,
-                    C_nm_s_vec_id,
-                    C_vu_r_vec_id,
-                    R_s_rI_all_late[i],
-                    R_r_sI_all_late[i],
-                    atten_all_late[i],
-                    k_id,
-                )
-            )
-        # Wait for the results and sum them up
-        results = ray.get(result_refs)
-        P_DEISM += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del W_1_all_id, W_2_all_id, N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id
-    del n_all_id, m_all_id, v_all_id, u_all_id, C_nm_s_vec_id, C_vu_r_vec_id, k_id
-    gc.collect()
-
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
-    return P_DEISM
-
-
-def run_DEISM(params):
-    """
-    Initialize some parameters and run DEISM codes
-    """
-    # Run DEISM, first decide which mode to use
-    if params["DEISM_method"] == "ORG":
-        # Run DEISM-ORG
-        P = ray_run_DEISM(params, params["images"], params["Wigner"])
-    elif params["DEISM_method"] == "LC":
-        # Run DEISM-LC
-        P = ray_run_DEISM_LC_matrix(params, params["images"])
-    elif params["DEISM_method"] == "MIX":
-        # Run DEISM-MIX
-        P = ray_run_DEISM_MIX(params, params["images"], params["Wigner"])
-    return P
-
-
-@ray.remote
-def calc_DEISM_ARG_single_reflection_matrix(
-    N_src_dir,
-    V_rec_dir,
-    C_nm_s,
-    C_vu_r,
-    atten,
-    x0,
-    W_1_all,
-    W_2_all,
-    k,
-):
-    # N_src_dir = ray.get(N_src_dir_id)
-    # V_rec_dir = ray.get(V_rec_dir_id)
-    # C_nm_s = ray.get(C_nm_s_id)
-    # C_vu_r = ray.get(C_vu_r_id)
-    # atten = ray.get(atten_id)
-    [phi_x0, theta_x0, r_x0] = x0
-    # W_1_all_id = ray.get(W_1_all_id)
-    # W_2_all_id = ray.get(W_2_all_id)
-    # k = ray.get(k_id)
-    P_single_reflection = np.zeros([k.size], dtype="complex")
-
-    l_list = np.arange(N_src_dir + V_rec_dir + 1)
-    l_list_2D = np.broadcast_to(l_list[..., None], l_list.shape + (k.shape[0],))
-    k_2D = np.broadcast_to(k, (len(l_list),) + k.shape)
-    sphan2_all = sphankel2(l_list_2D, k_2D * r_x0)
-    for n in range(N_src_dir + 1):
-        for m in range(-n, n + 1):
-            # mirror_effect = (-1)**(m +n)
-            # m_mod = (-1)**(p_x+p_y)*m
-            for v in range(V_rec_dir + 1):
-                # hn_rx0 = sphankel2(v,k*r_x0)
-                for u in range(-1 * v, v + 1):
-                    local_sum = np.zeros(k.size, dtype="complex")
-                    for l in range(np.abs(n - v), n + v + 1):
-                        if np.abs(u - m) <= l:
-                            if W_1_all[n, v, l] != 0 and W_2_all[n, v, l, m, u] != 0:
-                                Xi = np.sqrt(
-                                    (2 * n + 1)
-                                    * (2 * v + 1)
-                                    * (2 * l + 1)
-                                    / (4 * np.pi)
-                                )
-                                # local_sum = local_sum + (1j)**l * sphankel2(l,k*r_x0) * scy.sph_harm(m_mod-u, l, phi_x0, theta_x0) * W_1_all[n,v,l] * W_2_all[n,v,l,-m_mod,u,m_mod-u] * Xi # Version 1, no precalculation of sphhankel2
-                                local_sum = (
-                                    local_sum
-                                    + (1j) ** l
-                                    * sphan2_all[l, :]
-                                    * scy.sph_harm(m - u, l, phi_x0, theta_x0)
-                                    * W_1_all[n, v, l]
-                                    * W_2_all[n, v, l, m, u]
-                                    * Xi
-                                )  # Version 2, precalculation of sphhankel2
-                    S_nv_mu = (
-                        4 * np.pi * (1j) ** (v - n) * (-1.0) ** m * local_sum
-                    )  # * np.exp(1j * 2 * u * phi_x0) # * 1j * (-1)**u * np.exp(1j * 2 * m * phi_x0)
-                    P_single_reflection = (
-                        P_single_reflection
-                        + atten
-                        * C_nm_s[:, n, m]
-                        * S_nv_mu
-                        * C_vu_r[:, v, -u]
-                        * 1j
-                        / k
-                        * (-1.0) ** u
-                    )
-    return P_single_reflection
-
-
-def ray_run_DEISM_ARG_ORG(params, images, Wigner):
-    """
-    Run DEISM-ARG using ray, the original version
-    Inputs:
-    params: parameters
-    images: images
-    Wigner: Wigner 3J matrices
-    """
-    # -------------------------------
-    import gc
-
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM-ARG Original ... ", end="")
-    # Parameters for DEISM-ARG Original
-    N_src_dir = params["sourceOrder"]
-    V_rec_dir = params["receiverOrder"]
-    W_1_all = Wigner["W_1_all"]
-    W_2_all = Wigner["W_2_all"]
-    C_nm_s_ARG = params["C_nm_s_ARG"]
-    C_vu_r = params["C_vu_r"]
-    # Images
-    atten_all = images["atten_all"]
-    R_sI_r_all = images["R_sI_r_all"]
-    # -------------------------------
-    # Other parameters
-    k = params["waveNumbers"]
-    # number of parallel images for calculation
-    batch_size = params["numParaImages"]
-    # Start initialization
-
-    # ----- Ray initialization -----
-    # For DEISM-ORG
-    W_1_all_id = ray.put(W_1_all)
-    W_2_all_id = ray.put(W_2_all)
-    N_src_dir_id = ray.put(N_src_dir)
-    V_rec_dir_id = ray.put(V_rec_dir)
-    C_vu_r_id = ray.put(C_vu_r)
-    # For shared parameters
-    k_id = ray.put(k)
-    # -------------------------------
-    P_DEISM_ARG = np.zeros(k.size, dtype="complex")
-    # -------------------------------
-    n_images = max(R_sI_r_all.shape)
-    if not params["silentMode"]:
-        print("{} images, ".format(n_images), end="")
-    for n in range(int(n_images / batch_size) + 1):
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > n_images:
-            end_ind = n_images
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            # result_refs.append( ray_cal_DEISM_FEM_arb_geo_single_reflc.remote(N_src_dir_id,V_rec_dir_id,C_nm_s_id,C_vu_r_id,A[i],atten_all[i],x0_all[i],W_1_all_id,W_2_all_id,k_id) )
-            result_refs.append(
-                calc_DEISM_ARG_single_reflection_matrix.remote(
-                    N_src_dir_id,
-                    V_rec_dir_id,
-                    C_nm_s_ARG[:, :, :, i],
-                    C_vu_r_id,
-                    atten_all[:, i],
-                    R_sI_r_all[:, i],
-                    W_1_all_id,
-                    W_2_all_id,
-                    k_id,
-                )
-            )
-        results = ray.get(result_refs)
-        P_DEISM_ARG += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del W_1_all_id, W_2_all_id, N_src_dir_id, V_rec_dir_id, C_vu_r_id, k_id
-    gc.collect()
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(f"Done! [{minutes} minutes, {seconds:.3f} seconds]", end="\n\n")
-
-    return P_DEISM_ARG
-
-
-@ray.remote
-def calc_DEISM_ARG_LC_single_reflection_matrix(
-    n_all,
-    m_all,
-    v_all,
-    u_all,
-    C_nm_s_vec,
-    C_vu_r_vec,
-    R_sI_r,
-    atten,
-    k,
-    # bar: tqdm_ray.tqdm,  # progress bar
-):
-    """DEISM LC matrix form: Run each image using parallel computation"""
-    # source spherical harmonics
-    Y_sI_r = scy.sph_harm(
-        m_all,
-        n_all,
-        R_sI_r[0],
-        R_sI_r[1],
-    )
-    # vector multiplication for source
-    source_vec = ((1j) ** (-n_all) * (-1.0) ** n_all * C_nm_s_vec) @ Y_sI_r
-    # receiver spherical harmonics
-    Y_sI_r = scy.sph_harm(
-        u_all,
-        v_all,
-        R_sI_r[0],
-        R_sI_r[1],
-    )
-    # vector multiplication for receiver
-    receiver_vec = ((1j) ** v_all * (-1.0) ** v_all * C_vu_r_vec) @ Y_sI_r
-    # bar.update.remote(1)  # update progress bar
-    return (
-        -1
-        * atten
-        * 4
-        * np.pi
-        / k
-        * np.exp(-(1j) * k * R_sI_r[2])
-        / k
-        / R_sI_r[2]
-        * source_vec
-        * receiver_vec
-    )
-
-
-def ray_run_DEISM_ARG_LC_matrix(params, images):
-    """Complete DEISM LC run"""
-    import gc
-
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM-ARG LC vectorized ... ", end="")
-    k = params["waveNumbers"]
-    n_all = params["n_all"]
-    m_all = params["m_all"]
-    v_all = params["v_all"]
-    u_all = params["u_all"]
-    C_nm_s_ARG_vec = params["C_nm_s_ARG_vec"]
-    C_vu_r_vec = params["C_vu_r_vec"]
-    atten_all = images["atten_all"]
-    R_sI_r_all = images["R_sI_r_all"]
-    n_all_id = ray.put(n_all)
-    m_all_id = ray.put(m_all)
-    v_all_id = ray.put(v_all)
-    u_all_id = ray.put(u_all)
-    C_vu_r_vec_id = ray.put(C_vu_r_vec)
-    k_id = ray.put(k)
-    P_DEISM_ARG_LC = np.zeros(k.size, dtype="complex")
-
-    # You can specify the batch size for better dynamic management of RAM
-    batch_size = params["numParaImages"]
-    n_images = max(R_sI_r_all.shape)
-    if not params["silentMode"]:
-        print("{} images, ".format(n_images), end="")
-    # -------------------------------
-    # test progress bar using tqdm_ray
-    # remote_tqdm = ray.remote(tqdm_ray.tqdm)
-    # bar = remote_tqdm.remote(total=n_images, desc="DEISM-ARG-LC")
-    # -------------------------------
-    # t = time.time()
-    for n in range(int(n_images / batch_size) + 1):
-        # Run each image in parallel within each batch
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > n_images:
-            end_ind = n_images
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            result_refs.append(
-                calc_DEISM_ARG_LC_single_reflection_matrix.remote(
-                    n_all_id,
-                    m_all_id,
-                    v_all_id,
-                    u_all_id,
-                    C_nm_s_ARG_vec[:, :, i],
-                    C_vu_r_vec_id,
-                    R_sI_r_all[:, i],
-                    atten_all[:, i],
-                    k_id,
-                    # bar,  # progress bar
-                )
-            )
-        results = ray.get(result_refs)
-        P_DEISM_ARG_LC += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del n_all_id, m_all_id, v_all_id, u_all_id, C_vu_r_vec_id, k_id
-    gc.collect()
-    # bar.close.remote()  # close progress bar
-    if not params["silentMode"]:
-        minutes, seconds = divmod(time.time() - start, 60)
-        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
-
-    return P_DEISM_ARG_LC
-
-
-def ray_run_DEISM_ARG_MIX(params, images, Wigner):
-    """
-    Run DEISM-ARG with mixed versions
-    Early reflections are calculation using the original DEISM-ARG method
-    Higher order reflections are calculated using the LC method in vectorized form
-    """
-    import gc
-
-    # Start initialization
-    start = time.time()
-    if not params["silentMode"]:
-        print("[Calculating] DEISM-ARG MIX ... ", end="")
-    # ------- Parameters for DEISM-ORG -------
-    N_src_dir = params["sourceOrder"]
-    V_rec_dir = params["receiverOrder"]
-    W_1_all = Wigner["W_1_all"]
-    W_2_all = Wigner["W_2_all"]
-    C_nm_s_ARG = params["C_nm_s_ARG"]
-    C_vu_r = params["C_vu_r"]
-    early_indices = images["early_indices"]
-    # -------- Images --------
-    atten_all = images["atten_all"]
-    R_sI_r_all = images["R_sI_r_all"]
-
-    # -------- parameters for DEISM-LC vectorized ------
-    n_all = params["n_all"]
-    m_all = params["m_all"]
-    v_all = params["v_all"]
-    u_all = params["u_all"]
-    C_vu_r_vec = params["C_vu_r_vec"]
-    C_nm_s_ARG_vec = params["C_nm_s_ARG_vec"]
-    late_indices = images["late_indices"]
-    # --------- shared parameters ---------
-    k = params["waveNumbers"]
-    # number of parallel images for calculation
-    batch_size = params["numParaImages"]
-
-    # For DEISM-ARG-ORI
-    W_1_all_id = ray.put(W_1_all)
-    W_2_all_id = ray.put(W_2_all)
-    N_src_dir_id = ray.put(N_src_dir)
-    V_rec_dir_id = ray.put(V_rec_dir)
-    C_vu_r_id = ray.put(C_vu_r)
-    # For DEISM-ARG-LC vectorized
-    n_all_id = ray.put(n_all)
-    m_all_id = ray.put(m_all)
-    v_all_id = ray.put(v_all)
-    u_all_id = ray.put(u_all)
-    C_vu_r_vec_id = ray.put(C_vu_r_vec)
-    # For shared parameters
-    k_id = ray.put(k)
-    # Run DEISM-ARG-ORI for early reflections
-    # Start calculation
-    P_DEISM_ARG = np.zeros(k.size, dtype="complex")
-    if not params["silentMode"]:
-        print(
-            "{} early images, {} late images, ".format(
-                len(early_indices), len(late_indices)
-            ),
-            end="",
-        )
-    # For early reflections
-    result_refs = []
-    for i in range(len(early_indices)):
-        index = early_indices[i]
-        result_refs.append(
-            calc_DEISM_ARG_single_reflection_matrix.remote(
-                N_src_dir_id,
-                V_rec_dir_id,
-                C_nm_s_ARG[:, :, :, index],
-                C_vu_r_id,
-                atten_all[:, index],
-                R_sI_r_all[:, index],
-                W_1_all_id,
-                W_2_all_id,
-                k_id,
-            )
-        )
-    # Wait for the results and sum them up
-    results = ray.get(result_refs)
-    P_DEISM_ARG += sum(results)
-    del result_refs
-    del results
-    gc.collect()
-    len_late_indices = len(late_indices)
-    for n in range(int(len_late_indices / batch_size) + 1):
-        # Run each image in parallel within each batch
-        start_ind = n * batch_size
-        end_ind = (n + 1) * batch_size
-        if end_ind > len_late_indices:
-            end_ind = len_late_indices
-        # print(start_ind,end_ind)
-        result_refs = []
-        for i in range(start_ind, end_ind):
-            index = late_indices[i]
-            result_refs.append(
-                calc_DEISM_ARG_LC_single_reflection_matrix.remote(
-                    n_all_id,
-                    m_all_id,
-                    v_all_id,
-                    u_all_id,
-                    C_nm_s_ARG_vec[:, :, index],
-                    C_vu_r_vec_id,
-                    R_sI_r_all[:, index],
-                    atten_all[:, index],
-                    k_id,
-                )
-            )
-        # Wait for the results and sum them up
-        results = ray.get(result_refs)
-        P_DEISM_ARG += sum(results)
-        del result_refs
-        del results
-        gc.collect()
-    # Final cleanup
-    del W_1_all_id, W_2_all_id, N_src_dir_id, V_rec_dir_id, C_vu_r_id, k_id
-    gc.collect()
-    if not params["silentMode"]:
-        # Total time used
-        minutes = int((time.time() - start) // 60)
-        seconds = (time.time() - start) % 60
-        print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
-    return P_DEISM_ARG
-
-
-def run_DEISM_ARG(params):
-    """
-    Run DEISM-ARG for different modes
-    """
-    if params["DEISM_method"] == "ORG":
-        # Run DEISM-ARG ORG
-        P = ray_run_DEISM_ARG_ORG(params, params["images"], params["Wigner"])
-    elif params["DEISM_method"] == "LC":
-        # Run DEISM-ARG LC
-        P = ray_run_DEISM_ARG_LC_matrix(params, params["images"])
-    elif params["DEISM_method"] == "MIX":
-        # Run DEISM-ARG MIX
-        P = ray_run_DEISM_ARG_MIX(params, params["images"], params["Wigner"])
-    return P

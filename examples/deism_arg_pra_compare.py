@@ -29,7 +29,7 @@ from deism.core_deism_arg import (
 )
 
 from deism.data_loader import (
-    cmdArgsToDict_ARG,
+    cmdArgsToDict,
     printDict,
     detect_conflicts,
 )
@@ -38,7 +38,7 @@ from deism.data_loader import (
 def init_parameters_convex(params):
     """
     Initialize some important additional parameters for DEISM-ARG
-    In addition to the ones defined in configSingleParam_ARG.yaml
+    In addition to the ones defined in configSingleParam_ARG_RTF.yml
     """
     # Room vertices
     # -------------------------------------------------------
@@ -110,7 +110,7 @@ def init_parameters_convex(params):
 
 
 def main():
-    params, cmdArgs = cmdArgsToDict_ARG("configSingleParam_arg.yml")
+    params, cmdArgs = cmdArgsToDict(roomtype="convex")
     params = init_parameters_convex(params)
     # detect conflicts
     detect_conflicts(params)

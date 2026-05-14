@@ -1,0 +1,232 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DEISM Documentation &mdash; DEISM 2.2.1.11 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=247ccb63"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Introduction" href="introduction.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            DEISM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="workflows.html">Workflows</a></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="parameter_dependencies.html">Parameter Dependencies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">DEISM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">DEISM Documentation</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="deism-documentation">
+<h1>DEISM Documentation<a class="headerlink" href="#deism-documentation" title="Link to this heading"></a></h1>
+<p>DEISM is a Python package for room-acoustics simulation with directivity-aware
+source and receiver models. The current documentation is organized around the
+class-based workflow implemented by <code class="docutils literal notranslate"><span class="pre">deism.core_deism.DEISM</span></code>.</p>
+<section id="start-here">
+<h2>Start here<a class="headerlink" href="#start-here" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="introduction.html"><span class="doc">Introduction</span></a> for the project scope and published references</p></li>
+<li><p><a class="reference internal" href="installation.html"><span class="doc">Installation</span></a> for environment setup and verification</p></li>
+<li><p><a class="reference internal" href="quickstart.html"><span class="doc">Quickstart</span></a> for the shortest working class-based runs</p></li>
+<li><p><a class="reference internal" href="workflows.html"><span class="doc">Workflows</span></a> for shoebox versus convex execution order</p></li>
+<li><p><a class="reference internal" href="parameter_dependencies.html"><span class="doc">Parameter Dependencies</span></a> for update-order and rerun rules</p></li>
+</ul>
+</section>
+<section id="quick-links">
+<h2>Quick Links<a class="headerlink" href="#quick-links" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="introduction.html#academic-publications"><span class="std std-ref">Academic publications</span></a> - Jump to all publications</p></li>
+<li><p><a class="reference internal" href="introduction.html#main-paper"><span class="std std-ref">Main Paper</span></a> - Main JASA paper</p></li>
+<li><p><a class="reference internal" href="introduction.html#directivity-paper"><span class="std std-ref">Directivity Formulation</span></a> - Directivity formulation paper</p></li>
+<li><p><a class="reference internal" href="introduction.html#iwaenc-paper"><span class="std std-ref">Arbitrary Geometries</span></a> - Arbitrary geometries paper</p></li>
+</ul>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#key-features">Key Features</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#current-documentation-focus">Current documentation focus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#applications">Applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="introduction.html#academic-publications">Academic publications</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#supported-environments">Supported environments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#check-python-version">Check Python version</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#recommended-user-install">Recommended user install</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#developer-install-from-source">Developer install from source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#conda-based-environment">Conda-based environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#build-tools">Build tools</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#optional-tools">Optional tools</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#verify-the-installation">Verify the installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#what-to-expect-after-installation">What to expect after installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#common-issues">Common issues</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#choose-a-workflow">Choose a workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#shoebox-quickstart">Shoebox quickstart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html#convex-quickstart">Convex quickstart</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="workflows.html">Workflows</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#shared-structure">Shared structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#hard-versus-flexible-ordering">Hard versus flexible ordering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#shoebox-workflow">Shoebox workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#convex-workflow">Convex workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#backends">Backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="workflows.html#best-practices">Best practices</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="configuration.html#configuration-file-selection">Configuration-file selection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="configuration.html#main-configuration-groups">Main configuration groups</a></li>
+<li class="toctree-l2"><a class="reference internal" href="configuration.html#important-runtime-mappings">Important runtime mappings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="configuration.html#mode-specific-frequency-groups">Mode-specific frequency groups</a></li>
+<li class="toctree-l2"><a class="reference internal" href="configuration.html#material-input-rules">Material input rules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="configuration.html#room-specific-notes">Room-specific notes</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="parameter_dependencies.html">Parameter Dependencies</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="parameter_dependencies.html#why-this-matters">Why this matters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parameter_dependencies.html#method-dependency-summary">Method dependency summary</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parameter_dependencies.html#hard-ordering-rules">Hard ordering rules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parameter_dependencies.html#shoebox-versus-convex-ordering">Shoebox versus convex ordering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parameter_dependencies.html#change-impact-guide">Change-impact guide</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parameter_dependencies.html#practical-rerun-rules">Practical rerun rules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parameter_dependencies.html#tracking-refresh-provenance">Tracking refresh provenance</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#recommended-starting-points">Recommended starting points</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#class-based-workflow-examples">Class-based workflow examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#advanced-and-legacy-research-scripts">Advanced and legacy research scripts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#paper-reproduction-examples">Paper reproduction examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#other-scripts">Other scripts</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#primary-public-class">Primary public class</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#supporting-helpers">Supporting helpers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#convex-room-internals">Convex-room internals</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#important-runtime-fields">Important runtime fields</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api_reference.html#directivity-data-expectations">Directivity data expectations</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#wrong-update-order">Wrong update order</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#directivity-frequency-mismatch">Directivity frequency mismatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#convex-room-ordering-problems">Convex-room ordering problems</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#missing-directivity-or-reference-data-files">Missing directivity or reference data files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#optional-compiler-issues">Optional compiler issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#latex-plotting-failures">LaTeX plotting failures</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#legacy-example-confusion">Legacy example confusion</a></li>
+<li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#ray-backend-questions">Ray backend questions</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+</section>
+<section id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Link to this heading"></a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="introduction.html" class="btn btn-neutral float-right" title="Introduction" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Audiolabs Erlangen, Germany.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
