@@ -11,7 +11,8 @@ For three shapes with the same position configuration 3, the following solutions
 2. DEISM-LC
 3. FEM
 Note that the direct path is simulated using the FEM method.
-Also notice that the frequencies are from 20 Hz to 1000 Hz, you probably need to confirm this range in the configSingleParam.yaml file
+Also notice that the frequencies are from 20 Hz to 1000 Hz, so confirm this
+range in the active shoebox configuration file.
 """
 
 # -------------------------------------------------------
@@ -19,7 +20,6 @@ Also notice that the frequencies are from 20 Hz to 1000 Hz, you probably need to
 # Email: zeyu.xu@audiolabs-erlangen.de
 # -------------------------------------------------------
 import os
-import ray
 import numpy as np
 import matplotlib.pyplot as plt
 from deism.core_deism import (
@@ -38,7 +38,7 @@ from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
 def init_parameters(params):
     """
-    Paramters that are different to the default parameters in configSingleParam.yaml
+    Parameters that differ from the default shoebox configuration.
     """
     # reflection order
     params["maxReflOrder"] = 25
@@ -392,11 +392,7 @@ def plot_shifted_Phases(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
 
 
 def main():
-    # Use DEISM class and consistent run_DEISM(if_clean_up=..., if_shutdown_ray=...) pattern
-    # Limit Ray to a modest number of CPUs to reduce system load
-    if ray.is_initialized():
-        ray.shutdown()
-    ray.init(num_cpus=4)
+    # Use DEISM class and consistent run_DEISM(if_clean_up=...) pattern
     deism = DEISM("RTF", "shoebox")
     init_parameters(deism.params)
     detect_conflicts(deism.params)
@@ -458,6 +454,7 @@ def main():
         deism.params["sourceType"] = source_type
         deism.params["receiverType"] = receiver_type
         deism.params["posReceiver"] = pos_receiver
+        # deism.params["shoeboxImageCalcVersion"] = "v2-numba"
         deism.params["ifReceiverNormalize"] = 1
         # update_freqs() must not be called here: it overwrites params["impedance"], so a
         # second call breaks interpolate_materials. pointSrcStrength was set once above.

@@ -1,0 +1,363 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configuration &mdash; DEISM 2.2.1.11 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=247ccb63"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Parameter Dependencies" href="parameter_dependencies.html" />
+    <link rel="prev" title="Workflows" href="workflows.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            DEISM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="introduction.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="workflows.html">Workflows</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Configuration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#configuration-file-selection">Configuration-file selection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#main-configuration-groups">Main configuration groups</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#important-runtime-mappings">Important runtime mappings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mode-specific-frequency-groups">Mode-specific frequency groups</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#rtf-mode">RTF mode</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#rir-mode">RIR mode</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#material-input-rules">Material input rules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#room-specific-notes">Room-specific notes</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#shoebox">Shoebox</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#convex">Convex</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="parameter_dependencies.html">Parameter Dependencies</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">DEISM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Configuration</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/configuration.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="configuration">
+<h1>Configuration<a class="headerlink" href="#configuration" title="Link to this heading"></a></h1>
+<p>This page summarizes how DEISM selects and interprets its YAML configuration
+files.</p>
+<section id="configuration-file-selection">
+<h2>Configuration-file selection<a class="headerlink" href="#configuration-file-selection" title="Link to this heading"></a></h2>
+<p>The current loader chooses a YAML file from the pair <code class="docutils literal notranslate"><span class="pre">(mode,</span> <span class="pre">roomtype)</span></code>.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 18.0%" />
+<col style="width: 34.0%" />
+<col style="width: 30.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Mode</p></th>
+<th class="head"><p>Room type</p></th>
+<th class="head"><p>File</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RTF</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">shoebox</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">examples/configSingleParam_RTF.yml</span></code></p></td>
+<td><p>Frequency-domain shoebox workflow</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RIR</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">shoebox</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">examples/configSingleParam_RIR.yml</span></code></p></td>
+<td><p>Impulse-response-oriented shoebox workflow</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RTF</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">convex</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">examples/configSingleParam_ARG_RTF.yml</span></code></p></td>
+<td><p>Frequency-domain convex workflow</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RIR</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">convex</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">examples/configSingleParam_ARG_RIR.yml</span></code></p></td>
+<td><p>Impulse-response-oriented convex workflow</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="main-configuration-groups">
+<h2>Main configuration groups<a class="headerlink" href="#main-configuration-groups" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 28.0%" />
+<col style="width: 16.0%" />
+<col style="width: 56.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Group</p></th>
+<th class="head"><p>Scope</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Environment</span></code></p></td>
+<td><p>all workflows</p></td>
+<td><p>Sound speed and air density</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Dimensions</span></code></p></td>
+<td><p>room-specific</p></td>
+<td><p>Shoebox dimensions or convex vertices and wall centers</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Reflections</span></code></p></td>
+<td><p>all workflows</p></td>
+<td><p>Wall material inputs and maximum reflection order</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Positions</span></code></p></td>
+<td><p>all workflows</p></td>
+<td><p>Source and receiver positions</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Frequencies</span></code></p></td>
+<td><p>RTF only</p></td>
+<td><p>Start, end, and step of the working grid</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Signal</span></code></p></td>
+<td><p>RIR only</p></td>
+<td><p>Sampling rate, oversampling factor, and RIR length</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MaxSphDirectivityOrder</span></code></p></td>
+<td><p>all workflows</p></td>
+<td><p>Source and receiver spherical-harmonic orders</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Orientations</span></code></p></td>
+<td><p>all workflows</p></td>
+<td><p>Source and receiver Euler-angle orientation</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Radius</span></code></p></td>
+<td><p>all workflows</p></td>
+<td><p>Sampling-sphere radii for source and receiver</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Directivities</span></code></p></td>
+<td><p>all workflows</p></td>
+<td><p>Directivity identifiers such as <code class="docutils literal notranslate"><span class="pre">monopole</span></code> or measured/simulated profiles</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DEISM_specs</span></code></p></td>
+<td><p>all workflows</p></td>
+<td><p>Method selection and algorithm controls</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">SilentMode</span></code></p></td>
+<td><p>all workflows</p></td>
+<td><p>Console verbosity flag</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="important-runtime-mappings">
+<h2>Important runtime mappings<a class="headerlink" href="#important-runtime-mappings" title="Link to this heading"></a></h2>
+<p>The loader stores YAML values under runtime keys in <code class="docutils literal notranslate"><span class="pre">deism.params</span></code>. The most
+important mappings are:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 30.0%" />
+<col style="width: 36.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>YAML key</p></th>
+<th class="head"><p>Runtime key</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Environment.soundSpeed</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">soundSpeed</span></code></p></td>
+<td><p>Shared by both room types and both modes</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Environment.airDensity</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">airDensity</span></code></p></td>
+<td><p>Used in receiver normalization and acoustics calculations</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Reflections.impedance</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">impedance</span></code></p></td>
+<td><p>Material input can also be derived from absorption or reverberation time</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Reflections.angleDependentFlag</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">angDepFlag</span></code></p></td>
+<td><p>Controls angle-dependent reflection handling</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Reflections.maxReflectionOrder</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">maxReflOrder</span></code></p></td>
+<td><p>Reflection-order limit</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Positions.source</span></code> / <code class="docutils literal notranslate"><span class="pre">Positions.receiver</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">posSource</span></code> / <code class="docutils literal notranslate"><span class="pre">posReceiver</span></code></p></td>
+<td><p>Cartesian positions</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Orientations.source</span></code> / <code class="docutils literal notranslate"><span class="pre">Orientations.receiver</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">orientSource</span></code> / <code class="docutils literal notranslate"><span class="pre">orientReceiver</span></code></p></td>
+<td><p>Z-X-Z Euler angles in degrees</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">MaxSphDirectivityOrder.sourceOrder</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">sourceOrder</span></code></p></td>
+<td><p>Source directivity order</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MaxSphDirectivityOrder.receiverOrder</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">receiverOrder</span></code></p></td>
+<td><p>Receiver directivity order</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DEISM_specs.Method</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">DEISM_method</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ORG</span></code>, <code class="docutils literal notranslate"><span class="pre">LC</span></code>, or <code class="docutils literal notranslate"><span class="pre">MIX</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DEISM_specs.ifRemoveDirect</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ifRemoveDirectPath</span></code></p></td>
+<td><p>Direct-path handling</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DEISM_specs.QFlowStrength</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">qFlowStrength</span></code></p></td>
+<td><p>Used when receiver normalization is enabled</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="mode-specific-frequency-groups">
+<h2>Mode-specific frequency groups<a class="headerlink" href="#mode-specific-frequency-groups" title="Link to this heading"></a></h2>
+<section id="rtf-mode">
+<h3>RTF mode<a class="headerlink" href="#rtf-mode" title="Link to this heading"></a></h3>
+<p>RTF mode uses the <code class="docutils literal notranslate"><span class="pre">Frequencies</span></code> section:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">startFrequency</span></code> -&gt; <code class="docutils literal notranslate"><span class="pre">startFreq</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">endFrequency</span></code> -&gt; <code class="docutils literal notranslate"><span class="pre">endFreq</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">frequencyStep</span></code> -&gt; <code class="docutils literal notranslate"><span class="pre">freqStep</span></code></p></li>
+</ul>
+</section>
+<section id="rir-mode">
+<h3>RIR mode<a class="headerlink" href="#rir-mode" title="Link to this heading"></a></h3>
+<p>RIR mode uses the <code class="docutils literal notranslate"><span class="pre">Signal</span></code> section:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">samplingRate</span></code> -&gt; <code class="docutils literal notranslate"><span class="pre">sampleRate</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RIRLength</span></code> -&gt; <code class="docutils literal notranslate"><span class="pre">RIRLength</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">overSamplingFactor</span></code> -&gt; <code class="docutils literal notranslate"><span class="pre">overSamplingFactor</span></code></p></li>
+</ul>
+</section>
+</section>
+<section id="material-input-rules">
+<h2>Material input rules<a class="headerlink" href="#material-input-rules" title="Link to this heading"></a></h2>
+<p>Only one material input type should be treated as the primary source at a time:</p>
+<ul class="simple">
+<li><p>impedance</p></li>
+<li><p>absorption coefficient</p></li>
+<li><p>reverberation time</p></li>
+</ul>
+<p>The workflow then derives the other material forms as needed. For convex rooms,
+reverberation-time input is currently more restricted than direct impedance or
+absorption-coefficient input.</p>
+</section>
+<section id="room-specific-notes">
+<h2>Room-specific notes<a class="headerlink" href="#room-specific-notes" title="Link to this heading"></a></h2>
+<section id="shoebox">
+<h3>Shoebox<a class="headerlink" href="#shoebox" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Dimensions</span></code> uses <code class="docutils literal notranslate"><span class="pre">length</span></code>, <code class="docutils literal notranslate"><span class="pre">width</span></code>, and <code class="docutils literal notranslate"><span class="pre">height</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">update_room()</span></code> derives room volume and wall areas automatically.</p></li>
+</ul>
+</section>
+<section id="convex">
+<h3>Convex<a class="headerlink" href="#convex" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Dimensions</span></code> uses <code class="docutils literal notranslate"><span class="pre">vertices</span></code> and <code class="docutils literal notranslate"><span class="pre">wallCenters</span></code>.</p></li>
+<li><p>Convex workflows also use <code class="docutils literal notranslate"><span class="pre">ifRotateRoom</span></code> and room-rotation angles when the
+example script chooses to rotate the room.</p></li>
+<li><p>Convex-room geometry and reflection-path state is used later by ARG
+directivity setup, so update order matters more than in the shoebox case.</p></li>
+</ul>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="workflows.html" class="btn btn-neutral float-left" title="Workflows" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="parameter_dependencies.html" class="btn btn-neutral float-right" title="Parameter Dependencies" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Audiolabs Erlangen, Germany.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

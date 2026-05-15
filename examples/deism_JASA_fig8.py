@@ -12,7 +12,8 @@ For three position configurations, the following solutions are shown:
 3. FEM
 Note that in configuration 3, the source and receiver are placed on the same loudspeaker.
 Running this script may take around 5 minutes.
-Also notice that the frequencies are from 20 Hz to 1000 Hz, you probably need to confirm this range in the configSingleParam.yaml file
+Also notice that the frequencies are from 20 Hz to 1000 Hz, so confirm this
+range in the active shoebox configuration file.
 """
 
 # -------------------------------------------------------
@@ -26,8 +27,6 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import special as scy
-import ray
-import psutil
 from deism.core_deism import (
     DEISM,
     load_directpath_pressure,
@@ -40,7 +39,7 @@ from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
 def init_parameters(params):
     """
-    Paramters that are different to the default parameters in configSingleParam.yaml
+    Parameters that differ from the default shoebox configuration.
     """
     # reflection order
     params["maxReflOrder"] = 25
@@ -452,11 +451,7 @@ def plot_shifted_Phases(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
 
 
 def main():
-    # Limit Ray to a modest number of CPUs to reduce system load
-    if ray.is_initialized():
-        ray.shutdown()
-    ray.init(num_cpus=4)
-    # Use DEISM class and consistent run_DEISM(if_clean_up=..., if_shutdown_ray=...) pattern
+    # Use DEISM class and consistent run_DEISM(if_clean_up=...) pattern
     deism = DEISM("RTF", "shoebox")
     init_parameters(deism.params)
     detect_conflicts(deism.params)
@@ -491,7 +486,7 @@ def main():
             deism.params["ifRemoveDirectPath"] = 1
         else:
             deism.params["ifRemoveDirectPath"] = 0
-
+        # deism.params["shoeboxImageCalcVersion"] = "v2-numba"
         # Run DEISM-ORG
         deism.params["DEISM_method"] = "ORG"
         deism.update_directivities()

@@ -2,11 +2,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 from netCDF4 import Dataset
 import os
-from deism.core_deism import DEISM 
+from pathlib import Path
+from deism.core_deism import DEISM
+
+BRAS_RIR_SOFA_PATH = (
+    Path(__file__).resolve().parent
+    / "data"
+    / "sampled_directivity"
+    / "sofa"
+    / "01 single reflection (infinite plate)"
+    / "RIRs"
+    / "scene1_RIRs_Rigid.sofa"
+)
 
 # read the coordinates of a specified index from a SOFA file
 def get_measurement_info(sofa_path, index):
-    nc = Dataset(sofa_path, 'r')
+    nc = Dataset(str(sofa_path), 'r')
     
     ls_id = int(nc.variables['EmitterID'][index, 0])
     mp_id = int(nc.variables['ReceiverID'][index, 0])
@@ -53,11 +64,12 @@ def calculate_theoretical_times(source, receiver, c=343.0):
 # loop
 def batch_run_all_measurements():
     # sofa file path
-    real_sofa_path = r"D:\Projects\DEISM\DEISM_main\DEISM\examples\data\sampled_directivity\sofa\01 single reflection (infinite plate)\RIRs\scene1_RIRs_Rigid.sofa"
-    output_dir = "BRAS_results"  #run code under .../DEISM
+    real_sofa_path = BRAS_RIR_SOFA_PATH
+    output_dir = "BRAS_results"  #run code under .../examples
     
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+
 
     freqs_bands = np.array([
         20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 
@@ -76,6 +88,7 @@ def batch_run_all_measurements():
     datain_abs[4, :] = abs_rig
 
     nc_temp = Dataset(real_sofa_path, 'r')
+
     total_measurements = nc_temp.variables['Data.IR'].shape[0]
     nc_temp.close()
 
