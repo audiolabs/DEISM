@@ -84,26 +84,32 @@ def print_sofa_mapping(filepath):
     M = nc.variables['Data.IR'].shape[0] # obtain the total number of measurements
     
     emitter_ids = nc.variables['EmitterID'][:]
-    receiver_ids = nc.variables['ReceiverID'][:]
     emitter_pos = nc.variables['EmitterPosition'][:]
-    receiver_pos = nc.variables['ReceiverPosition'][:]
+    # receiver_ids = nc.variables['ReceiverID'][:]
+    # receiver_pos = nc.variables['ReceiverPosition'][:]
+    listener_pos = nc.variables['ListenerPosition'][:]
+    listener_view = nc.variables['ListenerView'][:]
     
     print("Part 4: Measurement Mapping (Index -> LS ID & MP ID)")
     print(f"{'Index':<6} | {'Src ID':<6} | {'Rec ID':<6} | {'Source Pos (X, Y, Z)':<21} | {'Receiver Pos (X, Y, Z)'}")
+     
+    src_id = int(emitter_ids[0, 0])
+    #rec_id = int(receiver_ids[0, 0])
     
-    for m in range(M):
-        src_id = int(emitter_ids[m, 0])
-        rec_id = int(receiver_ids[m, 0])
-        
-        src_x, src_y, src_z = emitter_pos[0, 0, m], emitter_pos[0, 1, m], emitter_pos[0, 2, m]
-        rec_x, rec_y, rec_z = receiver_pos[0, 0, m], receiver_pos[0, 1, m], receiver_pos[0, 2, m]
-        
-        print(f"{m:<6} | Src{src_id:02d}  | Rec{rec_id:02d}  | [{src_x:.3f}, {src_y:.3f}, {src_z:.3f}] | [{rec_x:.3f}, {rec_y:.3f}, {rec_z:.3f}]")
-        
+    src_x, src_y, src_z = emitter_pos[0, 0, 0], emitter_pos[0, 1, 0], emitter_pos[0, 2, 0]
+    lis_x, lis_y, lis_z = listener_pos[0, 0], listener_pos[0, 1], listener_pos[0, 2]
+
+    for m in range(M):    
+        view_az = listener_view[m, 0]
+        view_el = listener_view[m, 1]
+
+        #print(f"{m:<6} | Src{src_id:02d}  | Rec{rec_id:02d}  | [{src_x:.3f}, {src_y:.3f}, {src_z:.3f}] | [{rec_x:.3f}, {rec_y:.3f}, {rec_z:.3f}]")
+        print(f"{m:<6} | Src{src_id:02}   | [{src_x:.3f}, {src_y:.3f}, {src_z:.3f}] | [{lis_x:.3f}, {lis_y:.3f}, {lis_z:.3f}] | [{view_az:>5.1f}°, {view_el:>4.1f}°]")
+    
     nc.close()
 
 if __name__ == "__main__":
-    file_path = r"D:\Projects\DEISM\DEISM_main\DEISM\examples\data\sampled_directivity\sofa\01 single reflection (infinite plate)\RIRs\scene1_RIRs_Absorbing.sofa"
+    file_path = r"D:\Projects\DEISM\DEISM_main\DEISM\examples\data\sampled_directivity\sofa\01 single reflection (infinite plate)\BRIRs\scene1_BRIRs_Rigid.sofa"
     xray_sofa_raw(file_path)
     print_initial_angles(file_path)
     # print the mapping table of the positions of sources and receivers

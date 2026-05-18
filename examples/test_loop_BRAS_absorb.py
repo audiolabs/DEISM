@@ -2,7 +2,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 from netCDF4 import Dataset
 import os
+from pathlib import Path
 from deism.core_deism import DEISM 
+
+BRAS_RIR_SOFA_PATH = (
+    Path(__file__).resolve().parent
+    / "data"
+    / "sampled_directivity"
+    / "sofa"
+    / "01 single reflection (infinite plate)"
+    / "RIRs"
+    / "scene1_RIRs_Absorbing.sofa"
+)
 
 # Read the coordinates of a specified index from a SOFA file
 def get_measurement_info(sofa_path, index):
@@ -52,7 +63,7 @@ def calculate_theoretical_times(source, receiver, c=343.0):
 # Main loop for processing absorbing reflections
 def batch_run_all_measurements():
     # STEP 1: Update the path to the Absorbing SOFA file
-    real_sofa_path = r"D:\Projects\DEISM\DEISM_main\DEISM\examples\data\sampled_directivity\sofa\01 single reflection (infinite plate)\RIRs\scene1_RIRs_Absorbing.sofa"
+    real_sofa_path = BRAS_RIR_SOFA_PATH
     output_dir = "BRAS_results"  
     
     if not os.path.exists(output_dir):
