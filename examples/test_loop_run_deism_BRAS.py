@@ -65,7 +65,7 @@ def calculate_theoretical_times(source, receiver, c=343.0):
 def batch_run_all_measurements():
     # sofa file path
     real_sofa_path = BRAS_RIR_SOFA_PATH
-    output_dir = "BRAS_results"  #run code under .../examples
+    output_dir = "BRAS_results"  #run code under .../DEISM
     
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
