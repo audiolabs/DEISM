@@ -17,7 +17,7 @@ BRAS_RIR_SOFA_PATH = (
 
 # Read the coordinates of a specified index from a SOFA file
 def get_measurement_info(sofa_path, index):
-    nc = Dataset(sofa_path, 'r')
+    nc = Dataset(str(sofa_path), 'r')
     
     ls_id = int(nc.variables['EmitterID'][index, 0])
     mp_id = int(nc.variables['ReceiverID'][index, 0])
@@ -62,7 +62,7 @@ def calculate_theoretical_times(source, receiver, c=343.0):
 
 # Main loop for processing absorbing reflections
 def batch_run_all_measurements():
-    # STEP 1: Update the path to the Absorbing SOFA file
+    # STEP 1: Path to the Absorbing SOFA file (resolved relative to this script)
     real_sofa_path = BRAS_RIR_SOFA_PATH
     output_dir = "BRAS_results"  
     
