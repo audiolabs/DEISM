@@ -1220,9 +1220,27 @@ def get_ref_paths_ARG(params, room_pra_deism):
         params["posReceiver"], room_pra_deism.room_engine.sources
     ).astype(np.float32)
     # get attenuation values for each image source
-    atten_all = np.asarray(
-        room_pra_deism.room_engine.attenuations, dtype=np.complex64
-    )
+    if bool(params.get("ARG_use_compact_storage", 0)):
+        # Decoupled Tier B: reconstruct per-reflection geometry (wall id + incidence
+        # angle) from libroom outputs, then rebuild attenuation as a batched product.
+        # See acoustics_docs/methods/DEISM_arg_decouple.md.
+        from deism.arg_decouple import (
+            reconstruct_tierA,
+            build_arg_attenuation,
+            get_wall_impedance,
+        )
+
+        _tierA = reconstruct_tierA(params, room_pra_deism)
+        atten_all = build_arg_attenuation(
+            _tierA["wall_seq"],
+            _tierA["cos_inc"],
+            get_wall_impedance(params, room_pra_deism),
+        )
+    else:
+        _tierA = None
+        atten_all = np.asarray(
+            room_pra_deism.room_engine.attenuations, dtype=np.complex64
+        )
     # remove the direct path if params["ifRemoveDirectPath"] = 1
     if params["ifRemoveDirectPath"]:
         R_sI_r_all = R_sI_r_all[:, 1:]
@@ -1264,6 +1282,10 @@ def get_ref_paths_ARG(params, room_pra_deism):
         }
     params["images"] = images
     params["reflection_matrix"] = reflection_matrix
+    if _tierA is not None:
+        # expose Tier-A descriptors for inspection / caching / Tier-B recompute
+        images["wall_seq"] = _tierA["wall_seq"]
+        images["cos_inc"] = _tierA["cos_inc"]
     return params
 
 
