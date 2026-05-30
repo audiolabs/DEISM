@@ -186,6 +186,27 @@ if NUMBA_AVAILABLE:
         return atten_all
 
     @njit(parallel=True, cache=True)
+    def _numba_build_arg_attenuation_batch(wall_sequence, incidence_cos, Z_S):
+        n_images = wall_sequence.shape[0]
+        max_order = wall_sequence.shape[1]
+        K = Z_S.shape[1]
+        atten_all = np.empty((n_images, K), dtype=complex128)
+
+        for img in prange(n_images):
+            for ki in range(K):
+                atten = 1.0 + 0.0j
+                for level in range(max_order):
+                    wall_id = wall_sequence[img, level]
+                    if wall_id < 0:
+                        break
+                    atten *= _shoebox_ref_coef_from_cos_numba(
+                        incidence_cos[img, level], Z_S[wall_id, ki]
+                    )
+                atten_all[img, ki] = atten
+
+        return atten_all
+
+    @njit(parallel=True, cache=True)
     def _numba_ORG_batch(
         N_src_dir, V_rec_dir, C_nm_s, C_vu_r, A_all, atten_all, x0_all,
         W_1_all, W_2_all, k
@@ -538,6 +559,83 @@ def _build_shoebox_attenuation_batch(params, A_batch, R_sI_r_batch):
         np.ascontiguousarray(np.asarray(params["impedance"], dtype=np.complex128)),
         int(params["angDepFlag"]),
     )
+
+
+def get_arg_wall_impedance(params):
+    """Return ARG wall impedance as (n_walls, n_bands) complex128."""
+    Z_S = np.asarray(params["impedance"], dtype=np.complex128)
+    if Z_S.ndim == 1:
+        Z_S = Z_S[:, None]
+    return Z_S
+
+
+def _validate_arg_compact_geometry(wall_sequence, incidence_cos, n_walls):
+    if wall_sequence.ndim != 2 or incidence_cos.ndim != 2:
+        raise ValueError("wall_sequence and incidence_cos must both be 2D arrays")
+    if wall_sequence.shape != incidence_cos.shape:
+        raise ValueError(
+            "wall_sequence and incidence_cos shapes differ: "
+            f"{wall_sequence.shape} vs {incidence_cos.shape}"
+        )
+
+    if np.any(wall_sequence < -1):
+        bad = wall_sequence[wall_sequence < -1][0]
+        raise ValueError(f"wall_sequence contains invalid padding value {bad}")
+
+    if wall_sequence.shape[1] > 1:
+        pad_seen_before = np.concatenate(
+            [
+                np.zeros((wall_sequence.shape[0], 1), dtype=bool),
+                np.maximum.accumulate(wall_sequence[:, :-1] < 0, axis=1),
+            ],
+            axis=1,
+        )
+        if np.any((wall_sequence >= 0) & pad_seen_before):
+            raise ValueError("wall_sequence contains non-contiguous padding")
+
+    used = wall_sequence >= 0
+    if np.any(wall_sequence[used] >= n_walls):
+        bad = wall_sequence[used][wall_sequence[used] >= n_walls][0]
+        raise ValueError(f"wall_sequence contains invalid wall/material index {bad}")
+    if np.any(~np.isfinite(incidence_cos[used])):
+        raise ValueError("incidence_cos contains non-finite values for used walls")
+    if np.any((incidence_cos[used] < -1e-7) | (incidence_cos[used] > 1.0 + 1e-7)):
+        raise ValueError("incidence_cos values must be in [0, 1]")
+
+    padding = wall_sequence < 0
+    if np.any(np.isfinite(incidence_cos[padding])):
+        raise ValueError("incidence_cos padding must be NaN")
+
+
+def _build_arg_attenuation_batch(params, geom):
+    """Build ARG attenuation from compact wall sequence and incidence cosines."""
+    wall_sequence = np.ascontiguousarray(
+        np.asarray(geom["wall_sequence"], dtype=np.int64)
+    )
+    incidence_cos = np.ascontiguousarray(
+        np.asarray(geom["incidence_cos"], dtype=np.float64)
+    )
+    Z_S = np.ascontiguousarray(get_arg_wall_impedance(params))
+    _validate_arg_compact_geometry(wall_sequence, incidence_cos, Z_S.shape[0])
+
+    if NUMBA_AVAILABLE:
+        atten = _numba_build_arg_attenuation_batch(
+            wall_sequence,
+            incidence_cos,
+            Z_S,
+        )
+    else:
+        n_images, max_order = wall_sequence.shape
+        atten = np.ones((n_images, Z_S.shape[1]), dtype=np.complex128)
+        for img in range(n_images):
+            for level in range(max_order):
+                wall_id = int(wall_sequence[img, level])
+                if wall_id < 0:
+                    break
+                zc = Z_S[wall_id, :] * incidence_cos[img, level]
+                atten[img, :] *= (zc - 1.0) / (zc + 1.0)
+
+    return atten.T.astype(np.complex64)
 
 
 def _run_numba_org_in_batches(params, A_all, R_sI_r_all, atten_all, Wigner):

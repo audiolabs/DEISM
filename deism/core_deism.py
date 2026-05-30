@@ -147,7 +147,22 @@ class DEISM:
                 self._update_where_tracking(key, "update_source_receiver")
         elif self.roomtype == "convex":
             # TODO: Better writing here?
-            from deism.core_deism_arg import get_ref_paths_ARG
+            from deism.core_deism_arg import (
+                Room_deism_cpp,
+                Room_deism_python,
+                _convex_use_compact_storage,
+                get_ref_paths_ARG,
+            )
+
+            desired_room_cls = (
+                Room_deism_python
+                if _convex_use_compact_storage(self.params)
+                else Room_deism_cpp
+            )
+            if not hasattr(self, "room_convex") or not isinstance(
+                self.room_convex, desired_room_cls
+            ):
+                self.room_convex = desired_room_cls(self.params)
 
             # Update images
             self.room_convex.update_images(source, receiver)
@@ -162,6 +177,19 @@ class DEISM:
         if self.roomtype == "shoebox" and self.params["DEISM_method"] in ("ORG", "LC"):
             self.params["images"] = merge_images(self.params["images"])
         # -----------------------------------------------------------
+
+    def recompute_arg_attenuation(self):
+        """Rebuild convex compact attenuation without recomputing geometry."""
+        if self.roomtype != "convex":
+            raise ValueError("ARG attenuation recompute is only valid for convex rooms")
+        images = self.params.get("images")
+        if not images or "wall_sequence" not in images or "incidence_cos" not in images:
+            raise ValueError("No compact ARG geometry is cached in params['images']")
+        from deism.parallel_backends import _build_arg_attenuation_batch
+
+        images["atten_all"] = _build_arg_attenuation_batch(self.params, images)
+        self._update_where_tracking("images", "recompute_arg_attenuation")
+        return images["atten_all"]
 
     def _update_where_tracking(self, parameter_name, function_name):
         """
@@ -459,11 +487,26 @@ class DEISM:
         if self.roomtype == "convex":
             from deism.core_deism_arg import (
                 Room_deism_cpp,
+                Room_deism_python,
+                _convex_use_compact_storage,
             )  # Lazy import to avoid circular import
 
-            self.room_convex = Room_deism_cpp(self.params)
-            # Update the updated_where dictionary
-            self._update_where_tracking("room_convex", "update_directivities")
+            if (
+                _convex_use_compact_storage(self.params)
+                and "images" in self.params
+                and "wall_sequence" in self.params["images"]
+                and "incidence_cos" in self.params["images"]
+            ):
+                self.recompute_arg_attenuation()
+            else:
+                room_cls = (
+                    Room_deism_python
+                    if _convex_use_compact_storage(self.params)
+                    else Room_deism_cpp
+                )
+                self.room_convex = room_cls(self.params)
+                # Update the updated_where dictionary
+                self._update_where_tracking("room_convex", "update_freqs")
 
     def update_directivities(self):
         """
