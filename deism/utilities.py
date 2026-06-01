@@ -119,6 +119,19 @@ def get_SPL(P):
     return SPL
 
 
+def get_LSD(P_test, P_ref):
+    """Return log-spectral distance in dB."""
+    return np.sqrt(
+        np.sum(np.abs(10 * np.log10((np.abs(P_test) / np.abs(P_ref)) ** 2)) ** 2)
+        / len(P_test)
+    )
+
+
+def get_RTF_relerr(P_test, P_ref):
+    """Return max relative error against a reference RTF."""
+    return np.max(np.abs(P_test - P_ref)) / (np.max(np.abs(P_ref)) + 1e-30)
+
+
 # %% plot_results
 def plot_RTFs(
     figure_name,

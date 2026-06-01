@@ -180,13 +180,20 @@ class DEISM:
 
     def recompute_arg_attenuation(self):
         """Rebuild convex compact attenuation without recomputing geometry."""
+        # Compact attenuation reuse only makes sense for convex ARG rooms; shoebox
+        # rooms do not carry wall_sequence/incidence_cos descriptors.
         if self.roomtype != "convex":
             raise ValueError("ARG attenuation recompute is only valid for convex rooms")
+        # The compact geometry cache lives in params["images"].  The geometry can
+        # be reused only if both compact path arrays are still present.
         images = self.params.get("images")
         if not images or "wall_sequence" not in images or "incidence_cos" not in images:
             raise ValueError("No compact ARG geometry is cached in params['images']")
+        # Import lazily to avoid importing numba/backend code during basic class setup.
         from deism.parallel_backends import _build_arg_attenuation_batch
 
+        # Recompute attenuation for the current impedance/frequency grid while
+        # preserving the already generated image geometry.
         images["atten_all"] = _build_arg_attenuation_batch(self.params, images)
         self._update_where_tracking("images", "recompute_arg_attenuation")
         return images["atten_all"]
@@ -1578,7 +1585,7 @@ def get_directivity_coefs(k, maxSHorder, Pmnr0, r0):
     return C_nm_s
 
 
-def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
+def cal_C_nm_s_arg(reflection_matrix, Psh_source, src_Psh_coords, params, method="fast"):
     """
     Calculating the reflected source directivity coefficients for each reflection path (image source)
     Input:
@@ -1587,16 +1594,75 @@ def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
     3. Psh_source: Sampled pressure of original directional source on the sphere, shape (N_freqs, N_src_dir) numpy array
     4. src_Psh_coords: the Cartesian coordinates of the original sampling points, shape (3, N_src_dir) numpy array
     5. params: the parameters of the room and the simulation
+    6. method: "fast" (default, algebraic acceleration via probe-recovered SH rotation)
+       or "legacy" (per-image SH least-squares refit, the original implementation). See DEISM_arg_decouple.md.
     Output:
     1. C_nm_s_new_all: the reflected source directivity coefficients for each reflection path, shape (N_freqs, N_src_dir+1, 2*N_src_dir+1, N_images)
 
     """
+    # Keep the public dispatcher small: callers select the numerical strategy
+    # through params["directivityRefitMethod"] or this explicit method argument.
+    if method == "legacy":
+        # Original implementation: for every image, rotate all sampled source
+        # directions and solve a full spherical-harmonic least-squares problem.
+        return _cal_C_nm_s_arg_legacy(
+            reflection_matrix, Psh_source, src_Psh_coords, params
+        )
+    elif method == "fast":
+        # Accelerated implementation: solve the base source SH fit once, then
+        # recover per-image coefficient transforms using a small probe basis.
+        return _cal_C_nm_s_arg_fast(
+            reflection_matrix,
+            Psh_source,
+            src_Psh_coords,
+            params,
+        )
+    else:
+        raise ValueError(
+            f"Unknown directivity refit method '{method}'; "
+            "expected 'legacy' or 'fast'."
+        )
 
+
+def _divide_by_sphankel(Pmnr0_source_all, k, N_src_dir, r0_src):
+    """
+    Per-degree spherical-Hankel normalization that turns pressure SH coefficients
+    Pmnr0 into source directivity coefficients C_nm = Pmnr0 / h_n^(2)(k r0).
+    Matches the legacy division loop exactly.
+    """
+    # Allocate in the historical tensor layout:
+    # (frequency, degree n, shifted order m+n, image index).
+    n_images = Pmnr0_source_all.shape[3]
+    C_nm_s_new_all = np.zeros(
+        [
+            k.size,
+            N_src_dir + 1,
+            2 * N_src_dir + 1,
+            n_images,
+        ],
+        dtype="complex",
+    )
+    for n in range(N_src_dir + 1):
+        # h_n^(2)(k r0) is shared by all m values and all images for one degree.
+        hn_r0_all = sphankel2(n, k * r0_src)
+        for m in range(-n, n + 1):
+            # Convert pressure SH coefficients to source directivity coefficients.
+            C_nm_s_new_all[:, n, m, :] = (
+                Pmnr0_source_all[: len(k), n, m + n, :] / hn_r0_all[:, None]
+            )
+    return C_nm_s_new_all
+
+
+def _cal_C_nm_s_arg_legacy(reflection_matrix, Psh_source, src_Psh_coords, params):
+    """
+    Legacy per-image SH least-squares refit (verbatim the original cal_C_nm_s_new body).
+    """
     k = params["waveNumbers"]
     N_src_dir = params["sourceOrder"]
     r0_src = params["radiusSource"]
     n_images = reflection_matrix.shape[2]
-    # Create the reflected SH coefficients for each image source
+    # Intermediate pressure SH coefficients before dividing by h_n^(2)(k r0).
+    # This preserves the original storage convention used by SHCs_from_pressure_LS.
     Pmnr0_source_all = np.zeros(
         [
             k.size,
@@ -1606,11 +1672,14 @@ def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
         ],
         dtype="complex",
     )
-    # for each image source
     for i in range(n_images):
+        # Rotate the original source sampling coordinates by the reflection
+        # matrix for this image source.
         Psh_source_coords = reflection_matrix[:, :, i] @ (
             src_Psh_coords  # - room.source[:, None]
         )
+        # Convert the rotated Cartesian directions to the azimuth/inclination
+        # format expected by SHCs_from_pressure_LS.
         az, el, r = cart2sph(
             Psh_source_coords[0, :],
             Psh_source_coords[1, :],
@@ -1622,7 +1691,8 @@ def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
             N_src_dir,
             params["freqs"],
         )
-    # create the reflected source directivity coefficients
+    # Final directivity coefficients use the same per-degree Hankel scaling as
+    # get_directivity_coefs().
     C_nm_s_new_all = np.zeros(
         [
             k.size,
@@ -1633,13 +1703,150 @@ def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
         dtype="complex",
     )
     for n in range(N_src_dir + 1):
+        # h_n^(2)(k r0) only depends on degree and frequency.
         hn_r0_all = sphankel2(n, k * r0_src)
         for m in range(-n, n + 1):
-            # The source directivity coefficients
+            # m is stored in shifted form m+n to avoid negative tensor indices.
             C_nm_s_new_all[:, n, m, :] = (
                 Pmnr0_source_all[: len(k), n, m + n, :] / hn_r0_all[:, None]
             )
     return C_nm_s_new_all
+
+
+def _flat_nm_index_maps(N_src_dir):
+    """
+    Index arrays for scattering flat SH coefficients (index j = n**2 + n + m)
+    into the Pmnr0 tensor storage Pmnr0[:, n, m+n, :], matching SHCs_from_pressure_LS.
+    Returns (n_arr, col_arr) with col_arr = m + n = j - n**2.
+    """
+    # Flat SH columns are ordered by j = n**2 + n + m.  Recover degree n by
+    # floor(sqrt(j)), then map the within-degree column to the shifted m+n slot.
+    j = np.arange((N_src_dir + 1) ** 2)
+    n_arr = np.floor(np.sqrt(j)).astype(int)
+    col_arr = j - n_arr**2
+    return n_arr, col_arr
+
+
+def _build_sh_basis_from_coords(coords, N_src_dir):
+    """
+    Build the SH basis Y exactly as SHCs_from_pressure_LS does, from Cartesian coords.
+    coords: (3, K) array. Returns Y: (K, (N_src_dir+1)**2), column index n**2 + n + m.
+    """
+    # The sampled directivity coordinates are Cartesian unit directions.
+    # SHCs_from_pressure_LS uses azimuth and inclination, so mirror that conversion.
+    az, el, r = cart2sph(coords[0, :], coords[1, :], coords[2, :])
+    azimuth = az
+    inclination = np.pi / 2 - el
+    # Each row is one direction; each column is one spherical-harmonic mode.
+    Y = np.zeros((coords.shape[1], (N_src_dir + 1) ** 2), dtype=complex)
+    for n in range(N_src_dir + 1):
+        for m in range(-n, n + 1):
+            Y[:, n**2 + n + m] = scy.sph_harm(m, n, azimuth, inclination)
+    return Y
+
+
+def _select_well_conditioned_probe(src_Psh_coords, N_src_dir, cond_thresh=1e6):
+    """
+    Pick K >= n_modes probe directions whose SH basis Y(P) is well-conditioned.
+    Tries evenly spaced indices first, then a fixed-seed random spread, with K sized
+    relative to n_modes so it generalizes to any sourceOrder.
+    Returns (idx, Y_probe, Y_probe_pinv, cond) or (None, None, None, None) on failure.
+    """
+    n_dir = src_Psh_coords.shape[1]
+    n_modes = (N_src_dir + 1) ** 2
+
+    def _try(idx):
+        # Remove duplicate indices from linspace rounding or random sampling.
+        idx = np.unique(idx)
+        if idx.size < n_modes:
+            return None
+        # A usable probe set must span the SH mode space without a large
+        # condition number, otherwise the fast coefficient transform is unstable.
+        Yp = _build_sh_basis_from_coords(src_Psh_coords[:, idx], N_src_dir)
+        c = np.linalg.cond(Yp)
+        if c <= cond_thresh:
+            return idx, Yp, np.linalg.pinv(Yp), c
+        return None
+
+    # Prefer deterministic, evenly spread probes so results are reproducible and
+    # independent of the global NumPy random state.
+    for mult in (2, 3, 4, 6):
+        K = min(mult * n_modes, n_dir)
+        if K < n_modes:
+            continue
+        res = _try(np.linspace(0, n_dir - 1, K).astype(int))
+        if res is not None:
+            return res
+    # If evenly spaced probes are ill-conditioned for this sampling grid, try a
+    # fixed-seed random subset before failing explicitly.
+    rng = np.random.default_rng(0)
+    for mult in (3, 4, 6, 8):
+        K = min(mult * n_modes, n_dir)
+        if K < n_modes:
+            continue
+        res = _try(rng.choice(n_dir, size=K, replace=False))
+        if res is not None:
+            return res
+    return None, None, None, None
+
+
+def _cal_C_nm_s_arg_fast(reflection_matrix, Psh_source, src_Psh_coords, params):
+    """
+    Algebraic acceleration of the per-image SH refit.
+
+    Exploits the SH rotation identity Y(R_i @ C) = Y(C) @ M_i for orthogonal R_i:
+    fit the base pressure SH coefficients once (fnm_base), recover the small rotation
+    matrix M_i from a probe set, and solve M_i @ fnm_i = fnm_base per image instead of
+    a full 1764-direction pseudoinverse. See DEISM_arg_decouple.md (Part II).
+    """
+    k = params["waveNumbers"]
+    N_src_dir = params["sourceOrder"]
+    r0_src = params["radiusSource"]
+    n_images = reflection_matrix.shape[2]
+    nf = len(k)
+
+    # Select one well-conditioned source-direction subset.  The same probe set is
+    # reused for every reflection matrix, which is the main source of speedup.
+    # Fast mode should not silently switch algorithms.
+    probe_idx, Y_probe, Y_probe_pinv, _cond = _select_well_conditioned_probe(
+        src_Psh_coords, N_src_dir
+    )
+    if probe_idx is None:
+        raise ValueError(
+            "Unable to select a well-conditioned source-directivity probe set "
+            "for fast ARG C_nm refit; use method='legacy'."
+        )
+    # P contains the Cartesian probe directions before reflection.
+    P = src_Psh_coords[:, probe_idx]
+
+    # Fit the original source pressure data once in the full sampling grid.  This
+    # replaces the legacy repeated full-grid LS solve for every image source.
+    Y_base = _build_sh_basis_from_coords(src_Psh_coords, N_src_dir)
+    fnm_base = np.linalg.pinv(Y_base) @ Psh_source[:nf, :].T  # (n_modes, nf)
+
+    # These arrays map flat SH coefficient rows back into the legacy tensor layout.
+    n_arr, col_arr = _flat_nm_index_maps(N_src_dir)
+    Pmnr0_source_all = np.zeros(
+        [
+            k.size,
+            N_src_dir + 1,
+            2 * N_src_dir + 1,
+            n_images,
+        ],
+        dtype="complex",
+    )
+    for i in range(n_images):
+        # Ri maps original source directions into the reflected image-source frame.
+        Ri = reflection_matrix[:, :, i].astype(np.float64)
+        # Build the SH basis only at reflected probe directions.
+        Yi_probe = _build_sh_basis_from_coords(Ri @ P, N_src_dir)  # (K, n_modes)
+        # M_i is the small SH-space transform satisfying Y(R_i P) ~= Y(P) @ M_i.
+        M_i = Y_probe_pinv @ Yi_probe  # (n_modes, n_modes)
+        # Recover reflected coefficients from M_i @ fnm_i = fnm_base.
+        fnm_i = np.linalg.solve(M_i, fnm_base)  # (n_modes, nf)
+        # Scatter flat n**2+n+m rows into Pmnr0[:, n, m+n, i] (SHCs convention).
+        Pmnr0_source_all[:, n_arr, col_arr, i] = fnm_i.T
+    return _divide_by_sphankel(Pmnr0_source_all, k, N_src_dir, r0_src)
 
 
 def init_source_directivities_ARG(params):
@@ -1736,11 +1943,12 @@ def init_source_directivities_ARG(params):
                     end="",
                 )
         # Get source directivity coefficients
-        C_nm_s_ARG = cal_C_nm_s_new(
+        C_nm_s_ARG = cal_C_nm_s_arg(
             reflection_matrix,
             Psh_source,
             rotated_coords_src,
             params,
+            method=params.get("directivityRefitMethod", "fast"),
         )
         params["C_nm_s_ARG"] = C_nm_s_ARG.astype(np.complex64)
         # Update the updated_where dictionary if track_updated_where is True
@@ -4376,4 +4584,3 @@ def T_z(k, Lz):
                 [0, 0, 0, 1],
             ]
         ) @ T_z(-k + np.sign(k), Lz)
-
