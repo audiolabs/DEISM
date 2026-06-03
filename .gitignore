@@ -11,6 +11,7 @@ dist/
 **/*.so
 **/*.pyd
 **/*.pyc
+*.mat
 media/
 new_features/
 tools/reports/
