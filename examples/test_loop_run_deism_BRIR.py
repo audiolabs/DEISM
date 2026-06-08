@@ -51,20 +51,22 @@ def get_rotated_ear_positions(head_center, view_az):
     """
     Based on the coordinate of head center and rotate angle, 
     dynamically computing the rotated coordinates of both ears
+    refer to wikipedia rotation matrix 2D
     """
     x0, y0, z0 = head_center
     
-    global_alpha_rad = np.radians(-180.0 + view_az)
+    theta = np.radians(view_az)
     
-    # radius of head (14cm between left and right ear of FABIAN dummy head)
-    r = 0.070 
+    # radius of head 
+    # read from .sofa file: ReceiverPosition: (array([0.  , 0.09, 0.  ]), array([ 0.  , -0.09,  0.  ]))
+    r = 0.09 
     
     # calculating coordinates
-    x_left = x0 + r * np.sin(global_alpha_rad)
-    y_left = y0 - r * np.cos(global_alpha_rad)
+    x_left = x0  - ( - r) * np.sin(theta) 
+    y_left =  y0  + ( - r) * np.cos(theta) 
     
-    x_right = x0 - r * np.sin(global_alpha_rad)
-    y_right = y0 + r * np.cos(global_alpha_rad)
+    x_right = x0  - r * np.sin(theta)
+    y_right = y0 + r * np.cos(theta) 
     
     return np.array([x_left, y_left, z0]), np.array([x_right, y_right, z0])
 
@@ -118,51 +120,30 @@ def get_deism_sh_coeffs_from_mat(file_path, target_freqs, mode='receiver', ear='
     else:
         raise ValueError("mode must be 'source' or 'receiver'")
 
-    step = 15
-    ir_raw = ir_raw[::step, :]
-    azimuths_deg = azimuths_deg[::step]
-    elevations_deg = elevations_deg[::step]
-
     fs_hrtf = 44100.0 
-    M, N_samples = ir_raw.shape
     azimuths_rad = np.radians(azimuths_deg)
-    polar_rad = np.radians(90.0 - elevations_deg)
+    polar_rad = np.radians(elevations_deg)
     
     # FFT
-    psh = np.fft.rfft(ir_raw, axis=1) 
-    freqs_hrtf = np.fft.rfftfreq(N_samples, d=1.0/fs_hrtf)
-    N_bins = len(freqs_hrtf)
+    N_pad = 8192
+    psh = np.fft.rfft(ir_raw, n=N_pad, axis=1)
+    freqs_hrtf = np.fft.rfftfreq(N_pad, d=1.0/fs_hrtf)
     
     # -----------------------------------------------------------------
     # calculate Cnm/Cvu
     # -----------------------------------------------------------------
     Dir_all = np.column_stack((azimuths_rad, polar_rad))
-    #total_comps = (max_order + 1) ** 2
-    n_rows = max_order + 1
-    m_cols = 2 * max_order + 1
-    C_nm_raw = np.zeros((N_bins, n_rows, m_cols), dtype=complex)
     sound_speed = 343.0
+
+    Pnm = SHCs_from_pressure_LS(psh.T, Dir_all, max_order, freqs_hrtf)
+    k = 2 * np.pi * freqs_hrtf / sound_speed
+    k[freqs_hrtf <= 1e-3] = 1e-10
+    Cnm = coef_calc_func(k, max_order, Pnm, r0)
+    Cnm[freqs_hrtf <= 1e-3, :, :] = 0.0
     
-    for freq_idx in range(N_bins):
-        f_current = freqs_hrtf[freq_idx]
-        
-        # Intercept 0 Hz, avoid hankel function to divide 0
-        if f_current <= 1e-3:
-            C_nm_raw[freq_idx, :, :] = 0.0
-            continue
-
-        Psh_use = psh[:, freq_idx].reshape(1, -1)
-        
-        Pnm = SHCs_from_pressure_LS(Psh_use, Dir_all, max_order, np.array(f_current))
-        
-        k = 2 * np.pi * f_current / sound_speed
-        
-        Cnm = np.squeeze(coef_calc_func(k, max_order, Pnm, r0))
-        C_nm_raw[freq_idx, :, :] = Cnm
-
     # interpolation
-    interp_real = interp1d(freqs_hrtf, np.real(C_nm_raw), axis=0, kind='linear', fill_value="extrapolate")
-    interp_imag = interp1d(freqs_hrtf, np.imag(C_nm_raw), axis=0, kind='linear', fill_value="extrapolate")
+    interp_real = interp1d(freqs_hrtf, np.real(Cnm), axis=0, kind='linear', fill_value="extrapolate")
+    interp_imag = interp1d(freqs_hrtf, np.imag(Cnm), axis=0, kind='linear', fill_value="extrapolate")
     
     C_nm_aligned = interp_real(target_freqs) + 1j * interp_imag(target_freqs)
     
@@ -200,7 +181,7 @@ def batch_run_selected_brir_angles():
         # 1. abstract BRIR data for the current index
         view_az, src_pos, lis_pos, real_ir_left, real_ir_right, fs_real = get_brir_measurement_info(real_sofa_path, idx)
         
-        # coordinate translation 
+        # coordinate translation to simulate infinite plane
         src_pos_deism = np.array([src_pos[0] + 10.0, src_pos[1] + 10.0, src_pos[2]])
         rec_pos_deism = np.array([lis_pos[0] + 10.0, lis_pos[1] + 10.0, lis_pos[2]])
 
@@ -215,8 +196,8 @@ def batch_run_selected_brir_angles():
         model.params["posReceiver"] = rec_pos_deism
         
         # assign the head orientation (Azimuth) to the listener's rotation parameter (Alpha)
-        # Azimuth in ListenerView corresponds to alpha (Z-axis rotation) in DEISM rotation matrix
-        model.params["orientReceiver"] = [-180 + view_az, 0, 0] 
+        # Azimuth in ListenerView corresponds to alpha (Z-axis rotation) in DEISM rotation matrix       
+        model.params["orientReceiver"] = [-180, 0, 0] # -180 + view_az
         model.params["orientSource"] = [0, -45, 0] 
 
         model.update_wall_materials(datain=datain_abs, freqs_bands=freqs_bands, datatype="absorpCoefficient")  
@@ -234,7 +215,9 @@ def batch_run_selected_brir_angles():
         )
         model.params["C_nm_s"] = aligned_C_nm_s  
         
-        # directivity of left ear
+        # ==========directivity of left ear===============
+        pos_left, pos_right = get_rotated_ear_positions(rec_pos_deism, view_az)
+
         receiver_filename_l = f"HATO_{int(view_az)}_1x1_64442_HRIRs_top_pole.mat"
         aligned_C_vu_r_left = get_deism_sh_coeffs_from_mat(
             file_path = RECEIVER_MAT_FOLDER / receiver_filename_l,
@@ -245,34 +228,52 @@ def batch_run_selected_brir_angles():
         )
         model.params["C_vu_r"] = aligned_C_vu_r_left
         
-        model.update_source_receiver()
+        model.update_source_receiver(receiver = pos_left)
 
+        print("Running DEISM calculation for left ear...")
+        model.run_DEISM(if_clean_up=False) #...
+
+        simulated_brir_l = model.get_results(highpass_filter=False)
+        sim_ir_left = simulated_brir_l 
+
+        # ===========directivity of right ear==============
+        aligned_C_vu_r_right = get_deism_sh_coeffs_from_mat(
+            file_path = RECEIVER_MAT_FOLDER / receiver_filename_l,
+            target_freqs = target_freqs,
+            mode = 'receiver',
+            ear = 'R',
+            max_order = 4
+        )
+        model.params["C_vu_r"] = aligned_C_vu_r_right
         
-        print("Running DEISM calculation...")
-        model.run_DEISM(if_clean_up=True)
-
-        simulated_brir = model.get_results(highpass_filter=False)
-        print(simulated_brir.ndim)
+        model.update_source_receiver(receiver = pos_right)
+        
+        print("Running DEISM calculation for right ear...")
+        model.run_DEISM(if_clean_up=True) 
+        
+        simulated_brir_r = model.get_results(highpass_filter=False)
+        sim_ir_right = simulated_brir_r
 
         # 3. Plotting       
-        if simulated_brir.ndim > 1:
-            sim_ir_left = simulated_brir[0, :]
-        else:
-            sim_ir_left = simulated_brir 
+        # normalization (preserve ILD)
+        max_val_real = max(np.max(np.abs(real_ir_left)), np.max(np.abs(real_ir_right)))
+        real_norm_l = real_ir_left / max_val_real
+        real_norm_r = real_ir_right / max_val_real
 
-        # normalization
-        sim_norm = sim_ir_left / np.max(np.abs(sim_ir_left))
-        real_norm = real_ir_left / np.max(np.abs(real_ir_left))
+        max_val_sim = max(np.max(np.abs(sim_ir_left)), np.max(np.abs(sim_ir_right)))
+        sim_norm_l = sim_ir_left / max_val_sim
+        sim_norm_r = sim_ir_right / max_val_sim
 
         # aligning the time of the simulated direct sound with the time of the real direct sound
+        # use the direct sound at the left ear as baseline to calculate offset, preserve ITD
         # setting threshold
         onset_threshold = 0.05
 
-        sim_onsets = np.where(np.abs(sim_norm) > onset_threshold)[0]
+        sim_onsets = np.where(np.abs(sim_norm_l) > onset_threshold)[0]
         first_idx_sim = sim_onsets[0] if len(sim_onsets) > 0 else 0
         first_idx_sim = max(0, first_idx_sim - 20)
 
-        real_onsets = np.where(np.abs(real_norm) > onset_threshold)[0]
+        real_onsets = np.where(np.abs(real_norm_l) > onset_threshold)[0]
         first_idx_real = real_onsets[0] if len(real_onsets) > 0 else 0
         first_idx_real = max(0, first_idx_real - 20)
 
@@ -280,24 +281,56 @@ def batch_run_selected_brir_angles():
         print(f"time offset{time_offset*1000:.2f}ms")
 
         # build the time axis for the simulated and real data, aligning the simulated peaks with the real peaks
-        t_axis_sim = np.arange(len(sim_norm)) / fs_real - time_offset
-        t_axis_real = np.arange(len(real_norm)) / fs_real
+        t_axis_sim = np.arange(len(sim_norm_l)) / fs_real - time_offset
+        t_axis_real = np.arange(len(real_norm_l)) / fs_real
 
+        # calculation in frequency domain
+        freqs_real = np.fft.rfftfreq(len(real_norm_l), d=1.0/fs_real)
+        fft_real_l = 20 * np.log10(np.abs(np.fft.rfft(real_norm_l)) + 1e-10)
+        fft_real_r = 20 * np.log10(np.abs(np.fft.rfft(real_norm_r)) + 1e-10)
 
-        plt.figure(figsize=(14, 6))
-        plt.plot(t_axis_real * 1000, real_norm, label="Real BRIR Left Ear (Time-Aligned)", color='gray', alpha=0.6, linewidth=1.5)
-        plt.plot(t_axis_sim * 1000, sim_norm, label="Simulated BRIR Left Ear", color='red', alpha=0.8, linewidth=1.2)
-    
-        plt.axvline(x=t_dir, color='blue', linestyle='--', label=f"Theoretical Direct ({t_dir:.2f}ms)")
-        plt.axvline(x=t_ref, color='green', linestyle='--', label=f"Theoretical Reflection ({t_ref:.2f}ms)")
+        freqs_sim = np.fft.rfftfreq(len(sim_norm_l), d=1.0/fs_real)
+        fft_sim_l = 20 * np.log10(np.abs(np.fft.rfft(sim_norm_l)) + 1e-10)
+        fft_sim_r = 20 * np.log10(np.abs(np.fft.rfft(sim_norm_r)) + 1e-10)
+
+        fig, axes = plt.subplots(2, 1, figsize=(16, 12))
+
+        # plot in time domain
+        ax1 = axes[0]
+        ax1.plot(t_axis_real * 1000, real_norm_l, label="Real BRIR - Left Ear", color='dimgray', alpha=0.5, linewidth=1.5)
+        ax1.plot(t_axis_real * 1000, real_norm_r, label="Real BRIR - Right Ear", color='silver', alpha=0.5, linestyle='--', linewidth=1.5)
         
-        plt.xlim(0.0, t_ref + 5.0) 
-        plt.ylim(-1.1, 1.1)
-        plt.xlabel("Time [milliseconds]")
-        plt.ylabel("Normalized Amplitude")
-        plt.title(f"BRIR Validation - Azimuth: {view_az}° (Index {idx}) - Left Ear")
-        plt.legend(loc="upper right")
-        plt.grid(True, linestyle="--", alpha=0.6)       
+        ax1.plot(t_axis_sim * 1000, sim_norm_l, label="Simulated BRIR - Left Ear", color='red', alpha=0.8, linewidth=1.2)
+        ax1.plot(t_axis_sim * 1000, sim_norm_r, label="Simulated BRIR - Right Ear", color='dodgerblue', alpha=0.8, linewidth=1.2)
+    
+        ax1.axvline(x=t_dir, color='purple', linestyle=':', label=f"Theoretical Direct ({t_dir:.2f}ms)")
+        ax1.axvline(x=t_ref, color='green', linestyle=':', label=f"Theoretical Reflection ({t_ref:.2f}ms)")
+        
+        ax1.set_xlim(0.0, t_ref + 5.0) 
+        ax1.set_ylim(-1.1, 1.1)
+        ax1.set_xlabel("Time [milliseconds]")
+        ax1.set_ylabel("Normalized Amplitude")
+        ax1.set_title(f"Time Domain BRIR Validation - Azimuth: {view_az}°", fontsize=14, fontweight='bold')
+        ax1.legend(loc="upper right")
+        ax1.grid(True, linestyle="--", alpha=0.6)
+
+        # magnitude plot in frequency domain
+        ax2 = axes[1]
+        ax2.semilogx(freqs_real, fft_real_l, label="Real BRIR - Left Ear", color='dimgray', alpha=0.5)
+        ax2.semilogx(freqs_real, fft_real_r, label="Real BRIR - Right Ear", color='silver', alpha=0.5, linestyle='--')
+        
+        ax2.semilogx(freqs_sim, fft_sim_l, label="Simulated BRIR - Left Ear", color='red', alpha=0.8, linewidth=1.2)
+        ax2.semilogx(freqs_sim, fft_sim_r, label="Simulated BRIR - Right Ear", color='dodgerblue', alpha=0.8, linewidth=1.2)
+
+        ax2.set_xlim(20, 20000)
+        ax2.set_ylim(-80, 5)
+        ax2.set_xlabel("Frequency [Hz]", fontsize=12)
+        ax2.set_ylabel("Magnitude [dB]", fontsize=12)
+        ax2.set_title(f"Frequency Response - L/R Comparison (Azimuth {view_az}°)", fontsize=14, fontweight='bold')
+        ax2.legend(loc='lower left')
+        ax2.grid(True, which="both", linestyle='--', alpha=0.5)  
+
+        plt.tight_layout()     
         
         save_path = os.path.join(output_dir, f"BRIR_val_idx{idx}_az{view_az}.png")
         plt.savefig(save_path, dpi=150)
