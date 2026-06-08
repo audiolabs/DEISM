@@ -50,9 +50,9 @@ Positions:
     z: 2.121
 
   receiver: #MP02
-    x: 7.621
+    x: 8.098
     y: 2.985
-    z: 2.361 # 2.121
+    z: 1.573 
 
 # 5. About the result signal terms
 Signal:

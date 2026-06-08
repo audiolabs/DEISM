@@ -1,5 +1,7 @@
 from netCDF4 import Dataset
 import os
+import numpy as np
+
 
 def xray_sofa_raw(filepath):
     if not os.path.exists(filepath):
@@ -63,9 +65,10 @@ def print_initial_angles(filepath):
             azimuth = src_pos[0][0]
             print(f" Conclusion: at initial measurement, the source is located at the azimuth of {azimuth} degrees.")
 
+    rec_pos_lr = np.squeeze(rec_pos)
     print(f" ListenerPosition: {lis_pos[0]}")  
     print(f" EmitterPosition: {emt_pos[0]}")
-    print(f" ReceiverPosition: {rec_pos[0]}")
+    print(f" ReceiverPosition: {rec_pos_lr[0], rec_pos_lr[1]}")
 
     if "Data.Delay" in nc.variables:
         delay_samples = nc.variables["Data.Delay"][:]
