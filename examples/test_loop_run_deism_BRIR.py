@@ -293,18 +293,41 @@ def batch_run_selected_brir_angles():
         fft_sim_l = 20 * np.log10(np.abs(np.fft.rfft(sim_norm_l)) + 1e-10)
         fft_sim_r = 20 * np.log10(np.abs(np.fft.rfft(sim_norm_r)) + 1e-10)
 
+        plot_styles = {
+            "real_left": dict(color='lightcoral', alpha=0.75, linestyle='--', linewidth=1.4),
+            "real_right": dict(color='lightskyblue', alpha=0.75, linestyle='--', linewidth=1.4),
+            "sim_left": dict(color='firebrick', alpha=0.9, linestyle='-', linewidth=1.4),
+            "sim_right": dict(color='royalblue', alpha=0.9, linestyle='-', linewidth=1.4),
+        }
+
+        direct_marker_ms = t_dir - time_offset * 1000.0
+
         fig, axes = plt.subplots(2, 1, figsize=(16, 12))
 
         # plot in time domain
         ax1 = axes[0]
-        ax1.plot(t_axis_real * 1000, real_norm_l, label="Real BRIR - Left Ear", color='dimgray', alpha=0.5, linewidth=1.5)
-        ax1.plot(t_axis_real * 1000, real_norm_r, label="Real BRIR - Right Ear", color='silver', alpha=0.5, linestyle='--', linewidth=1.5)
+        ax1.plot(t_axis_real * 1000, real_norm_l, label="Real BRIR - Left Ear", **plot_styles["real_left"])
+        ax1.plot(t_axis_real * 1000, real_norm_r, label="Real BRIR - Right Ear", **plot_styles["real_right"])
         
-        ax1.plot(t_axis_sim * 1000, sim_norm_l, label="Simulated BRIR - Left Ear", color='red', alpha=0.8, linewidth=1.2)
-        ax1.plot(t_axis_sim * 1000, sim_norm_r, label="Simulated BRIR - Right Ear", color='dodgerblue', alpha=0.8, linewidth=1.2)
+        ax1.plot(t_axis_sim * 1000, sim_norm_l, label="Simulated BRIR - Left Ear", **plot_styles["sim_left"])
+        ax1.plot(t_axis_sim * 1000, sim_norm_r, label="Simulated BRIR - Right Ear", **plot_styles["sim_right"])
     
-        ax1.axvline(x=t_dir, color='purple', linestyle=':', label=f"Theoretical Direct ({t_dir:.2f}ms)")
-        ax1.axvline(x=t_ref, color='green', linestyle=':', label=f"Theoretical Reflection ({t_ref:.2f}ms)")
+        ax1.axvline(
+            x=direct_marker_ms,
+            color='black',
+            alpha=0.8,
+            linestyle=':',
+            linewidth=1.2,
+            label=f"Aligned First Pulse ({direct_marker_ms:.2f}ms)",
+        )
+        ax1.axvline(
+            x=t_ref,
+            color='darkgreen',
+            alpha=0.8,
+            linestyle=':',
+            linewidth=1.2,
+            label=f"Theoretical Reflection ({t_ref:.2f}ms)",
+        )
         
         ax1.set_xlim(0.0, t_ref + 5.0) 
         ax1.set_ylim(-1.1, 1.1)
@@ -316,11 +339,11 @@ def batch_run_selected_brir_angles():
 
         # magnitude plot in frequency domain
         ax2 = axes[1]
-        ax2.semilogx(freqs_real, fft_real_l, label="Real BRIR - Left Ear", color='dimgray', alpha=0.5)
-        ax2.semilogx(freqs_real, fft_real_r, label="Real BRIR - Right Ear", color='silver', alpha=0.5, linestyle='--')
+        ax2.semilogx(freqs_real, fft_real_l, label="Real BRIR - Left Ear", **plot_styles["real_left"])
+        ax2.semilogx(freqs_real, fft_real_r, label="Real BRIR - Right Ear", **plot_styles["real_right"])
         
-        ax2.semilogx(freqs_sim, fft_sim_l, label="Simulated BRIR - Left Ear", color='red', alpha=0.8, linewidth=1.2)
-        ax2.semilogx(freqs_sim, fft_sim_r, label="Simulated BRIR - Right Ear", color='dodgerblue', alpha=0.8, linewidth=1.2)
+        ax2.semilogx(freqs_sim, fft_sim_l, label="Simulated BRIR - Left Ear", **plot_styles["sim_left"])
+        ax2.semilogx(freqs_sim, fft_sim_r, label="Simulated BRIR - Right Ear", **plot_styles["sim_right"])
 
         ax2.set_xlim(20, 20000)
         ax2.set_ylim(-80, 5)

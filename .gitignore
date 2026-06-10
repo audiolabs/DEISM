@@ -17,4 +17,5 @@ new_features/
 tools/reports/
 examples/benchmarks/*.json
 examples/BRAS_results/
+examples/**/*.csv
 BRAS_results/
