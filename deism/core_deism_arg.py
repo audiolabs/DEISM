@@ -318,7 +318,7 @@ class Wall_deism_python:
 
         :return:
                -1 if there is no intersection
-                0 if the intersection striclty between the segment endpoints and in the polygon interior
+                0 if the intersection is strictly between the segment endpoints and in the polygon interior
                 1 if the intersection is at endpoint of segment
                 2 if the intersection is at boundary of polygon
                 3 if both the above are true
@@ -339,7 +339,7 @@ class Wall_deism_python:
             return -1, intersect_point
         if ret2 == 1:  # intersection is on the boundary of the wall
             ret |= 2
-        return ret, intersect_point  # no intersection
+        return ret, intersect_point  # intersection found
 
 
 # -------------------------------------
@@ -466,6 +466,7 @@ class Room_deism_python:
             return attenuation * self.get_image_attenuation(
                 old_is.parent, list_intecp_p_to_is
             )
+        return attenuation
 
     def is_visible_dfs(self, p, old_is):
         # Most time consuming function !
@@ -776,7 +777,7 @@ def find_non_convex_walls(walls):
     Returns
     -------
     list of int
-        The indices of the walls no in the convex hull
+        The indices of the walls not in the convex hull
     """
 
     all_corners = []
@@ -1388,7 +1389,7 @@ def compare_array_lists_by_distance(list1, list2, names, tolerance=1e-5):
     # print(f"Checking distinctness in {names[1]}...")
     distinct_list2 = check_distinct_arrays(list2, tolerance)
 
-    # If both lists are distinct, i.e., not repetive arrays in each list
+    # If both lists are distinct, i.e., not repetitive arrays in each list
     if distinct_list1 and distinct_list2:
         print(f"All arrays in {names[0]} and {names[1]} are unique.")
     elif not (distinct_list1 and distinct_list2):

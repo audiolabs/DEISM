@@ -229,7 +229,7 @@ def plot_RTFs(
     # Plot phases of the room transfer functions
     fig = plt.figure(figsize=(18, 8))
     ax = fig.add_subplot(1, 1, 1)
-    if IF_UNWRAP_PHASE == 1:  # Unwarp the phase plots
+    if IF_UNWRAP_PHASE == 1:  # Unwrap the phase plots
         for i in range(len(P_all)):
             ax.plot(
                 P_freqs[i],
@@ -343,7 +343,7 @@ def plot_results_LCs(
     # Plot phases of the room transfer functions
     fig = plt.figure(figsize=(18, 8))
     ax = fig.add_subplot(1, 1, 1)
-    if IF_UNWRAP_PHASE == 1:  # Unwarp the phase plots
+    if IF_UNWRAP_PHASE == 1:  # Unwrap the phase plots
         ax.plot(
             freqs,
             np.unwrap(np.angle(P_DEISM_LC_matrix)) / np.pi,

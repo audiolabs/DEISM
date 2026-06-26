@@ -183,12 +183,12 @@ def load_format_materials_checks(datain, datatype):
             # If the impedance is a list of single values, convert it to a numpy array
             dataout = np.array(datain)[:, None]
         else:
-            raise ValueError("Invalid data shape for {datatype}!")
+            raise ValueError(f"Invalid data shape for {datatype}!")
     elif datatype == "reverberationTime":
         if isinstance(datain, (int, float)):
             dataout = np.full((1, 1), datain)
         else:
-            raise ValueError("Invalid data shape for {datatype}!")
+            raise ValueError(f"Invalid data shape for {datatype}!")
     return dataout
 
 
@@ -381,7 +381,7 @@ def readYaml(filePath):
     # if it is found, add tests/ to the file path
     try:
         # If the file is found, assign the file path to filePath
-        if fnmatch.filter(os.listdir("examples"), filePath) is not None:
+        if fnmatch.filter(os.listdir("examples"), filePath):
             filePath = "examples/" + filePath
         # If the file is not found, an exception is raised
     except:
@@ -390,7 +390,7 @@ def readYaml(filePath):
     # Then determine if the file path exists
     if not os.path.exists(filePath):
         # If it does not exist, an exception is thrown
-        raise FileExistsError(f"{filePath} doesn't exist!")
+        raise FileNotFoundError(f"{filePath} doesn't exist!")
 
     # Then determine if it is a file
     if not os.path.isfile(filePath):
@@ -440,7 +440,7 @@ def parseCmdArgs(mode="RTF"):
     parse.add_argument(
         "-zs",
         metavar=("Z_x1", "Z_x2", "Z_y1", "Z_y2", "Z_z1", "Z_z2"),
-        help="acoustic impedance of the the six walls at all frequencies",
+        help="acoustic impedance of the six walls at all frequencies",
         nargs=6,
         type=float,
     )
@@ -454,7 +454,7 @@ def parseCmdArgs(mode="RTF"):
             "alpha_z1",
             "alpha_z2",
         ),
-        help="absorption coefficients of the the six walls at all frequencies",
+        help="absorption coefficients of the six walls at all frequencies",
         nargs=6,
         type=float,
     )
@@ -510,7 +510,7 @@ def parseCmdArgs(mode="RTF"):
     # Frequency parameters
     if mode == "RTF":
         parse.add_argument("-fmin", help="start frequency(Hz)", type=float)
-        parse.add_argument("-fstep", help="frequence step size(Hz)", type=float)
+        parse.add_argument("-fstep", help="frequency step size (Hz)", type=float)
         parse.add_argument("-fmax", help="stop frequency(Hz)", type=float)
     elif mode == "RIR":
         parse.add_argument("-fs", help="sampling rate", type=int)
@@ -550,7 +550,7 @@ def parseCmdArgs(mode="RTF"):
     )
     parse.add_argument(
         "-method",
-        help="Speficy which DEISM mode to use: \
+        help="Specify which DEISM mode to use: \
         ORG, LC, MIX",
         type=str,
     )
@@ -665,7 +665,7 @@ def parseCmdArgs_ARG(mode="RTF"):
     # Frequency parameters
     if mode == "RTF":
         parse.add_argument("-fmin", help="start frequency(Hz)", type=float)
-        parse.add_argument("-fstep", help="frequence step size(Hz)", type=float)
+        parse.add_argument("-fstep", help="frequency step size (Hz)", type=float)
         parse.add_argument("-fmax", help="stop frequency(Hz)", type=float)
     elif mode == "RIR":
         parse.add_argument("-fs", help="sampling rate", type=int)
@@ -710,7 +710,7 @@ def parseCmdArgs_ARG(mode="RTF"):
     )
     parse.add_argument(
         "-method",
-        help="Speficy which DEISM mode to use: \
+        help="Specify which DEISM mode to use: \
         ORG, LC, MIX",
         type=str,
     )
@@ -822,7 +822,7 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
         pass
     try:
         params["absorpCoefficient"] = (
-            args.absp or configs["Reflections"]["absorpCoefficienticient"]
+            args.absp or configs["Reflections"]["absorpCoefficient"]
         )
         givenMaterials.append("absorpCoefficient")
     except:
@@ -974,7 +974,7 @@ def printDict(dict):
                         print(f"{key:>{maxLen}} {row_id} : {row}", end="\n")
                     # Skip the following output
                     continue
-                # If the key is acousImpend with 2D arrays, output the key and the 2D array separately
+                # If the key is impedance with 2D arrays, output the key and the 2D array separately
                 # Each entry's name is Impedance wall 1, Impedance wall 2, etc.
                 if key == "impedance":
                     key = "Impedance wall "
@@ -1036,7 +1036,7 @@ def cmdArgsToDict(mode="RTF", roomtype="shoebox"):
     - params: the final configuration dictionary
     - cmdArgs: the command line arguments
     """
-    # Decide with default yml name to load
+    # Decide which default yml name to load
     if roomtype == "shoebox":
         if mode == "RTF":
             yml_name = "configSingleParam_RTF.yml"
@@ -1093,7 +1093,7 @@ def load_directive_pressure(silentMode, src_or_rec, name):
             # do nothing
             pass
         # If the path is not found, an exception is raised
-    except FileNotFoundError(f"{path} doesn't exist!"):
+    except FileNotFoundError:
         # stop the program and print the error message
         pass
     data_location = "{}/{}/{}.mat".format(path, src_or_rec, name)
@@ -1134,7 +1134,7 @@ def load_directpath_pressure(silentMode, name):
             # do nothing
             pass
         # If the path is not found, an exception is raised
-    except FileNotFoundError(f"{path} doesn't exist!"):
+    except FileNotFoundError:
         # stop the program and print the error message
         pass
     data_location = "{}/source/{}.mat".format(path, name)
@@ -1169,7 +1169,7 @@ def load_RTF_data(silentMode, name):
             # do nothing
             pass
         # If the path is not found, an exception is raised
-    except FileNotFoundError(f"{path} doesn't exist!"):
+    except FileNotFoundError:
         # stop the program and print the error message
         pass
 
