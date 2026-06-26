@@ -112,7 +112,7 @@ def test_convex_full_run(method="MIX", max_order=3, label=""):
 # ---------------------------------------------------------------------------
 def test_memory_storage(max_order=3, label=""):
     """Verify reduced storage from float32/complex64 vs hypothetical float64/complex128."""
-    print(f"\nTest 4: Memory storage verification [{label}]")
+    print(f"\nTest 3: Memory storage verification [{label}]")
 
     deism = _setup_convex_deism(method="MIX", max_order=max_order)
     deism.update_source_receiver()
@@ -156,7 +156,7 @@ def test_memory_storage(max_order=3, label=""):
 # ---------------------------------------------------------------------------
 def test_speed_comparison():
     """Measure image generation speed for convex room configurations."""
-    print("\nTest 5: Speed comparison across configurations")
+    print("\nTest 4: Speed comparison across configurations")
 
     configs = [
         {"label": "order3", "max_order": 3},

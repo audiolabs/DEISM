@@ -240,10 +240,15 @@ def collect_room_geometry_data(geo_file):
         corners = get_corner_points()
         shoebox = is_shoebox_corners(corners)
 
-        if convex:
+        if shoebox:
+            room = "shoebox"
+        elif convex:
             room = "convex"
         else:
-            room = "shoebox"
+            raise ValueError(
+                "Room geometry is neither a shoebox nor convex; "
+                "non-convex rooms are not supported."
+            )
 
         room_areas, wall_centers = _collect_surface_metrics()
 
