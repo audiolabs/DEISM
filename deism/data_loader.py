@@ -85,8 +85,7 @@ class ConflictChecks:
         # Check the dimension of the impedance, absorption coefficient, and reverberation time
         # data shapes should be 2D numpy arrays for impedance, absorption coefficient, first dimension is 6
         # and 1D numpy arrays for reverberation time
-        given_materials = params.get("givenMaterials", [])
-        if "impedance" in given_materials:
+        if params.get("givenMaterials") == "impedance":
             if "impedance" in params:
                 arr = params["impedance"]
                 if not (
@@ -96,9 +95,9 @@ class ConflictChecks:
                         f"Impedance data must be a 2D numpy array with 6 rows (for shoebox room), "
                         f"got shape {arr.shape if isinstance(arr, np.ndarray) else 'not a numpy array'}"
                     )
-        elif "absorpCoefficient" in given_materials:
-            if "absorpCoefficient" in params:
-                arr = params["absorpCoefficient"]
+        elif params.get("givenMaterials") == "absorpCoefficient":
+            if "absorptionCoeff" in params:
+                arr = params["absorptionCoeff"]
                 if not (
                     isinstance(arr, np.ndarray) and arr.ndim == 2 and arr.shape[0] == 6
                 ):
@@ -106,7 +105,7 @@ class ConflictChecks:
                         f"Absorption coefficient data must be a 2D numpy array with 6 rows (for shoebox room), "
                         f"got shape {arr.shape if isinstance(arr, np.ndarray) else 'not a numpy array'}"
                     )
-        elif "reverberationTime" in given_materials:
+        elif params.get("givenMaterials") == "reverberationTime":
             if "reverberationTime" in params:
                 arr = params["reverberationTime"]
                 if not (isinstance(arr, np.ndarray) and arr.ndim == 1):
