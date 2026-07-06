@@ -4,7 +4,7 @@ from netCDF4 import Dataset
 import os
 from pathlib import Path
 from deism import directivity_visualizer
-from deism.core_deism import DEISM
+from deism.core_deism import DEISM, pre_calc_Wigner, vectorize_C_nm_s, vectorize_C_vu_r
 from deism.directivity_visualizer import *
 from scipy.io import loadmat
 from scipy.special import sph_harm
@@ -213,8 +213,15 @@ def batch_run_selected_brir_angles():
             mode = 'source',
             max_order = 4
         )
-        model.params["C_nm_s"] = aligned_C_nm_s  
-        
+        model.params["C_nm_s"] = aligned_C_nm_s
+        # update_directivities() resets the SH orders to 0 (monopole directivities in the config),
+        # so they must be restored after overwriting the coefficients, otherwise the
+        # kernels only use the (0,0) entry of the order-4 arrays
+        model.params["sourceOrder"] = 4
+        # rebuild the vectorized coefficients used by the LC kernel (late images in MIX mode);
+        # must be called after setting the order, which determines the vector size
+        model.params = vectorize_C_nm_s(model.params)
+
         # ==========directivity of left ear===============
         pos_left, pos_right = get_rotated_ear_positions(rec_pos_deism, view_az)
 
@@ -227,7 +234,11 @@ def batch_run_selected_brir_angles():
             max_order = 4
         )
         model.params["C_vu_r"] = aligned_C_vu_r_left
-        
+        model.params["receiverOrder"] = 4
+        model.params = vectorize_C_vu_r(model.params)
+        # Wigner matrices depend only on the two SH orders, once per iteration is enough
+        model.params = pre_calc_Wigner(model.params)
+
         model.update_source_receiver(receiver = pos_left)
 
         print("Running DEISM calculation for left ear...")
@@ -245,7 +256,9 @@ def batch_run_selected_brir_angles():
             max_order = 4
         )
         model.params["C_vu_r"] = aligned_C_vu_r_right
-        
+        # re-vectorize because C_vu_r changed; order and Wigner matrices are unchanged
+        model.params = vectorize_C_vu_r(model.params)
+
         model.update_source_receiver(receiver = pos_right)
         
         print("Running DEISM calculation for right ear...")
