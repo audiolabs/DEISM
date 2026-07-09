@@ -61,7 +61,7 @@ def init_parameters_convex(params):
             [2, 1.5, 3],
         ]
     )
-    # You need to adlign the acoustic impedance to the wall centers defined above
+    # You need to align the acoustic impedance to the wall centers defined above
     # The format of the impedance is [number of walls, len(freqs)], 2D numpy array
     # params["acousImpend"] = np.arange(1, 6 * len(params["freqs"]) + 1).reshape(
     #     6, len(params["freqs"])
@@ -145,7 +145,7 @@ def main():
         # -------------------------------------------------------
         # -- Calculate Wigner 3J matrices for some DEISM modes --
         # -------------------------------------------------------
-        if params["DEISM_mode"] == "ORG" or params["DEISM_mode"] == "MIX":
+        if params["DEISM_method"] == "ORG" or params["DEISM_method"] == "MIX":
             params["Wigner"] = pre_calc_Wigner(params)
         # ------------------------------------------------------------------------
         # ------ Run DEISM-ARG using the original version and mixed version ------

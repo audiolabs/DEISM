@@ -73,7 +73,7 @@ def init_parameters_convex(params):
             [2, 1.5, 3],
         ]
     )
-    # You need to adlign the acoustic impedance to the wall centers defined above
+    # You need to align the acoustic impedance to the wall centers defined above
     # The format of the impedance is [number of walls, len(freqs)], 2D numpy array
     params["acousImpend"] = np.arange(1, 6 * len(params["freqs"]) + 1).reshape(
         6, len(params["freqs"])
