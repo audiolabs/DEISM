@@ -129,20 +129,3 @@ def main():
 # -------------------------------------------------------
 if __name__ == "__main__":
     main()
-
-
-P_all = [P_DEISM_diresrc_dirrec * 100, P_DEISM_monosrc_dirrec, P_DEISM_monosrc_monorec]
-P_labels = ["Both directional", "Directional receiver", "Both omni-directional"]
-P_freqs = [params["freqs"], params["freqs"], params["freqs"]]
-plot_RTFs(
-    figure_name,
-    save_path,
-    P_all,
-    P_labels,
-    P_freqs,
-    PLOT_SCALE,
-    IF_FREQS_DB,
-    IF_SAME_MAGSCALE,
-    IF_UNWRAP_PHASE,
-    IF_SAVE_PLOT,
-)
