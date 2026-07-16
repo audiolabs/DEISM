@@ -262,7 +262,7 @@ class DEISM:
         - freqs_bands: numpy array of size len(frequency bands)
         - datatype: str, the type of the parameters to be converted
         1. "impedance": impedance
-        2. "absorpCoefficient": absorption coefficients
+        2. "absorption": absorption coefficients
         3. "reverberationTime": reverberation time
         """
         # Conversions
@@ -275,8 +275,8 @@ class DEISM:
             self.params["givenMaterials"] = [datatype]
             if datatype == "impedance":
                 self.params["impedance"] = datain
-            elif datatype == "absorpCoefficient":
-                self.params["absorpCoefficient"] = datain
+            elif datatype == "absorption":
+                self.params["absorption"] = datain
             elif datatype == "reverberationTime":
                 # For convex room, T60 input is not supported
                 if self.roomtype == "convex":
@@ -298,7 +298,7 @@ class DEISM:
                     datatype,
                 )
                 self.params["impedance"] = imp
-                self.params["absorpCoefficient"] = abs_coeff
+                self.params["absorption"] = abs_coeff
                 self.params["reverberationTime"] = t60
             elif self.roomtype == "convex":
                 # Use the forward conversion used in shoebox room
@@ -310,7 +310,7 @@ class DEISM:
                     datatype,
                 )
                 self.params["impedance"] = imp
-                self.params["absorpCoefficient"] = abs_coeff
+                self.params["absorption"] = abs_coeff
                 self.params["reverberationTime"] = t60
             # -----------------------------------------------------------
             if not self.params["silentMode"]:
@@ -327,9 +327,9 @@ class DEISM:
                 datain = load_format_materials_checks(
                     self.params["impedance"], "impedance"
                 )
-            elif datatype == "absorpCoefficient":
+            elif datatype == "absorption":
                 datain = load_format_materials_checks(
-                    self.params["absorpCoefficient"], "absorpCoefficient"
+                    self.params["absorption"], "absorption"
                 )
             elif datatype == "reverberationTime":
                 if self.roomtype == "convex":
@@ -353,7 +353,7 @@ class DEISM:
                     datatype,
                 )
                 self.params["impedance"] = imp
-                self.params["absorpCoefficient"] = abs_coeff
+                self.params["absorption"] = abs_coeff
                 self.params["reverberationTime"] = t60
             elif self.roomtype == "convex":
                 # Use the forward conversion used in shoebox room
@@ -366,7 +366,7 @@ class DEISM:
                     datatype,
                 )
                 self.params["impedance"] = imp
-                self.params["absorpCoefficient"] = abs_coeff
+                self.params["absorption"] = abs_coeff
                 self.params["reverberationTime"] = t60
 
             # TODO: add other cases
@@ -378,7 +378,7 @@ class DEISM:
         self.params["freqs_bands"] = freqs_bands
         # Update the updated_where dictionary
         self._update_where_tracking("freqs_bands", "update_wall_materials")
-        for key in ["impedance", "absorpCoefficient", "reverberationTime"]:
+        for key in ["impedance", "absorption", "reverberationTime"]:
             self._update_where_tracking(key, "update_wall_materials")
         # -----------------------------------------------------------
         # Update the n1, n2, n3 based on the reverberation time and room size and sound speed
@@ -393,7 +393,7 @@ class DEISM:
                 print(
                     f" Impedance converted to absorption coefficients {abs_coeff} and reverberation time {t60}, Done! \n"
                 )
-            elif datatype == "absorpCoefficient":
+            elif datatype == "absorption":
                 print(
                     f" Absorption coefficients converted to impedance {imp} and reverberation time {t60}, Done! \n"
                 )
@@ -504,15 +504,15 @@ class DEISM:
             self.params["impedance"] = imp_interp
             # Update the updated_where dictionary
             self._update_where_tracking("impedance", "interpolate_materials")
-        elif datatype == "absorpCoefficient":
+        elif datatype == "absorption":
             abs_coeff_interp = interpolate_functions(
-                self.params["absorpCoefficient"],
+                self.params["absorption"],
                 freqs_bands,
                 self.params["freqs"],
             )
-            self.params["absorpCoefficient"] = abs_coeff_interp
+            self.params["absorption"] = abs_coeff_interp
             # Update the updated_where dictionary
-            self._update_where_tracking("absorpCoefficient", "interpolate_materials")
+            self._update_where_tracking("absorption", "interpolate_materials")
         elif datatype == "reverberationTime":
             t60_interp = interpolate_functions(
                 self.params["reverberationTime"],
@@ -780,7 +780,7 @@ def convert_imp_abs_t60_convex(room=None, datain=None, params_type=None):
     3. reverberation time: float output, take the max value
     - params_type: str, the type of the parameters to be converted
     1. "impedance": impedance
-    2. "absorpCoefficient": absorption coefficients
+    2. "absorption": absorption coefficients
     3. "reverberationTime": reverberation time
     Outputs:
     - impedance: numpy array of size 6 * len(frequency bands)
@@ -793,7 +793,7 @@ def convert_imp_abs_t60_convex(room=None, datain=None, params_type=None):
         # Use a test value for now
         t60 = np.array([1])
         abs_coeff = convert_imp_to_abs(imp)
-    elif params_type == "absorpCoefficient":
+    elif params_type == "absorption":
         abs_coeff = datain
         imp = convert_abs_to_imp(abs_coeff)
         # TODO: calculate the reverberation time
@@ -817,7 +817,7 @@ def convert_imp_abs_t60_shoebox(Volumn, Areas, c, datain, params_type):
     3. reverberation time: float
     - params_type: str, the type of the parameters to be converted
     1. "impedance": impedance
-    2. "absorpCoefficient": absorption coefficients
+    2. "absorption": absorption coefficients
     3. "reverberationTime": reverberation time
     Outputs:
     - impedance: numpy array of size (6, len(frequency bands))
@@ -829,7 +829,7 @@ def convert_imp_abs_t60_shoebox(Volumn, Areas, c, datain, params_type):
         t60 = convert_imp_to_t60(Volumn, Areas, c, imp)
         # Take the max value no matter 2D or 1D array of t60
         abs_coeff = convert_imp_to_abs(imp)
-    elif params_type == "absorpCoefficient":
+    elif params_type == "absorption":
         abs_coeff = datain
         imp = convert_abs_to_imp(abs_coeff)
         t60 = convert_imp_to_t60(Volumn, Areas, c, imp)

@@ -239,7 +239,7 @@ def deism_method(json_file_path=None):
             room_areas,
         )
         deism.update_wall_materials(
-            absorption_coefficients, freq_bands, "absorpCoefficient"
+            absorption_coefficients, freq_bands, "absorption"
         )
         deism.update_freqs()
         # deism.update_images()
