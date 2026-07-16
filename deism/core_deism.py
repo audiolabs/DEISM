@@ -3504,7 +3504,7 @@ def pre_calc_images_src_rec_original(params):
         if not params["silentMode"]:
             print("using angle-dependent reflection coefficients, ", end="")
     N_o = params["maxReflOrder"]
-    Z_S = params["acousImpend"]
+    Z_S = params["impedance"]
     # Maximum reflection order for the original DEISM in the DEISM-MIX mode
     N_o_ORG = params["mixEarlyOrder"]
     # If the total reflection order is smaller than N_o_ORG, update N_o_ORG
@@ -3713,7 +3713,7 @@ def pre_calc_images_src_rec_optimized(params):
             print("using angle-dependent reflection coefficients, ", end="")
 
     N_o = params["maxReflOrder"]
-    Z_S = params["acousImpend"]
+    Z_S = params["impedance"]
     N_o_ORG = params["mixEarlyOrder"]
 
     if N_o < N_o_ORG:
@@ -4146,7 +4146,7 @@ def pre_calc_images_src_rec_optimized_parallel(params):
             print("using angle-dependent reflection coefficients, ", end="")
 
     N_o = params["maxReflOrder"]
-    Z_S = params["acousImpend"]
+    Z_S = params["impedance"]
     N_o_ORG = params["mixEarlyOrder"]
 
     if N_o < N_o_ORG:

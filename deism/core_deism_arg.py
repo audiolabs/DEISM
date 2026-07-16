@@ -359,7 +359,7 @@ class Room_deism_python:
         self.ism_order = params["maxReflOrder"]
         self.visible_sources = []
         # NTPRA !!!
-        self.Z_S = params["acousImpend"]
+        self.Z_S = params["impedance"]
         self.generate_walls(*choose_wall_centers)
         self.image_source_model()
 

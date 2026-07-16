@@ -63,10 +63,10 @@ def init_parameters_convex(params):
     )
     # You need to align the acoustic impedance to the wall centers defined above
     # The format of the impedance is [number of walls, len(freqs)], 2D numpy array
-    # params["acousImpend"] = np.arange(1, 6 * len(params["freqs"]) + 1).reshape(
+    # params["impedance"] = np.arange(1, 6 * len(params["freqs"]) + 1).reshape(
     #     6, len(params["freqs"])
     # )
-    params["acousImpend"] = (
+    params["impedance"] = (
         np.ones((6, len(params["freqs"]))) * 18
     )  # recreating the old example
     # --- Room rotation, if rotate the room w.r.t the origin ---
