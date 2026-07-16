@@ -11,7 +11,6 @@ from scipy import special as scy
 from scipy.integrate import trapezoid
 from scipy.optimize import least_squares
 from scipy.interpolate import PchipInterpolator
-from scipy.fft import ifft
 from sympy.physics.wigner import wigner_3j
 from sound_field_analysis.sph import sphankel2
 from deism.utilities import *
@@ -262,9 +261,9 @@ class DEISM:
         - datain: numpy arrays of size 6 * len(frequency bands) for shoebox rooms (impedance and absorption coefficients), 1D numpy array for reverberation time
         - freqs_bands: numpy array of size len(frequency bands)
         - datatype: str, the type of the parameters to be converted
-        1. "imp": impedance
-        2. "abs": absorption coefficients
-        3. "t60": reverberation time
+        1. "impedance": impedance
+        2. "absorpCoefficient": absorption coefficients
+        3. "reverberationTime": reverberation time
         """
         # Conversions
         if datain is not None and datatype is not None:
@@ -463,7 +462,7 @@ class DEISM:
 
             self.room_convex = Room_deism_cpp(self.params)
             # Update the updated_where dictionary
-            self._update_where_tracking("room_convex", "update_directivities")
+            self._update_where_tracking("room_convex", "update_freqs")
 
     def update_directivities(self):
         """
@@ -537,7 +536,7 @@ class DEISM:
         return highpass_RIR(data, fs, fcut, zero_phase=zero_phase)
 
     def create_bandpass_window(
-        self, freqs, f_low, f_high, transition_width_low, transition_width_high
+        self, freqs, f_low, f_high, transition_width_low=None, transition_width_high=None
     ):
         """
         Create a smooth bandpass window for frequency-domain filtering.
@@ -915,7 +914,7 @@ def get_imp_abs(z, abs_coeff):
     Calculate absorption coefficient difference
     Inputs:
     - z: impedance (scalar or array)
-    - aran: absorption coefficient (scalar or array)
+    - abs_coeff: absorption coefficient (scalar or array)
     Outputs:
     - result: difference between target and estimated absorption coefficient
     """
@@ -1280,10 +1279,11 @@ def init_source_directivities(params):
             Dir_all_source, params["orientSource"]
         )
         # print orientation information, e.g., facing direction from +x axis to the orientation angles
-        print(
-            f"Orientation rotated from +x axis to the facing direction: {params['orientSource']}, ",
-            end="",
-        )
+        if not params["silentMode"]:
+            print(
+                f"Orientation rotated from +x axis to the facing direction: {params['orientSource']}, ",
+                end="",
+            )
 
         # Obtain spherical harmonic coefficients from the rotated sound field
         Pmnr0_source = SHCs_from_pressure_LS(
@@ -1539,11 +1539,10 @@ def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
     """
     Calculating the reflected source directivity coefficients for each reflection path (image source)
     Input:
-    1. images: the image source locations, shape (3, N_images) numpy array
-    2. reflection_matrix: the reflection matrix for each image source, shape (3, 3, N_images) numpy array
-    3. Psh_source: Sampled pressure of original directional source on the sphere, shape (N_freqs, N_src_dir) numpy array
-    4. src_Psh_coords: the Cartesian coordinates of the original sampling points, shape (3, N_src_dir) numpy array
-    5. params: the parameters of the room and the simulation
+    1. reflection_matrix: the reflection matrix for each image source, shape (3, 3, N_images) numpy array
+    2. Psh_source: Sampled pressure of original directional source on the sphere, shape (N_freqs, N_src_dir) numpy array
+    3. src_Psh_coords: the Cartesian coordinates of the original sampling points, shape (3, N_src_dir) numpy array
+    4. params: the parameters of the room and the simulation
     Output:
     1. C_nm_s_new_all: the reflected source directivity coefficients for each reflection path, shape (N_freqs, N_src_dir+1, 2*N_src_dir+1, N_images)
 
@@ -1712,9 +1711,9 @@ def init_receiver_directivities_ARG(params):
     """
     Initialize the receiver directivities
     Input:
-    1. params: parameters
-    2. if_rotate_room: 0 or 1, if rotate the room
-    3. kwargs: other parameters, e.g., room_rotation if rotate the room
+    1. params: parameters, including params["ifRotateRoom"] (0 or 1, whether
+       to rotate the room) and params["roomRotation"] (rotation angles, used
+       when ifRotateRoom is 1)
     """
     # Print receiver type
     if not params["silentMode"]:
@@ -1968,7 +1967,8 @@ def pre_calc_images_src_rec_original_nofs(params):
     # Show n1, n2, n3
     # print(f"n1: {n1}, n2: {n2}, n3: {n3}")
     # print max reflection order
-    print(f"max reflection order: {N_o}")
+    if not params["silentMode"]:
+        print(f"max reflection order: {N_o}")
     # count the total time in the loop after the if condition
     # count = 0
     for q_x in range(-n1, n1 + 1):
@@ -3533,7 +3533,8 @@ def pre_calc_images_src_rec_original(params):
     # Show n1, n2, n3
     # print(f"n1: {n1}, n2: {n2}, n3: {n3}")
     # print max reflection order
-    print(f"max reflection order: {N_o}")
+    if not params["silentMode"]:
+        print(f"max reflection order: {N_o}")
     # count the total time in the loop after the if condition
     # count = 0
     for q_x in range(-n1, n1 + 1):

@@ -85,7 +85,7 @@ class ConflictChecks:
         # Check the dimension of the impedance, absorption coefficient, and reverberation time
         # data shapes should be 2D numpy arrays for impedance, absorption coefficient, first dimension is 6
         # and 1D numpy arrays for reverberation time
-        if params.get("givenMaterials") == "impedance":
+        if "impedance" in params.get("givenMaterials", []):
             if "impedance" in params:
                 arr = params["impedance"]
                 if not (
@@ -95,9 +95,9 @@ class ConflictChecks:
                         f"Impedance data must be a 2D numpy array with 6 rows (for shoebox room), "
                         f"got shape {arr.shape if isinstance(arr, np.ndarray) else 'not a numpy array'}"
                     )
-        elif params.get("givenMaterials") == "absorpCoefficient":
-            if "absorptionCoeff" in params:
-                arr = params["absorptionCoeff"]
+        elif "absorpCoefficient" in params.get("givenMaterials", []):
+            if "absorpCoefficient" in params:
+                arr = params["absorpCoefficient"]
                 if not (
                     isinstance(arr, np.ndarray) and arr.ndim == 2 and arr.shape[0] == 6
                 ):
@@ -105,7 +105,7 @@ class ConflictChecks:
                         f"Absorption coefficient data must be a 2D numpy array with 6 rows (for shoebox room), "
                         f"got shape {arr.shape if isinstance(arr, np.ndarray) else 'not a numpy array'}"
                     )
-        elif params.get("givenMaterials") == "reverberationTime":
+        elif "reverberationTime" in params.get("givenMaterials", []):
             if "reverberationTime" in params:
                 arr = params["reverberationTime"]
                 if not (isinstance(arr, np.ndarray) and arr.ndim == 1):
@@ -798,7 +798,11 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
         params["roomRotation"] = np.array(
             list(configs["Dimensions"]["roomRotation"].values())
         )
-        params["convexRoom"] = args.ifconvex or configs["Dimensions"]["ifConvexRoom"]
+        params["convexRoom"] = (
+            args.ifconvex
+            if args.ifconvex is not None
+            else configs["Dimensions"]["ifConvexRoom"]
+        )
 
     else:
         raise ValueError(
@@ -851,14 +855,13 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     # ------------------------------------------------------------
     # Angle dependent flag, could be 0 or 1 or not defined
     try:
-        params["angDepFlag"] = args.adrc or configs["Reflections"]["angleDependentFlag"]
+        params["angDepFlag"] = (
+            args.adrc
+            if args.adrc is not None
+            else configs["Reflections"]["angleDependentFlag"]
+        )
     except:
         pass
-    # params["angDepFlag"] = (
-    #     args.adrc
-    #     if args.adrc is not None
-    #     else configs["Reflections"]["angleDependentFlag"]
-    # )
 
     # positions of the source and receiver
     params["posSource"] = np.array(
@@ -896,7 +899,9 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     params["sourceType"] = args.srctype or configs["Directivities"]["source"]
     params["receiverType"] = args.rectype or configs["Directivities"]["receiver"]
 
-    params["ifRemoveDirectPath"] = args.ird or configs["DEISM_specs"]["ifRemoveDirect"]
+    params["ifRemoveDirectPath"] = (
+        args.ird if args.ird is not None else configs["DEISM_specs"]["ifRemoveDirect"]
+    )
     params["DEISM_method"] = args.method or configs["DEISM_specs"]["Method"]
     try:
         params["mixEarlyOrder"] = args.meo or configs["DEISM_specs"]["mixEarlyOrder"]
@@ -904,7 +909,9 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
         pass
     params["numParaImages"] = args.npi or configs["DEISM_specs"]["numParaImages"]
     params["ifReceiverNormalize"] = (
-        args.irn or configs["DEISM_specs"]["ifReceiverNormalize"]
+        args.irn
+        if args.irn is not None
+        else configs["DEISM_specs"]["ifReceiverNormalize"]
     )
     params["qFlowStrength"] = args.q or configs["DEISM_specs"]["QFlowStrength"]
     params["silentMode"] = args.quiet or configs["SilentMode"]
@@ -931,10 +938,10 @@ def printDict(dict):
             "n3",
             "nSamples",
             "silentMode",
-            "posSources",
-            "posReceivers",
-            "orientSources",
-            "orientReceivers",
+            "posSource",
+            "posReceiver",
+            "orientSource",
+            "orientReceiver",
             "cTs",
         ]
         # If the source is monopole, remove radiusSource

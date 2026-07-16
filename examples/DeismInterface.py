@@ -169,14 +169,12 @@ def deism_method(json_file_path=None):
 
         # Load from the json file
         print("Obtaining simulation settings from the json file ... \n")
-        simulation_settings = None
         coord_source = None
         coord_rec = None
         abs_coeffs_loaded = None
         freq_bands = None
 
         if result_container:
-            simulation_settings = result_container["simulationSettings"]
             coord_source = [
                 result_container["results"][0]["sourceX"],
                 result_container["results"][0]["sourceY"],
@@ -202,7 +200,7 @@ def deism_method(json_file_path=None):
             result_container["geometry"][0]["vertices"]
         )  # Nx3 numpy array
         wall_centers_loaded = result_container["geometry"][0]["wall_centers"]
-        room_volumn = result_container["geometry"][0]["room_volumn"]  # float
+        room_volume = result_container["geometry"][0]["room_volume"]  # float
         room_areas_loaded = result_container["geometry"][0][
             "room_areas"
         ]  # (M,) numpy array
@@ -227,10 +225,17 @@ def deism_method(json_file_path=None):
         print("wall center", wall_centers)
         print("room areas", room_areas)
 
+        if room == "shoebox":
+            # update_room requires a size-3 [length, width, height] array for
+            # shoebox rooms, not the Nx3 mesh-corner vertices.
+            room_dimensions = vertices.max(axis=0) - vertices.min(axis=0)
+        else:
+            room_dimensions = vertices
+
         deism.update_room(
-            vertices,
+            room_dimensions,
             wall_centers,
-            room_volumn,
+            room_volume,
             room_areas,
         )
         deism.update_wall_materials(

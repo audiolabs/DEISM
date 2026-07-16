@@ -295,7 +295,7 @@ Wall_deism<3>::Wall_deism(
   // The basis and normal are found by SVD
   Eigen::JacobiSVD<Eigen::Matrix<float,3,Eigen::Dynamic>> svd(corners.colwise() - origin, Eigen::ComputeThinU);
 
-  // The corners matrix should be rank defficient, check the smallest eigen value
+  // The corners matrix should be rank deficient, check the smallest eigen value
   // The rank deficiency is because all the corners are in a 2D subspace of 3D space
   if (svd.singularValues().coeff(2) > libroom_eps)
   {
@@ -371,7 +371,7 @@ Wall_deism<3>::Wall_deism(
   Eigen::JacobiSVD<Eigen::Matrix<float,3,Eigen::Dynamic>> svd(
     corners.colwise() - origin,Eigen::ComputeThinU | Eigen::ComputeThinV);
 
-  // The corners matrix should be rank defficient, check the smallest eigen value
+  // The corners matrix should be rank deficient, check the smallest eigen value
   // The rank deficiency is because all the corners are in a 2D subspace of 3D space
   if (svd.singularValues().coeff(2) > libroom_eps)
   {
@@ -465,7 +465,7 @@ int Wall_deism<3>::intersection(
 
     :returns: 
            -1 if there is no intersection
-            0 if the intersection striclty between the segment endpoints and in the polygon interior
+            0 if the intersection strictly between the segment endpoints and in the polygon interior
             1 if the intersection is at endpoint of segment
             2 if the intersection is at boundary of polygon
             3 if both the above are true

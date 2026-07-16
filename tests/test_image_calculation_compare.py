@@ -26,8 +26,6 @@ from deism.core_deism import (
     T_x, T_y, T_z,
     cart2sph,
     ref_coef,
-    get_reflection_path_shoebox_test,
-    get_reflection_path_number_from_order,
 )
 
 

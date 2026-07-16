@@ -311,6 +311,10 @@ int Room_deism<D>::fill_sources()
     gen_walls.resize(n_sources);
     attenuations.resize(n_bands, n_sources);
     visible_mics.resize(microphones.size(), n_sources);
+    // unlike the Eigen arrays above, reflection_matrix is only ever grown via
+    // insert(), so it must be cleared here or repeated calls (e.g. moving
+    // source/receiver) accumulate stale entries from prior calls
+    reflection_matrix.clear();
 
     for (int i = n_sources - 1 ; i >= 0 ; i--)
     {
@@ -630,7 +634,7 @@ int Room_deism<D>::image_source_shoebox(const Vectorf<D> &source)
   if (D == 2)
     z_max = 0;
 
-  // Walk on all the points of the discrete L! ball of radius ism_order
+  // Walk on all the points of the discrete L1 ball of radius ism_order
   for (point[2] = -z_max ; point[2] <= z_max ; point[2]++)
   {
     int y_max = ism_order - abs(point[2]);
@@ -1363,7 +1367,7 @@ bool Room_deism<D>::contains(const Vectorf<D> point)
 
     if (D == 3)
     {
-      outside_point[2] -= (float)(rand() % 24 / 47);
+      outside_point[2] -= (float)(rand() % 24) / 47;
     }
 
     for (size_t i(0); i < n_walls; ++i)
