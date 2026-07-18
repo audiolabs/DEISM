@@ -39,7 +39,6 @@ def init_parameters_convex_fig5(params):
         ]
     )
     params["wallCenters"] = find_wall_centers(params["vertices"])
-    params["if_rotate_room"] = 0
     params["ifRotateRoom"] = 0
     params["posSource"] = np.array([1.1, 1.1, 1.3])
     params["posReceiver"] = np.array([2.9, 1.9, 1.3])
@@ -68,7 +67,6 @@ def init_parameters_convex_fig6(params):
         ]
     )
     params["wallCenters"] = find_wall_centers(params["vertices"])
-    params["if_rotate_room"] = 0
     params["ifRotateRoom"] = 0
     params["posSource"] = np.array([1.1, 1.1, 1.3])
     params["posReceiver"] = np.array([2.9, 1.9, 1.3])

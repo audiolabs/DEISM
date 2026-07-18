@@ -23,11 +23,11 @@ Reflections:
   # z1, z2 means the walls perpendicular to the z-axis, z = 0 or z = height
   impedance: [18, 18, 18, 18, 18, 18]
   # Input format for impedance
-  # 1. AcoustImpedance: 18+0j # A single value for 6 walls, no frequency-dependency
-  # 2. AcoustImpedance: [18, 20, 8, 5, 30, 19] # Different values for 6 walls, no frequency-dependency
+  # 1. impedance: 18+0j # A single value for 6 walls, no frequency-dependency
+  # 2. impedance: [18, 20, 8, 5, 30, 19] # Different values for 6 walls, no frequency-dependency
   # ------------------------------------------------------------
   # absorption: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1] # Absorption coefficients
-  # Notes, the format of the absorption coefficients are the same as the acoustImpedance
+  # Notes, the format of the absorption coefficients is the same as impedance
   # ------------------------------------------------------------
   # reverberationTime: 0.5 # Reverberation time
   # You can only define one of the three parameters, a warning will be shown in the console if more than one is defined

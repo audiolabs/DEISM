@@ -50,7 +50,8 @@ def main():
         params["silentMode"] = 1
     printDict(params)
     # Run for shared calculations
-    Wigner = pre_calc_Wigner(params)
+    params = pre_calc_Wigner(params)
+    Wigner = params["Wigner"]
     # Precompute reflection paths
     images = pre_calc_images_src_rec(params)
     # images = merge_images(images)
