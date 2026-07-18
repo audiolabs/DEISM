@@ -3,8 +3,6 @@ The core functions used in DEISM extended to arbitrary room geometry
 """
 
 import time
-import os
-import fnmatch
 from copy import deepcopy
 import numpy as np
 from numpy.linalg import svd
@@ -13,9 +11,7 @@ from scipy.spatial import ConvexHull
 import scipy.spatial as spatial
 import matplotlib.patches as mpatches
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-import scipy.io as sio
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from sound_field_analysis.sph import sphankel2
 import ray
 from deism.utilities import (
@@ -363,7 +359,7 @@ class Room_deism_python:
         self.ism_order = params["maxReflOrder"]
         self.visible_sources = []
         # NTPRA !!!
-        self.Z_S = params["acousImpend"]
+        self.Z_S = params["impedance"]
         self.generate_walls(*choose_wall_centers)
         self.image_source_model()
 
@@ -534,7 +530,7 @@ class Room_deism_python:
                 marker=">",
                 label="receiver",
             )
-            patches.append(mpatches.Patch(color="w", label=f"receiver"))
+            patches.append(mpatches.Patch(color="gray", label=f"receiver"))
             for i in range(1, self.sources.shape[1]):
                 ax.scatter(
                     self.sources[0, i],
@@ -848,7 +844,7 @@ class Room_deism_cpp:
         self.ism_order = params["maxReflOrder"]
         self.visible_sources = []
         # --------------------new------------------------------------------
-        # self.Z_S = params["Z_S"]  # Change to self.i                                                                                                                           mpedence later !!!!!!!!!
+        # self.Z_S = params["Z_S"]  # Change to self.impedence later
         self.impedence = params["impedance"]
         self.freqs = params["freqs"]
         # if params["wallCenters"] is not defined, use the default one
@@ -977,7 +973,6 @@ class Room_deism_cpp:
             # ------------------------------------------------------------------
             if not choose_wall_centers:
                 self.walls.append(new_wall)
-                # print("The walls are generated")  # !!! remember to remove
             else:
                 for wall_center in choose_wall_centers:
                     # If the wall center attribute is given, the wall will only be added when the midpoint of the wall is the given center
@@ -1058,7 +1053,7 @@ class Room_deism_cpp:
                 marker=">",
                 label="receiver",
             )
-            patches.append(mpatches.Patch(color="k", label=f"receiver"))
+            patches.append(mpatches.Patch(color="gray", label=f"receiver"))
             for i in range(1, self.sources.shape[1]):
                 ax.scatter(
                     self.sources[0, i],
@@ -1136,7 +1131,6 @@ def find_wall_centers(vertices, *choose_wall_centers):
         face_points = np.unique(face_points, axis=0)
         if not choose_wall_centers:
             wall_centers.append(np.mean(face_points, axis=0))
-            # print("The walls are generated")  # !!! remember to remove
         else:
             for wall_center in choose_wall_centers:
                 # If the wall center attribute is given, the wall will only be added when the midpoint of the wall is the given center
@@ -1233,7 +1227,7 @@ def get_ref_paths_ARG(params, room_pra_deism):
     if params["DEISM_method"] == "MIX":
         # Find the indices of the early reflections using the 1D numpy array room_pra_deism.room_engine.orders
         # This array contains the order of each image source
-        # Find this indices of the early reflections whose order is less than or equal to params["maxEarlyOrder"]
+        # Find this indices of the early reflections whose order is less than or equal to params["mixEarlyOrder"]
         early_indices = np.where(
             room_pra_deism.room_engine.orders <= params["mixEarlyOrder"]
         )[0]
@@ -1274,7 +1268,7 @@ def rotate_room_src_rec(params):
     """
     # Rotate the room vertices
     # Get the rotation matrix for the room
-    room_rotation = params["room_rotation"] * np.pi / 180
+    room_rotation = params["roomRotation"] * np.pi / 180
     room_R = rotation_matrix_ZXZ(room_rotation[0], room_rotation[1], room_rotation[2])
     # Rotate the room vertices
     params["vertices"] = (room_R @ params["vertices"].T).T

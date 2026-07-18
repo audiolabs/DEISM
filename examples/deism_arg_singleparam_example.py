@@ -41,6 +41,11 @@ def init_parameters_convex(params):
     params["wallCenters"] = find_wall_centers(vertices)
     params["if_rotate_room"] = if_rotate_room
     params["room_rotation"] = room_rotation
+    # rotate_room_src_rec() and the ARG directivity inits read the camelCase
+    # spelling, so set it too instead of relying on the YAML default
+    # happening to match.
+    params["ifRotateRoom"] = if_rotate_room
+    params["roomRotation"] = room_rotation
 
     # Apply room rotation to the room vertices and source/receiver positions
     if if_rotate_room:

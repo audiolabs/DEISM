@@ -82,36 +82,51 @@ class ConflictChecks:
                 f"The following parameters are defined: {', '.join(params['givenMaterials'])}"
             )
 
-        # Check the dimension of the impedance, absorption coefficient, and reverberation time
-        # data shapes should be 2D numpy arrays for impedance, absorption coefficient, first dimension is 6
-        # and 1D numpy arrays for reverberation time
-        if params.get("givenMaterials") == "impedance":
-            if "impedance" in params:
-                arr = params["impedance"]
+        # Check the shapes of the impedance, absorption coefficient, and
+        # reverberation time. Before conversion (load_format_materials_checks /
+        # update_wall_materials) the accepted formats are:
+        # - impedance / absorption: a single scalar, a list or 1D array with
+        #   one value per wall, or a 2D array of shape (walls, frequency bands)
+        # - reverberationTime: a single scalar or a small numeric array
+        # Shoebox rooms must have exactly 6 walls; for convex rooms the wall
+        # count is validated against wallCenters in Room_deism_cpp instead.
+        def _check_wall_material_shape(name, label):
+            if name not in params:
+                return
+            value = params[name]
+            if isinstance(value, (int, float)):
+                return
+            is_shoebox = params.get("roomType", "shoebox") == "shoebox"
+            arr = np.asarray(value)
+            if np.issubdtype(arr.dtype, np.number):
+                if arr.ndim == 0:
+                    return
+                walls_ok = arr.shape[0] == 6 if is_shoebox else arr.shape[0] > 0
+                if arr.ndim in (1, 2) and walls_ok:
+                    return
+            raise ValueError(
+                f"{label} data must be a scalar, a list/1D array with one value "
+                f"per wall, or a 2D array of shape (walls, frequency bands)"
+                + (" with 6 walls for a shoebox room" if is_shoebox else "")
+                + f", got {value!r}"
+            )
+
+        if "impedance" in params.get("givenMaterials", []):
+            _check_wall_material_shape("impedance", "Impedance")
+        elif "absorption" in params.get("givenMaterials", []):
+            _check_wall_material_shape("absorption", "Absorption coefficient")
+        elif "reverberationTime" in params.get("givenMaterials", []):
+            rt = params.get("reverberationTime")
+            if rt is not None and not isinstance(rt, (int, float)):
+                arr = np.asarray(rt)
                 if not (
-                    isinstance(arr, np.ndarray) and arr.ndim == 2 and arr.shape[0] == 6
+                    np.issubdtype(arr.dtype, np.number)
+                    and arr.size >= 1
+                    and arr.ndim <= 2
                 ):
                     raise ValueError(
-                        f"Impedance data must be a 2D numpy array with 6 rows (for shoebox room), "
-                        f"got shape {arr.shape if isinstance(arr, np.ndarray) else 'not a numpy array'}"
-                    )
-        elif params.get("givenMaterials") == "absorpCoefficient":
-            if "absorptionCoeff" in params:
-                arr = params["absorptionCoeff"]
-                if not (
-                    isinstance(arr, np.ndarray) and arr.ndim == 2 and arr.shape[0] == 6
-                ):
-                    raise ValueError(
-                        f"Absorption coefficient data must be a 2D numpy array with 6 rows (for shoebox room), "
-                        f"got shape {arr.shape if isinstance(arr, np.ndarray) else 'not a numpy array'}"
-                    )
-        elif params.get("givenMaterials") == "reverberationTime":
-            if "reverberationTime" in params:
-                arr = params["reverberationTime"]
-                if not (isinstance(arr, np.ndarray) and arr.ndim == 1):
-                    raise ValueError(
-                        f"Reverberation time data must be a 1D numpy array, "
-                        f"got shape {arr.shape if isinstance(arr, np.ndarray) else 'not a numpy array'}"
+                        f"Reverberation time data must be a scalar or a small "
+                        f"numeric array, got {rt!r}"
                     )
 
     @staticmethod
@@ -172,11 +187,11 @@ def load_format_materials_checks(datain, datatype):
     Outputs:
     - datain:
     1. "impedance": impedance, shape (6, 1)
-    2. "absorpCoefficient": absorption coefficients, shape (6, 1)
+    2. "absorption": absorption coefficients, shape (6, 1)
     3. "reverberationTime": reverberation time, shape (1, 1)
     """
     dataout = None
-    if datatype == "impedance" or datatype == "absorpCoefficient":
+    if datatype == "impedance" or datatype == "absorption":
         if isinstance(datain, (int, float)):
             dataout = np.full((6, 1), datain)
         elif isinstance(datain, list):
@@ -798,7 +813,11 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
         params["roomRotation"] = np.array(
             list(configs["Dimensions"]["roomRotation"].values())
         )
-        params["convexRoom"] = args.ifconvex or configs["Dimensions"]["ifConvexRoom"]
+        params["convexRoom"] = (
+            args.ifconvex
+            if args.ifconvex is not None
+            else configs["Dimensions"]["ifConvexRoom"]
+        )
 
     else:
         raise ValueError(
@@ -821,10 +840,13 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     except:
         pass
     try:
-        params["absorpCoefficient"] = (
-            args.absp or configs["Reflections"]["absorpCoefficient"]
-        )
-        givenMaterials.append("absorpCoefficient")
+        if "absorption" in configs["Reflections"]:
+            absorption_cfg = configs["Reflections"]["absorption"]
+        else:
+            # Backward compatibility with the old YAML key name
+            absorption_cfg = configs["Reflections"]["absorpCoefficient"]
+        params["absorption"] = args.absp or absorption_cfg
+        givenMaterials.append("absorption")
     except:
         pass
     try:
@@ -844,21 +866,20 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     # if len(materials) > 0:
     #     if materials[0] == "impedance":
     #         print("The following material is defined: Acoustic Impedance")
-    #     elif materials[0] == "absorpCoefficient":
+    #     elif materials[0] == "absorption":
     #         print("The following material is defined: Absorption Coefficient")
     #     elif materials[0] == "reverberationTime":
     #         print("The following material is defined: Reverberation Time")
     # ------------------------------------------------------------
     # Angle dependent flag, could be 0 or 1 or not defined
     try:
-        params["angDepFlag"] = args.adrc or configs["Reflections"]["angleDependentFlag"]
+        params["angDepFlag"] = (
+            args.adrc
+            if args.adrc is not None
+            else configs["Reflections"]["angleDependentFlag"]
+        )
     except:
         pass
-    # params["angDepFlag"] = (
-    #     args.adrc
-    #     if args.adrc is not None
-    #     else configs["Reflections"]["angleDependentFlag"]
-    # )
 
     # positions of the source and receiver
     params["posSource"] = np.array(
@@ -896,7 +917,9 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     params["sourceType"] = args.srctype or configs["Directivities"]["source"]
     params["receiverType"] = args.rectype or configs["Directivities"]["receiver"]
 
-    params["ifRemoveDirectPath"] = args.ird or configs["DEISM_specs"]["ifRemoveDirect"]
+    params["ifRemoveDirectPath"] = (
+        args.ird if args.ird is not None else configs["DEISM_specs"]["ifRemoveDirect"]
+    )
     params["DEISM_method"] = args.method or configs["DEISM_specs"]["Method"]
     try:
         params["mixEarlyOrder"] = args.meo or configs["DEISM_specs"]["mixEarlyOrder"]
@@ -904,7 +927,9 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
         pass
     params["numParaImages"] = args.npi or configs["DEISM_specs"]["numParaImages"]
     params["ifReceiverNormalize"] = (
-        args.irn or configs["DEISM_specs"]["ifReceiverNormalize"]
+        args.irn
+        if args.irn is not None
+        else configs["DEISM_specs"]["ifReceiverNormalize"]
     )
     params["qFlowStrength"] = args.q or configs["DEISM_specs"]["QFlowStrength"]
     params["silentMode"] = args.quiet or configs["SilentMode"]
@@ -931,10 +956,10 @@ def printDict(dict):
             "n3",
             "nSamples",
             "silentMode",
-            "posSources",
-            "posReceivers",
-            "orientSources",
-            "orientReceivers",
+            "posSource",
+            "posReceiver",
+            "orientSource",
+            "orientReceiver",
             "cTs",
         ]
         # If the source is monopole, remove radiusSource

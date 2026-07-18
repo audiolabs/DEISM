@@ -46,7 +46,7 @@ Reflections:
   # 1. AcoustImpedance: 18+0j # A single value for 6 walls, no frequency-dependency
   # 2. AcoustImpedance: [18, 20, 8, 5, 30, 19] # Different values for 6 walls, no frequency-dependency
   # ------------------------------------------------------------
-  # absorpCoefficient: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1] # Absorption coefficients
+  # absorption: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1] # Absorption coefficients
   # Notes, the format of the absorption coefficients are the same as the acoustImpedance
   # ------------------------------------------------------------
   # reverberationTime: 0.5 # Reverberation time

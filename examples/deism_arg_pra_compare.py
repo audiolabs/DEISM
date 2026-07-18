@@ -11,14 +11,8 @@ Difference start to appear at higher reflection orders, e.g, 9 and above
 """
 
 import time
-import os
-import sys
-import psutil
 import numpy as np
-import ray
 import pyroomacoustics as pra
-import scipy.special as scy
-import matplotlib.pyplot as plt
 
 # from deism.core_deism import
 
@@ -75,7 +69,7 @@ def init_parameters_convex(params):
     )
     # You need to align the acoustic impedance to the wall centers defined above
     # The format of the impedance is [number of walls, len(freqs)], 2D numpy array
-    params["acousImpend"] = np.arange(1, 6 * len(params["freqs"]) + 1).reshape(
+    params["impedance"] = np.arange(1, 6 * len(params["freqs"]) + 1).reshape(
         6, len(params["freqs"])
     )
     # --- Room rotation, if rotate the room w.r.t the origin ---
@@ -91,6 +85,11 @@ def init_parameters_convex(params):
     params["wallCenters"] = wallCenters
     params["if_rotate_room"] = if_rotate_room
     params["room_rotation"] = room_rotation
+    # rotate_room_src_rec() and the ARG directivity inits read the camelCase
+    # spelling, so set it too instead of relying on the YAML default
+    # happening to match.
+    params["ifRotateRoom"] = if_rotate_room
+    params["roomRotation"] = room_rotation
     # Apply room rotation to the room vertices and source/receiver positions
     if if_rotate_room:
         params = rotate_room_src_rec(params)

@@ -72,7 +72,7 @@ If you use this package in your research, please cite the following papers:
 .. _main-paper:
 
 **Main Paper**
-    Zeyu Xu, Adrian Herzog, Alexander Lodermeyer, Emanuel A. P. Habets,
+    Zeyu Xu, Adrian Herzog, Alexander Lodermeyer, Emanuël A. P. Habets,
     Albert G. Prinn;
     "Simulating room transfer functions between transducers mounted on audio
     devices using a modified image source method."
@@ -82,7 +82,7 @@ If you use this package in your research, please cite the following papers:
 .. _directivity-paper:
 
 **Directivity Formulation**
-    Zeyu Xu, Adrian Herzog, Alexander Lodermeyer, Emanuel A. P. Habets,
+    Zeyu Xu, Adrian Herzog, Alexander Lodermeyer, Emanuël A. P. Habets,
     Albert G. Prinn;
     "Acoustic reciprocity in the spherical harmonic domain: A formulation for
     directional sources and receivers."

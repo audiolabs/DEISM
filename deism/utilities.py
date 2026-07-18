@@ -72,7 +72,7 @@ def highpass_RIR(
     h_array = np.asarray(h, dtype=target_dtype)
 
     if h_array.ndim == 0:
-        raise ValueError("x must be at least 1-dimensional.")
+        raise ValueError("h must be at least 1-dimensional.")
 
     if axis < 0:
         axis += h_array.ndim
@@ -162,7 +162,7 @@ def plot_RTFs(
         raise ValueError("The number of RTFs and labels must match.")
     # Now use a few colors to plot the RTFs, black, gray, lightgray
     colors = ["gray", "black", "lightgray", "red"]
-    linestypes = ["-", "-", "-.", "-"]
+    linestyles = ["-", "-", "-.", "-"]
     linewidths = [6, 3, 3, 3]
     # Initialize the SPL arrays for each RTF
     plot_mag_all = []
@@ -192,7 +192,7 @@ def plot_RTFs(
             plot_mag_all[i],
             label=P_labels[i],
             color=colors[i],
-            linestyle=linestypes[i],
+            linestyle=linestyles[i],
             linewidth=linewidths[i],
         )
     ax.set_xlim([P_freqs[i][0], P_freqs[i][-1]])
@@ -211,7 +211,7 @@ def plot_RTFs(
         ax.set_xscale("log")
     # ax.set_title('Magnitude of Transfer Functions')
     ax.legend(fontsize=35)
-    # grid should apprear for every tick of the axis
+    # grid should appear for every tick of the axis
     plt.grid(axis="both", which="both", linestyle=":")
     fig.tight_layout()
     fig_name = "{}/RTF_mags_{}.png".format(save_path, figure_name)
@@ -236,7 +236,7 @@ def plot_RTFs(
                 np.unwrap(np.angle(P_all[i])) / np.pi,
                 label=P_labels[i],
                 color=colors[i],
-                linestyle=linestypes[i],
+                linestyle=linestyles[i],
                 linewidth=linewidths[i],
             )
     else:
@@ -246,7 +246,7 @@ def plot_RTFs(
                 np.angle(P_all[i]) / np.pi,
                 label=P_labels[i],
                 color=colors[i],
-                linestyle=linestypes[i],
+                linestyle=linestyles[i],
                 linewidth=linewidths[i],
             )
     ax.set_xlim([P_freqs[i][0], P_freqs[i][-1]])
