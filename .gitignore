@@ -17,3 +17,25 @@ media/
 new_features/
 tools/reports/
 examples/benchmarks/*.json
+
+# Sphinx build output
+docs/_build/
+
+# Example datasets (see MANIFEST.in: prune examples/data)
+examples/data/
+
+# Directivity / BRAS run outputs
+examples/BRAS_results/
+BRAS_results/
+outputs/figures/
+
+# Simulation / export formats
+*.mat
+examples/**/*.csv
+
+# Agent / IDE worktrees
+.claude/
+
+# Office lock files
+~$*
+**/~$*
