@@ -10,6 +10,7 @@ deism.egg-info/
 dist/
 **/*.so
 **/*.dylib
+**/*.dll
 **/*.pyd
 **/*.pyc
 media/

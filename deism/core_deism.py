@@ -11,7 +11,6 @@ from scipy import special as scy
 from scipy.integrate import trapezoid
 from scipy.optimize import least_squares
 from scipy.interpolate import PchipInterpolator
-from scipy.fft import ifft
 from sympy.physics.wigner import wigner_3j
 from sound_field_analysis.sph import sphankel2
 from deism.utilities import *
@@ -262,9 +261,9 @@ class DEISM:
         - datain: numpy arrays of size 6 * len(frequency bands) for shoebox rooms (impedance and absorption coefficients), 1D numpy array for reverberation time
         - freqs_bands: numpy array of size len(frequency bands)
         - datatype: str, the type of the parameters to be converted
-        1. "imp": impedance
-        2. "abs": absorption coefficients
-        3. "t60": reverberation time
+        1. "impedance": impedance
+        2. "absorption": absorption coefficients
+        3. "reverberationTime": reverberation time
         """
         # Conversions
         if datain is not None and datatype is not None:
@@ -276,8 +275,8 @@ class DEISM:
             self.params["givenMaterials"] = [datatype]
             if datatype == "impedance":
                 self.params["impedance"] = datain
-            elif datatype == "absorpCoefficient":
-                self.params["absorpCoefficient"] = datain
+            elif datatype == "absorption":
+                self.params["absorption"] = datain
             elif datatype == "reverberationTime":
                 # For convex room, T60 input is not supported
                 if self.roomtype == "convex":
@@ -299,7 +298,7 @@ class DEISM:
                     datatype,
                 )
                 self.params["impedance"] = imp
-                self.params["absorpCoefficient"] = abs_coeff
+                self.params["absorption"] = abs_coeff
                 self.params["reverberationTime"] = t60
             elif self.roomtype == "convex":
                 # Use the forward conversion used in shoebox room
@@ -311,7 +310,7 @@ class DEISM:
                     datatype,
                 )
                 self.params["impedance"] = imp
-                self.params["absorpCoefficient"] = abs_coeff
+                self.params["absorption"] = abs_coeff
                 self.params["reverberationTime"] = t60
             # -----------------------------------------------------------
             if not self.params["silentMode"]:
@@ -328,9 +327,9 @@ class DEISM:
                 datain = load_format_materials_checks(
                     self.params["impedance"], "impedance"
                 )
-            elif datatype == "absorpCoefficient":
+            elif datatype == "absorption":
                 datain = load_format_materials_checks(
-                    self.params["absorpCoefficient"], "absorpCoefficient"
+                    self.params["absorption"], "absorption"
                 )
             elif datatype == "reverberationTime":
                 if self.roomtype == "convex":
@@ -354,7 +353,7 @@ class DEISM:
                     datatype,
                 )
                 self.params["impedance"] = imp
-                self.params["absorpCoefficient"] = abs_coeff
+                self.params["absorption"] = abs_coeff
                 self.params["reverberationTime"] = t60
             elif self.roomtype == "convex":
                 # Use the forward conversion used in shoebox room
@@ -367,7 +366,7 @@ class DEISM:
                     datatype,
                 )
                 self.params["impedance"] = imp
-                self.params["absorpCoefficient"] = abs_coeff
+                self.params["absorption"] = abs_coeff
                 self.params["reverberationTime"] = t60
 
             # TODO: add other cases
@@ -379,7 +378,7 @@ class DEISM:
         self.params["freqs_bands"] = freqs_bands
         # Update the updated_where dictionary
         self._update_where_tracking("freqs_bands", "update_wall_materials")
-        for key in ["impedance", "absorpCoefficient", "reverberationTime"]:
+        for key in ["impedance", "absorption", "reverberationTime"]:
             self._update_where_tracking(key, "update_wall_materials")
         # -----------------------------------------------------------
         # Update the n1, n2, n3 based on the reverberation time and room size and sound speed
@@ -392,9 +391,9 @@ class DEISM:
         if not self.params["silentMode"]:
             if datatype == "impedance":
                 print(
-                    f" Impedanceconverted to absorption coefficients {abs_coeff} and reverberation time {t60}, Done! \n"
+                    f" Impedance converted to absorption coefficients {abs_coeff} and reverberation time {t60}, Done! \n"
                 )
-            elif datatype == "absorpCoefficient":
+            elif datatype == "absorption":
                 print(
                     f" Absorption coefficients converted to impedance {imp} and reverberation time {t60}, Done! \n"
                 )
@@ -463,7 +462,7 @@ class DEISM:
 
             self.room_convex = Room_deism_cpp(self.params)
             # Update the updated_where dictionary
-            self._update_where_tracking("room_convex", "update_directivities")
+            self._update_where_tracking("room_convex", "update_freqs")
 
     def update_directivities(self):
         """
@@ -505,15 +504,15 @@ class DEISM:
             self.params["impedance"] = imp_interp
             # Update the updated_where dictionary
             self._update_where_tracking("impedance", "interpolate_materials")
-        elif datatype == "absorpCoefficient":
+        elif datatype == "absorption":
             abs_coeff_interp = interpolate_functions(
-                self.params["absorpCoefficient"],
+                self.params["absorption"],
                 freqs_bands,
                 self.params["freqs"],
             )
-            self.params["absorpCoefficient"] = abs_coeff_interp
+            self.params["absorption"] = abs_coeff_interp
             # Update the updated_where dictionary
-            self._update_where_tracking("absorpCoefficient", "interpolate_materials")
+            self._update_where_tracking("absorption", "interpolate_materials")
         elif datatype == "reverberationTime":
             t60_interp = interpolate_functions(
                 self.params["reverberationTime"],
@@ -537,7 +536,7 @@ class DEISM:
         return highpass_RIR(data, fs, fcut, zero_phase=zero_phase)
 
     def create_bandpass_window(
-        self, freqs, f_low, f_high, transition_width_low, transition_width_high
+        self, freqs, f_low, f_high, transition_width_low=None, transition_width_high=None
     ):
         """
         Create a smooth bandpass window for frequency-domain filtering.
@@ -781,7 +780,7 @@ def convert_imp_abs_t60_convex(room=None, datain=None, params_type=None):
     3. reverberation time: float output, take the max value
     - params_type: str, the type of the parameters to be converted
     1. "impedance": impedance
-    2. "absorpCoefficient": absorption coefficients
+    2. "absorption": absorption coefficients
     3. "reverberationTime": reverberation time
     Outputs:
     - impedance: numpy array of size 6 * len(frequency bands)
@@ -794,7 +793,7 @@ def convert_imp_abs_t60_convex(room=None, datain=None, params_type=None):
         # Use a test value for now
         t60 = np.array([1])
         abs_coeff = convert_imp_to_abs(imp)
-    elif params_type == "absorpCoefficient":
+    elif params_type == "absorption":
         abs_coeff = datain
         imp = convert_abs_to_imp(abs_coeff)
         # TODO: calculate the reverberation time
@@ -818,7 +817,7 @@ def convert_imp_abs_t60_shoebox(Volumn, Areas, c, datain, params_type):
     3. reverberation time: float
     - params_type: str, the type of the parameters to be converted
     1. "impedance": impedance
-    2. "absorpCoefficient": absorption coefficients
+    2. "absorption": absorption coefficients
     3. "reverberationTime": reverberation time
     Outputs:
     - impedance: numpy array of size (6, len(frequency bands))
@@ -830,7 +829,7 @@ def convert_imp_abs_t60_shoebox(Volumn, Areas, c, datain, params_type):
         t60 = convert_imp_to_t60(Volumn, Areas, c, imp)
         # Take the max value no matter 2D or 1D array of t60
         abs_coeff = convert_imp_to_abs(imp)
-    elif params_type == "absorpCoefficient":
+    elif params_type == "absorption":
         abs_coeff = datain
         imp = convert_abs_to_imp(abs_coeff)
         t60 = convert_imp_to_t60(Volumn, Areas, c, imp)
@@ -915,7 +914,7 @@ def get_imp_abs(z, abs_coeff):
     Calculate absorption coefficient difference
     Inputs:
     - z: impedance (scalar or array)
-    - aran: absorption coefficient (scalar or array)
+    - abs_coeff: absorption coefficient (scalar or array)
     Outputs:
     - result: difference between target and estimated absorption coefficient
     """
@@ -1147,12 +1146,19 @@ def interpolate_functions(datain, sparse_freqs, dense_freqs):
         result = np.broadcast_to(datain, expanded_shape).copy()
         return result
 
-    # perform interpolation when there are at least 2 frequency points
+    # perform interpolation when there are at least 2 frequency points.
+    # Hold the endpoint values outside the measured band instead of
+    # extrapolating: the PCHIP continuation beyond the last knot is an
+    # unconstrained cubic that can drive the impedance non-passive
+    # (Re{Z} < 0, reflection gain > 1). Clipping the query frequencies
+    # keeps shape-preserving PCHIP inside the band and constant endpoint
+    # values below the first / above the last material band.
+    dense_freqs = np.clip(dense_freqs, sparse_freqs[0], sparse_freqs[-1])
     real_interp_func = PchipInterpolator(
-        sparse_freqs, datain.real, axis=-1, extrapolate=True
+        sparse_freqs, datain.real, axis=-1, extrapolate=False
     )
     imag_interp_func = PchipInterpolator(
-        sparse_freqs, datain.imag, axis=-1, extrapolate=True
+        sparse_freqs, datain.imag, axis=-1, extrapolate=False
     )
     return real_interp_func(dense_freqs) + 1j * imag_interp_func(dense_freqs)
 
@@ -1243,7 +1249,7 @@ def init_source_directivities(params):
     if not params["silentMode"]:
         print(f"[Data] Source type: {params['sourceType']}. ", end="")
     # start = time.perf_counter()
-    # First check if simple source directivities are used, e.g., momopole, dipole, etc.
+    # First check if simple source directivities are used, e.g., monopole, dipole, etc.
     # If monopole source is used, the directivity coefficients are calculated analytically
     if params["sourceType"] == "monopole":
         k = params["waveNumbers"]
@@ -1261,11 +1267,11 @@ def init_source_directivities(params):
             params["silentMode"], "source", params["sourceType"]
         )
         # ---------------- Some checks ----------------
-        # Check the radius of the receiver if matches the one defined in params["radiusReceiver"]
+        # Check the radius of the source if matches the one defined in params["radiusSource"]
         if np.abs(r0_source - params["radiusSource"]) > 1e-3:
-            # Raise a warning if the radius of the receiver is not the same as the one defined in params["radiusReceiver"]
+            # Raise a warning if the radius of the source is not the same as the one defined in params["radiusSource"]
             print(
-                f"Warning: The radius of the receiver is {r0_source}, not the same as the one defined in params['radiusSource']"
+                f"Warning: The radius of the source is {r0_source}, not the same as the one defined in params['radiusSource']"
             )
         # -------------------------------
         # Check if the frequencies are the same as the ones defined in params["freqs"]
@@ -1280,10 +1286,11 @@ def init_source_directivities(params):
             Dir_all_source, params["orientSource"]
         )
         # print orientation information, e.g., facing direction from +x axis to the orientation angles
-        print(
-            f"Orientation rotated from +x axis to the facing direction: {params['orientSource']}, ",
-            end="",
-        )
+        if not params["silentMode"]:
+            print(
+                f"Orientation rotated from +x axis to the facing direction: {params['orientSource']}, ",
+                end="",
+            )
 
         # Obtain spherical harmonic coefficients from the rotated sound field
         Pmnr0_source = SHCs_from_pressure_LS(
@@ -1314,7 +1321,7 @@ def init_receiver_directivities(params):
     if not params["silentMode"]:
         print(f"[Data] Receiver type: {params['receiverType']}. ", end="")
     if params["receiverType"] == "monopole":
-        # First check if simple source directivities are used, e.g., momopole, dipole, etc.
+        # First check if simple source directivities are used, e.g., monopole, dipole, etc.
         # If monopole source is used, the directivity coefficients are calculated analytically
         k = params["waveNumbers"]
         # Calculate receiver directivity coefficients C_vu^r
@@ -1539,11 +1546,10 @@ def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
     """
     Calculating the reflected source directivity coefficients for each reflection path (image source)
     Input:
-    1. images: the image source locations, shape (3, N_images) numpy array
-    2. reflection_matrix: the reflection matrix for each image source, shape (3, 3, N_images) numpy array
-    3. Psh_source: Sampled pressure of original directional source on the sphere, shape (N_freqs, N_src_dir) numpy array
-    4. src_Psh_coords: the Cartesian coordinates of the original sampling points, shape (3, N_src_dir) numpy array
-    5. params: the parameters of the room and the simulation
+    1. reflection_matrix: the reflection matrix for each image source, shape (3, 3, N_images) numpy array
+    2. Psh_source: Sampled pressure of original directional source on the sphere, shape (N_freqs, N_src_dir) numpy array
+    3. src_Psh_coords: the Cartesian coordinates of the original sampling points, shape (3, N_src_dir) numpy array
+    4. params: the parameters of the room and the simulation
     Output:
     1. C_nm_s_new_all: the reflected source directivity coefficients for each reflection path, shape (N_freqs, N_src_dir+1, 2*N_src_dir+1, N_images)
 
@@ -1612,7 +1618,7 @@ def init_source_directivities_ARG(params):
     reflection_matrix = params["reflection_matrix"]
     room_rotation = params["roomRotation"]
 
-    # First check if simple source directivities are used, e.g., momopole, dipole, etc.
+    # First check if simple source directivities are used, e.g., monopole, dipole, etc.
     # If monopole source is used, the directivity coefficients are calculated analytically
     if params["sourceType"] == "monopole":
         k = params["waveNumbers"]
@@ -1638,11 +1644,11 @@ def init_source_directivities_ARG(params):
             params["silentMode"], "source", params["sourceType"]
         )
         # ---------------- Some checks ----------------
-        # Check the radius of the receiver if matches the one defined in params["radiusReceiver"]
+        # Check the radius of the source if matches the one defined in params["radiusSource"]
         if np.abs(r0_source - params["radiusSource"]) > 1e-3:
-            # Raise a warning if the radius of the receiver is not the same as the one defined in params["radiusReceiver"]
+            # Raise a warning if the radius of the source is not the same as the one defined in params["radiusSource"]
             print(
-                f"Warning: The radius of the receiver is {r0_source} m, not the same as the one defined in params['radiusReceiver']"
+                f"Warning: The radius of the source is {r0_source} m, not the same as the one defined in params['radiusSource']"
             )
         # -------------------------------
         # Check if the frequencies are the same as the ones defined in params["freqs"]
@@ -1712,17 +1718,17 @@ def init_receiver_directivities_ARG(params):
     """
     Initialize the receiver directivities
     Input:
-    1. params: parameters
-    2. if_rotate_room: 0 or 1, if rotate the room
-    3. kwargs: other parameters, e.g., room_rotation if rotate the room
+    1. params: parameters, including params["ifRotateRoom"] (0 or 1, whether
+       to rotate the room) and params["roomRotation"] (rotation angles, used
+       when ifRotateRoom is 1)
     """
-    # Print reciever type
+    # Print receiver type
     if not params["silentMode"]:
         print(f"[Data] Receiver type: {params['receiverType']}. ", end="")
     ifRotateRoom = params["ifRotateRoom"]
     roomRotation = params["roomRotation"]
     if params["receiverType"] == "monopole":
-        # First check if simple source directivities are used, e.g., momopole, dipole, etc.
+        # First check if simple source directivities are used, e.g., monopole, dipole, etc.
         # If monopole source is used, the directivity coefficients are calculated analytically
         k = params["waveNumbers"]
         # Calculate receiver directivity coefficients C_vu^r
@@ -1744,7 +1750,7 @@ def init_receiver_directivities_ARG(params):
         # ---------------- Some checks ----------------
         # Check the radius of the receiver if matches the one defined in params["radiusReceiver"]
         if np.abs(r0_receiver - params["radiusReceiver"]) > 1e-3:
-            # Raise a warning if the radius of the receiver is not the same as the one defined in params["radiusReceiver"]"
+            # Raise a warning if the radius of the receiver is not the same as the one defined in params["radiusReceiver"]
             print(
                 f"Warning: The radius of the receiver is {r0_receiver} m, not the same as the one defined in params['radiusReceiver']"
             )
@@ -1770,9 +1776,9 @@ def init_receiver_directivities_ARG(params):
             params["orientReceiver"][2],
         )
         if ifRotateRoom == 1:
-            # Check if room_rotation is in kwargs
-            if "room_rotation" in params:
-                room_rotation = params["room_rotation"]
+            # Check if roomRotation is in params
+            if "roomRotation" in params:
+                room_rotation = params["roomRotation"]
                 # Print orientation information, e.g., facing direction from +x axis to the orientation angles and room rotation angles
                 if not params["silentMode"]:
                     print(
@@ -1780,7 +1786,7 @@ def init_receiver_directivities_ARG(params):
                         end="",
                     )
                 roomRotation = (
-                    params["room_rotation"] * np.pi / 180
+                    params["roomRotation"] * np.pi / 180
                 )  # convert to radians
             else:
                 # raise an error if roomRotation is not in kwargs
@@ -1834,7 +1840,6 @@ def init_receiver_directivities_ARG(params):
 # About Wigner 3j symbols
 # -------------------------------
 def pre_calc_Wigner(params, timeit=True):
-    start = time.perf_counter()
     """
     Precalculate Wigner 3j symbols
     Input: max. spherical harmonic order of the source and receiver:
@@ -1860,6 +1865,7 @@ def pre_calc_Wigner(params, timeit=True):
      Since once m_mod, u are fixed, m_mod-u is also fixed, no need for an additional dimension
      also -m_mod has the same range as m, i.e., from -n to n
     """
+    start = time.perf_counter()
     if not params["silentMode"]:
         print("[Calculating] Wigner 3J matrices, ", end="")
     N_src_dir = params["sourceOrder"]
@@ -1946,7 +1952,7 @@ def pre_calc_images_src_rec_original_nofs(params):
     if N_o < N_o_ORG:
         N_o_ORG = N_o
 
-    # Store the ones for the earch reflections
+    # Store the ones for the early reflections
     R_sI_r_all_early = []  # Only used in DEISM-ORG
     R_s_rI_all_early = []  # Used in DEISM-LC
     R_r_sI_all_early = []  # Used in DEISM-LC
@@ -1968,7 +1974,8 @@ def pre_calc_images_src_rec_original_nofs(params):
     # Show n1, n2, n3
     # print(f"n1: {n1}, n2: {n2}, n3: {n3}")
     # print max reflection order
-    print(f"max reflection order: {N_o}")
+    if not params["silentMode"]:
+        print(f"max reflection order: {N_o}")
     # count the total time in the loop after the if condition
     # count = 0
     for q_x in range(-n1, n1 + 1):
@@ -2067,7 +2074,7 @@ def pre_calc_images_src_rec_original_nofs(params):
                                     * beta_z2 ** np.abs(q_z)
                                 )  # / S
                                 if ref_order <= N_o_ORG:
-                                    # Store the ones for the earch reflections
+                                    # Store the ones for the early reflections
                                     A_early.append([q_x, q_y, q_z, p_x, p_y, p_z])
                                     R_sI_r_all_early.append(
                                         [phi_R_sI_r, theta_R_sI_r, r_R_sI_r]
@@ -2104,7 +2111,7 @@ def pre_calc_images_src_rec_original_nofs(params):
         R_r_sI_all_early.pop(idx)
         atten_all_early.pop(idx)
         A_early.pop(idx)
-    # Store the ones for the earch reflections
+    # Store the ones for the early reflections
     images = {
         "R_sI_r_all_early": R_sI_r_all_early,
         "R_s_rI_all_early": R_s_rI_all_early,
@@ -2282,7 +2289,7 @@ def _pre_calc_images_src_rec_optimized_nofs_impl(
             )
     # Storage for early and late reflections
     num_early_ref_paths_estimate = get_reflection_path_number_from_order(N_o_ORG, 6) + 1
-    # Add safety margin (50%) to account for potential miscounts
+    # Add safety margin (10%) to account for potential miscounts
     num_early_ref_paths = int(num_early_ref_paths_estimate * 1.1)
     # Use total count as an upper bound, then truncate after filling
     # Allocate enough space for early reflections
@@ -2923,18 +2930,16 @@ if SHOEBOX_IMAGE_NUMBA_AVAILABLE:
 
 def _shoebox_use_compact_storage(params):
     """
-    Use compact shoebox image storage by default for the Numba image generator.
+    Return whether the Numba image generator should use compact storage.
 
     The compact format stores only geometry and reflection metadata; attenuation
-    is reconstructed in the solver backend on demand. Users can override the
-    default via ``shoeboxCompactImages``.
-
-    Compact storage is supported for shoebox `v2-numba` in both `RIR` and
-    `RTF`, so the default is enabled unless explicitly disabled.
+    is reconstructed in the solver backend on demand. Users can opt into this
+    mode via ``shoeboxCompactImages`` while the default remains materialized for
+    compatibility with callers that inspect attenuation arrays directly.
     """
     if "shoeboxCompactImages" in params:
         return bool(params["shoeboxCompactImages"])
-    return True
+    return False
 
 
 def _process_shoebox_parity_combination_nofs(args):
@@ -3504,14 +3509,14 @@ def pre_calc_images_src_rec_original(params):
         if not params["silentMode"]:
             print("using angle-dependent reflection coefficients, ", end="")
     N_o = params["maxReflOrder"]
-    Z_S = params["acousImpend"]
+    Z_S = params["impedance"]
     # Maximum reflection order for the original DEISM in the DEISM-MIX mode
     N_o_ORG = params["mixEarlyOrder"]
     # If the total reflection order is smaller than N_o_ORG, update N_o_ORG
     if N_o < N_o_ORG:
         N_o_ORG = N_o
 
-    # Store the ones for the earch reflections
+    # Store the ones for the early reflections
     R_sI_r_all_early = []  # Only used in DEISM-ORG
     R_s_rI_all_early = []  # Used in DEISM-LC
     R_r_sI_all_early = []  # Used in DEISM-LC
@@ -3533,7 +3538,8 @@ def pre_calc_images_src_rec_original(params):
     # Show n1, n2, n3
     # print(f"n1: {n1}, n2: {n2}, n3: {n3}")
     # print max reflection order
-    print(f"max reflection order: {N_o}")
+    if not params["silentMode"]:
+        print(f"max reflection order: {N_o}")
     # count the total time in the loop after the if condition
     # count = 0
     for q_x in range(-n1, n1 + 1):
@@ -3635,7 +3641,7 @@ def pre_calc_images_src_rec_original(params):
                                     * beta_z2 ** np.abs(q_z)
                                 )  # / S
                                 if ref_order <= N_o_ORG:
-                                    # Store the ones for the earch reflections
+                                    # Store the ones for the early reflections
                                     A_early.append([q_x, q_y, q_z, p_x, p_y, p_z])
                                     R_sI_r_all_early.append(
                                         [phi_R_sI_r, theta_R_sI_r, r_R_sI_r]
@@ -3672,7 +3678,7 @@ def pre_calc_images_src_rec_original(params):
         R_r_sI_all_early.pop(idx)
         atten_all_early.pop(idx)
         A_early.pop(idx)
-    # Store the ones for the earch reflections
+    # Store the ones for the early reflections
     images = {
         "R_sI_r_all_early": R_sI_r_all_early,
         "R_s_rI_all_early": R_s_rI_all_early,
@@ -3712,7 +3718,7 @@ def pre_calc_images_src_rec_optimized(params):
             print("using angle-dependent reflection coefficients, ", end="")
 
     N_o = params["maxReflOrder"]
-    Z_S = params["acousImpend"]
+    Z_S = params["impedance"]
     N_o_ORG = params["mixEarlyOrder"]
 
     if N_o < N_o_ORG:
@@ -4145,7 +4151,7 @@ def pre_calc_images_src_rec_optimized_parallel(params):
             print("using angle-dependent reflection coefficients, ", end="")
 
     N_o = params["maxReflOrder"]
-    Z_S = params["acousImpend"]
+    Z_S = params["impedance"]
     N_o_ORG = params["mixEarlyOrder"]
 
     if N_o < N_o_ORG:

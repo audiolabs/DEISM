@@ -122,7 +122,7 @@ def de_method(json_file_path=None):
     Ws = 0.01  # Source point power [Watts] interrupted after "sourceon_time" seconds; 10^-2 W => correspondent to 100dB
 
     # Absorption term and Absorption coefficients
-    th = 3  # int(input("Enter type Absortion conditions (option 1,2,3):"))
+    th = 3  # int(input("Enter type Absorption conditions (option 1,2,3):"))
     # options Sabine (th=1), Eyring (th=2) and modified by Xiang (th=3)
 
     # Reference pressure in Pa
@@ -145,7 +145,7 @@ def de_method(json_file_path=None):
 
     # %%
     ###############################################################################
-    # Integraiton changes added by Hassan: ;) Do not modify any of these please!
+    # Integration changes added by Hassan: ;) Do not modify any of these please!
     ###############################################################################
     use_default = True
 
@@ -671,8 +671,6 @@ def de_method(json_file_path=None):
         boundary_areas = (
             []
         )  # Initialize a list to store boundary_areas values for each tetrahedron
-        import itertools
-
         face_areas = np.zeros(
             len(velemNodes)
         )  # Per each tetrahedron, if there is a face that is on the boundary, include the area, otehrwise zero

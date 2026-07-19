@@ -95,8 +95,6 @@ def plot_shifted_SPLs(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
     SPL_DEISMs = [get_SPL(P_DEISM) for P_DEISM in P_DEISMs]
     SPL_DEISM_LCs = [get_SPL(P_DEISM_LC) for P_DEISM_LC in P_DEISM_LCs]
     SPL_FEMs = [get_SPL(P_FEM) for P_FEM in P_FEMs]
-    # counter for shifting the plots
-    shift_count = 0
     fig = plt.figure(figsize=(18, 8))
     ax = fig.add_subplot(1, 1, 1)
     # ---------------------------------

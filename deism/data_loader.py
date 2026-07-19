@@ -2,6 +2,7 @@ import fnmatch
 import yaml
 import argparse
 import os
+import sys
 import scipy.io as sio
 import numpy as np
 
@@ -82,36 +83,51 @@ class ConflictChecks:
                 f"The following parameters are defined: {', '.join(params['givenMaterials'])}"
             )
 
-        # Check the dimension of the impedance, absorption coefficient, and reverberation time
-        # data shapes should be 2D numpy arrays for impedance, absorption coefficient, first dimension is 6
-        # and 1D numpy arrays for reverberation time
-        if params.get("givenMaterials") == "impedance":
-            if "impedance" in params:
-                arr = params["impedance"]
+        # Check the shapes of the impedance, absorption coefficient, and
+        # reverberation time. Before conversion (load_format_materials_checks /
+        # update_wall_materials) the accepted formats are:
+        # - impedance / absorption: a single scalar, a list or 1D array with
+        #   one value per wall, or a 2D array of shape (walls, frequency bands)
+        # - reverberationTime: a single scalar or a small numeric array
+        # Shoebox rooms must have exactly 6 walls; for convex rooms the wall
+        # count is validated against wallCenters in Room_deism_cpp instead.
+        def _check_wall_material_shape(name, label):
+            if name not in params:
+                return
+            value = params[name]
+            if isinstance(value, (int, float)):
+                return
+            is_shoebox = params.get("roomType", "shoebox") == "shoebox"
+            arr = np.asarray(value)
+            if np.issubdtype(arr.dtype, np.number):
+                if arr.ndim == 0:
+                    return
+                walls_ok = arr.shape[0] == 6 if is_shoebox else arr.shape[0] > 0
+                if arr.ndim in (1, 2) and walls_ok:
+                    return
+            raise ValueError(
+                f"{label} data must be a scalar, a list/1D array with one value "
+                f"per wall, or a 2D array of shape (walls, frequency bands)"
+                + (" with 6 walls for a shoebox room" if is_shoebox else "")
+                + f", got {value!r}"
+            )
+
+        if "impedance" in params.get("givenMaterials", []):
+            _check_wall_material_shape("impedance", "Impedance")
+        elif "absorption" in params.get("givenMaterials", []):
+            _check_wall_material_shape("absorption", "Absorption coefficient")
+        elif "reverberationTime" in params.get("givenMaterials", []):
+            rt = params.get("reverberationTime")
+            if rt is not None and not isinstance(rt, (int, float)):
+                arr = np.asarray(rt)
                 if not (
-                    isinstance(arr, np.ndarray) and arr.ndim == 2 and arr.shape[0] == 6
+                    np.issubdtype(arr.dtype, np.number)
+                    and arr.size >= 1
+                    and arr.ndim <= 2
                 ):
                     raise ValueError(
-                        f"Impedance data must be a 2D numpy array with 6 rows (for shoebox room), "
-                        f"got shape {arr.shape if isinstance(arr, np.ndarray) else 'not a numpy array'}"
-                    )
-        elif params.get("givenMaterials") == "absorpCoefficient":
-            if "absorptionCoeff" in params:
-                arr = params["absorptionCoeff"]
-                if not (
-                    isinstance(arr, np.ndarray) and arr.ndim == 2 and arr.shape[0] == 6
-                ):
-                    raise ValueError(
-                        f"Absorption coefficient data must be a 2D numpy array with 6 rows (for shoebox room), "
-                        f"got shape {arr.shape if isinstance(arr, np.ndarray) else 'not a numpy array'}"
-                    )
-        elif params.get("givenMaterials") == "reverberationTime":
-            if "reverberationTime" in params:
-                arr = params["reverberationTime"]
-                if not (isinstance(arr, np.ndarray) and arr.ndim == 1):
-                    raise ValueError(
-                        f"Reverberation time data must be a 1D numpy array, "
-                        f"got shape {arr.shape if isinstance(arr, np.ndarray) else 'not a numpy array'}"
+                        f"Reverberation time data must be a scalar or a small "
+                        f"numeric array, got {rt!r}"
                     )
 
     @staticmethod
@@ -172,23 +188,23 @@ def load_format_materials_checks(datain, datatype):
     Outputs:
     - datain:
     1. "impedance": impedance, shape (6, 1)
-    2. "absorpCoefficient": absorption coefficients, shape (6, 1)
+    2. "absorption": absorption coefficients, shape (6, 1)
     3. "reverberationTime": reverberation time, shape (1, 1)
     """
     dataout = None
-    if datatype == "impedance" or datatype == "absorpCoefficient":
+    if datatype == "impedance" or datatype == "absorption":
         if isinstance(datain, (int, float)):
             dataout = np.full((6, 1), datain)
         elif isinstance(datain, list):
             # If the impedance is a list of single values, convert it to a numpy array
             dataout = np.array(datain)[:, None]
         else:
-            raise ValueError("Invalid data shape for {datatype}!")
+            raise ValueError(f"Invalid data shape for {datatype}!")
     elif datatype == "reverberationTime":
         if isinstance(datain, (int, float)):
             dataout = np.full((1, 1), datain)
         else:
-            raise ValueError("Invalid data shape for {datatype}!")
+            raise ValueError(f"Invalid data shape for {datatype}!")
     return dataout
 
 
@@ -381,7 +397,7 @@ def readYaml(filePath):
     # if it is found, add tests/ to the file path
     try:
         # If the file is found, assign the file path to filePath
-        if fnmatch.filter(os.listdir("examples"), filePath) is not None:
+        if fnmatch.filter(os.listdir("examples"), filePath):
             filePath = "examples/" + filePath
         # If the file is not found, an exception is raised
     except:
@@ -390,7 +406,7 @@ def readYaml(filePath):
     # Then determine if the file path exists
     if not os.path.exists(filePath):
         # If it does not exist, an exception is thrown
-        raise FileExistsError(f"{filePath} doesn't exist!")
+        raise FileNotFoundError(f"{filePath} doesn't exist!")
 
     # Then determine if it is a file
     if not os.path.isfile(filePath):
@@ -440,7 +456,7 @@ def parseCmdArgs(mode="RTF"):
     parse.add_argument(
         "-zs",
         metavar=("Z_x1", "Z_x2", "Z_y1", "Z_y2", "Z_z1", "Z_z2"),
-        help="acoustic impedance of the the six walls at all frequencies",
+        help="acoustic impedance of the six walls at all frequencies",
         nargs=6,
         type=float,
     )
@@ -454,7 +470,7 @@ def parseCmdArgs(mode="RTF"):
             "alpha_z1",
             "alpha_z2",
         ),
-        help="absorption coefficients of the the six walls at all frequencies",
+        help="absorption coefficients of the six walls at all frequencies",
         nargs=6,
         type=float,
     )
@@ -510,7 +526,7 @@ def parseCmdArgs(mode="RTF"):
     # Frequency parameters
     if mode == "RTF":
         parse.add_argument("-fmin", help="start frequency(Hz)", type=float)
-        parse.add_argument("-fstep", help="frequence step size(Hz)", type=float)
+        parse.add_argument("-fstep", help="frequency step size (Hz)", type=float)
         parse.add_argument("-fmax", help="stop frequency(Hz)", type=float)
     elif mode == "RIR":
         parse.add_argument("-fs", help="sampling rate", type=int)
@@ -550,7 +566,7 @@ def parseCmdArgs(mode="RTF"):
     )
     parse.add_argument(
         "-method",
-        help="Speficy which DEISM mode to use: \
+        help="Specify which DEISM mode to use: \
         ORG, LC, MIX",
         type=str,
     )
@@ -591,7 +607,7 @@ def parseCmdArgs(mode="RTF"):
         action="store_true",
         help="Flag to indicate whether to output messages in the command line",
     )
-    return parse.parse_args()
+    return parse.parse_args(args=[] if "pytest" in sys.modules else None)
 
 
 def parseCmdArgs_ARG(mode="RTF"):
@@ -665,7 +681,7 @@ def parseCmdArgs_ARG(mode="RTF"):
     # Frequency parameters
     if mode == "RTF":
         parse.add_argument("-fmin", help="start frequency(Hz)", type=float)
-        parse.add_argument("-fstep", help="frequence step size(Hz)", type=float)
+        parse.add_argument("-fstep", help="frequency step size (Hz)", type=float)
         parse.add_argument("-fmax", help="stop frequency(Hz)", type=float)
     elif mode == "RIR":
         parse.add_argument("-fs", help="sampling rate", type=int)
@@ -710,7 +726,7 @@ def parseCmdArgs_ARG(mode="RTF"):
     )
     parse.add_argument(
         "-method",
-        help="Speficy which DEISM mode to use: \
+        help="Specify which DEISM mode to use: \
         ORG, LC, MIX",
         type=str,
     )
@@ -751,7 +767,7 @@ def parseCmdArgs_ARG(mode="RTF"):
         action="store_true",
         help="Flag to indicate whether to output messages in the command line",
     )
-    return parse.parse_args()
+    return parse.parse_args(args=[] if "pytest" in sys.modules else None)
 
 
 def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
@@ -798,7 +814,11 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
         params["roomRotation"] = np.array(
             list(configs["Dimensions"]["roomRotation"].values())
         )
-        params["convexRoom"] = args.ifconvex or configs["Dimensions"]["ifConvexRoom"]
+        params["convexRoom"] = (
+            args.ifconvex
+            if args.ifconvex is not None
+            else configs["Dimensions"]["ifConvexRoom"]
+        )
 
     else:
         raise ValueError(
@@ -821,10 +841,13 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     except:
         pass
     try:
-        params["absorpCoefficient"] = (
-            args.absp or configs["Reflections"]["absorpCoefficienticient"]
-        )
-        givenMaterials.append("absorpCoefficient")
+        if "absorption" in configs["Reflections"]:
+            absorption_cfg = configs["Reflections"]["absorption"]
+        else:
+            # Backward compatibility with the old YAML key name
+            absorption_cfg = configs["Reflections"]["absorpCoefficient"]
+        params["absorption"] = args.absp or absorption_cfg
+        givenMaterials.append("absorption")
     except:
         pass
     try:
@@ -844,21 +867,20 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     # if len(materials) > 0:
     #     if materials[0] == "impedance":
     #         print("The following material is defined: Acoustic Impedance")
-    #     elif materials[0] == "absorpCoefficient":
+    #     elif materials[0] == "absorption":
     #         print("The following material is defined: Absorption Coefficient")
     #     elif materials[0] == "reverberationTime":
     #         print("The following material is defined: Reverberation Time")
     # ------------------------------------------------------------
     # Angle dependent flag, could be 0 or 1 or not defined
     try:
-        params["angDepFlag"] = args.adrc or configs["Reflections"]["angleDependentFlag"]
+        params["angDepFlag"] = (
+            args.adrc
+            if args.adrc is not None
+            else configs["Reflections"]["angleDependentFlag"]
+        )
     except:
         pass
-    # params["angDepFlag"] = (
-    #     args.adrc
-    #     if args.adrc is not None
-    #     else configs["Reflections"]["angleDependentFlag"]
-    # )
 
     # positions of the source and receiver
     params["posSource"] = np.array(
@@ -896,7 +918,9 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     params["sourceType"] = args.srctype or configs["Directivities"]["source"]
     params["receiverType"] = args.rectype or configs["Directivities"]["receiver"]
 
-    params["ifRemoveDirectPath"] = args.ird or configs["DEISM_specs"]["ifRemoveDirect"]
+    params["ifRemoveDirectPath"] = (
+        args.ird if args.ird is not None else configs["DEISM_specs"]["ifRemoveDirect"]
+    )
     params["DEISM_method"] = args.method or configs["DEISM_specs"]["Method"]
     try:
         params["mixEarlyOrder"] = args.meo or configs["DEISM_specs"]["mixEarlyOrder"]
@@ -904,7 +928,9 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
         pass
     params["numParaImages"] = args.npi or configs["DEISM_specs"]["numParaImages"]
     params["ifReceiverNormalize"] = (
-        args.irn or configs["DEISM_specs"]["ifReceiverNormalize"]
+        args.irn
+        if args.irn is not None
+        else configs["DEISM_specs"]["ifReceiverNormalize"]
     )
     params["qFlowStrength"] = args.q or configs["DEISM_specs"]["QFlowStrength"]
     params["silentMode"] = args.quiet or configs["SilentMode"]
@@ -931,10 +957,10 @@ def printDict(dict):
             "n3",
             "nSamples",
             "silentMode",
-            "posSources",
-            "posReceivers",
-            "orientSources",
-            "orientReceivers",
+            "posSource",
+            "posReceiver",
+            "orientSource",
+            "orientReceiver",
             "cTs",
         ]
         # If the source is monopole, remove radiusSource
@@ -974,7 +1000,7 @@ def printDict(dict):
                         print(f"{key:>{maxLen}} {row_id} : {row}", end="\n")
                     # Skip the following output
                     continue
-                # If the key is acousImpend with 2D arrays, output the key and the 2D array separately
+                # If the key is impedance with 2D arrays, output the key and the 2D array separately
                 # Each entry's name is Impedance wall 1, Impedance wall 2, etc.
                 if key == "impedance":
                     key = "Impedance wall "
@@ -1036,7 +1062,7 @@ def cmdArgsToDict(mode="RTF", roomtype="shoebox"):
     - params: the final configuration dictionary
     - cmdArgs: the command line arguments
     """
-    # Decide with default yml name to load
+    # Decide which default yml name to load
     if roomtype == "shoebox":
         if mode == "RTF":
             yml_name = "configSingleParam_RTF.yml"
@@ -1093,7 +1119,7 @@ def load_directive_pressure(silentMode, src_or_rec, name):
             # do nothing
             pass
         # If the path is not found, an exception is raised
-    except FileNotFoundError(f"{path} doesn't exist!"):
+    except FileNotFoundError:
         # stop the program and print the error message
         pass
     data_location = "{}/{}/{}.mat".format(path, src_or_rec, name)
@@ -1134,7 +1160,7 @@ def load_directpath_pressure(silentMode, name):
             # do nothing
             pass
         # If the path is not found, an exception is raised
-    except FileNotFoundError(f"{path} doesn't exist!"):
+    except FileNotFoundError:
         # stop the program and print the error message
         pass
     data_location = "{}/source/{}.mat".format(path, name)
@@ -1169,7 +1195,7 @@ def load_RTF_data(silentMode, name):
             # do nothing
             pass
         # If the path is not found, an exception is raised
-    except FileNotFoundError(f"{path} doesn't exist!"):
+    except FileNotFoundError:
         # stop the program and print the error message
         pass
 

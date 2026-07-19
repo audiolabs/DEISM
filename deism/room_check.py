@@ -240,10 +240,15 @@ def collect_room_geometry_data(geo_file):
         corners = get_corner_points()
         shoebox = is_shoebox_corners(corners)
 
-        if convex:
+        if shoebox:
+            room = "shoebox"
+        elif convex:
             room = "convex"
         else:
-            room = "shoebox"
+            raise ValueError(
+                "Room geometry is neither a shoebox nor convex; "
+                "non-convex rooms are not supported."
+            )
 
         room_areas, wall_centers = _collect_surface_metrics()
 
@@ -251,7 +256,7 @@ def collect_room_geometry_data(geo_file):
             "vertices": corners.tolist(),
             "wall_centers": wall_centers,
             "room_areas": room_areas,
-            "room_volumn": volume,
+            "room_volume": volume,
             "room": room,
             "shoebox": shoebox,
         }
@@ -264,7 +269,7 @@ def collect_room_geometry_data(geo_file):
 # -------------------------------
 def get_room_geometry(geo_file):
     geometry_data = collect_room_geometry_data(geo_file)
-    return geometry_data["room_volumn"], geometry_data["room"]
+    return geometry_data["room_volume"], geometry_data["room"]
 
 
 def sync_room_geometry(json_file_path, geo_file_path):
@@ -274,9 +279,9 @@ def sync_room_geometry(json_file_path, geo_file_path):
         vertices=geometry_data["vertices"],
         wall_centers=geometry_data["wall_centers"],
         room_areas=geometry_data["room_areas"],
-        room_volumn=geometry_data["room_volumn"],
+        room_volume=geometry_data["room_volume"],
     )
-    return geometry_data["room_volumn"], geometry_data["room"]
+    return geometry_data["room_volume"], geometry_data["room"]
 
 
 def update_surface_areas(json_file_path, geo_file_path):

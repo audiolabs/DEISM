@@ -61,12 +61,12 @@ def init_parameters_convex(params):
             [2, 1.5, 3],
         ]
     )
-    # You need to adlign the acoustic impedance to the wall centers defined above
+    # You need to align the acoustic impedance to the wall centers defined above
     # The format of the impedance is [number of walls, len(freqs)], 2D numpy array
-    # params["acousImpend"] = np.arange(1, 6 * len(params["freqs"]) + 1).reshape(
+    # params["impedance"] = np.arange(1, 6 * len(params["freqs"]) + 1).reshape(
     #     6, len(params["freqs"])
     # )
-    params["acousImpend"] = (
+    params["impedance"] = (
         np.ones((6, len(params["freqs"]))) * 18
     )  # recreating the old example
     # --- Room rotation, if rotate the room w.r.t the origin ---
@@ -80,8 +80,8 @@ def init_parameters_convex(params):
     # --- Add the above parameters to the params dictionary ---
     params["vertices"] = vertices
     params["wallCenters"] = wallCenters
-    params["if_rotate_room"] = if_rotate_room
-    params["room_rotation"] = room_rotation
+    params["ifRotateRoom"] = if_rotate_room
+    params["roomRotation"] = room_rotation
     # Apply room rotation to the room vertices and source/receiver positions
     if if_rotate_room:
         params = rotate_room_src_rec(params)
@@ -113,9 +113,7 @@ def main():
         # -------------------------------------------------------
         # --- Loading and calculating receiver directivities ----
         # -------------------------------------------------------
-        params = init_receiver_directivities_ARG(
-            params, params["if_rotate_room"], room_rotation=params["room_rotation"]
-        )
+        params = init_receiver_directivities_ARG(params)
         # -----------------------------------------------------------
         # -- Using DESIM-ARG with c++ libroom_deism to find
         # the visible images and reflection matrices, attenuations --
@@ -127,26 +125,23 @@ def main():
         # ---------------------------------------------------------------
         # -- Calculating the reflected source directivity coefficients --
         # ---------------------------------------------------------------
-        params = init_source_directivities_ARG(
-            params,
-            params["if_rotate_room"],
-            params["reflection_matrix"],
-            room_rotation=params["room_rotation"],
-        )
+        params = init_source_directivities_ARG(params)
         # -------------------------------------------------------
         # ------ Testing DEISM-ARG using LC version -------------
         # -------------------------------------------------------
         params = vectorize_C_vu_r(params)
         params = vectorize_C_nm_s_ARG(params)
 
+        # -------------------------------------------------------
+        # -- Calculate Wigner 3J matrices, needed by the ORG and --
+        # -- MIX versions run below --
+        # -------------------------------------------------------
+        # pre_calc_Wigner stores the matrices in params["Wigner"] and returns
+        # the updated params dict (not the Wigner dict itself)
+        params = pre_calc_Wigner(params)
         # Run DEISM-ARG using LC version (Numba backend)
         params["DEISM_method"] = "LC"
         P_DEISM_ARG_LC = run_DEISM_ARG(params)
-        # -------------------------------------------------------
-        # -- Calculate Wigner 3J matrices for some DEISM modes --
-        # -------------------------------------------------------
-        if params["DEISM_mode"] == "ORG" or params["DEISM_mode"] == "MIX":
-            params["Wigner"] = pre_calc_Wigner(params)
         # ------------------------------------------------------------------------
         # ------ Run DEISM-ARG using the original version and mixed version ------
         # ------------------------------------------------------------------------

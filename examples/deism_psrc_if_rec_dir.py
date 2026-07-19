@@ -20,6 +20,7 @@ import ray
 import psutil
 from deism.core_deism import *
 from deism.utilities import get_SPL
+from deism.parallel_backends import _ray_run_DEISM_MIX as ray_run_DEISM_MIX
 from matplotlib.ticker import AutoMinorLocator, MultipleLocator
 
 
@@ -30,11 +31,11 @@ def init_parameters(params):
     # reflection order
     params["maxReflOrder"] = 25
     # Source and receiver positions
-    params["posSources"] = np.array([1.1, 1.1, 1.3])
-    params["posReceivers"] = np.array([2.9, 1.9, 1.3])
+    params["posSource"] = np.array([1.1, 1.1, 1.3])
+    params["posReceiver"] = np.array([2.9, 1.9, 1.3])
     # Orientations of the sources and receivers
-    params["orientSources"] = np.array([0, 0, 0])
-    params["orientReceivers"] = np.array([180, 0, 0])
+    params["orientSource"] = np.array([0, 0, 0])
+    params["orientReceiver"] = np.array([180, 0, 0])
     # Directivity profiles of the source and receiver
     params["sourceType"] = "monopole"
     return params
@@ -49,7 +50,8 @@ def main():
         params["silentMode"] = 1
     printDict(params)
     # Run for shared calculations
-    Wigner = pre_calc_Wigner(params)
+    params = pre_calc_Wigner(params)
+    Wigner = params["Wigner"]
     # Precompute reflection paths
     images = pre_calc_images_src_rec(params)
     # images = merge_images(images)
@@ -62,10 +64,10 @@ def main():
     # Run for directional source + directional receiver
     # -------------------------------------------------------
     params["sourceType"] = "Speaker_cyl_cyldriver_source"
-    params["nSourceOrder"] = 5
+    params["sourceOrder"] = 5
     params["radiusSource"] = 0.4
     params["receiverType"] = "Speaker_cyl_cyldriver_receiver"
-    params["vReceiverOrder"] = 5
+    params["receiverOrder"] = 5
     params["radiusReceiver"] = 0.5
     # Initialize directivities
     params = init_receiver_directivities(params)
@@ -80,7 +82,7 @@ def main():
     # -------------------------------------------------------
     # Define the directivity profiles of the source and receiver
     params["sourceType"] = "monopole"
-    params["nSourceOrder"] = 0
+    params["sourceOrder"] = 0
     # Initialize directivities for the source
     params = init_source_directivities(params)
     # Vectorize the directivity data, used for DEISM-LC
@@ -91,7 +93,7 @@ def main():
     # Run for monopole source + omni-directional receiver
     # -------------------------------------------------------
     params["receiverType"] = "monopole"
-    params["vReceiverOrder"] = 0
+    params["receiverOrder"] = 0
     # Initialize directivities for the receiver
     params = init_receiver_directivities(params)
     params = vectorize_C_vu_r(params)
@@ -123,26 +125,8 @@ def main():
         IF_UNWRAP_PHASE,
         IF_SAVE_PLOT,
     )
-    test = 1
 
 
 # -------------------------------------------------------
 if __name__ == "__main__":
     main()
-
-
-P_all = [P_DEISM_diresrc_dirrec * 100, P_DEISM_monosrc_dirrec, P_DEISM_monosrc_monorec]
-P_labels = ["Both directional", "Directional receiver", "Both omni-directional"]
-P_freqs = [params["freqs"], params["freqs"], params["freqs"]]
-plot_RTFs(
-    figure_name,
-    save_path,
-    P_all,
-    P_labels,
-    P_freqs,
-    PLOT_SCALE,
-    IF_FREQS_DB,
-    IF_SAME_MAGSCALE,
-    IF_UNWRAP_PHASE,
-    IF_SAVE_PLOT,
-)

@@ -99,7 +99,6 @@ def count_reflections_cpp(order, room_dims, c, T60):
 if __name__ == "__main__":
     # Test the function
     import time
-    import numpy as np
 
     room_dims = (3.29, 6.23, 2.58)
     c = 343

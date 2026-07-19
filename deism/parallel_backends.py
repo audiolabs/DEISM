@@ -810,7 +810,7 @@ def _numba_run_DEISM_ARG_ORG(params, images, Wigner):
 
     if not params["silentMode"]:
         m, s = divmod(time.time() - start, 60)
-        print(f"Done! [{int(m)} min, {s:.3f}s]")
+        print(f"Done! [{int(m)} min, {s:.1f}s]")
     return P
 
 
@@ -1387,7 +1387,7 @@ def _ray_run_DEISM_ARG_ORG(params, images, Wigner):
 
     if not params["silentMode"]:
         m, s = divmod(time.time() - start, 60)
-        print(f"Done! [{int(m)} min, {s:.3f}s]")
+        print(f"Done! [{int(m)} min, {s:.1f}s]")
     return P
 
 

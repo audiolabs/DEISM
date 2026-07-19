@@ -39,8 +39,8 @@ def init_parameters_convex(params):
 
     params["vertices"] = vertices
     params["wallCenters"] = find_wall_centers(vertices)
-    params["if_rotate_room"] = if_rotate_room
-    params["room_rotation"] = room_rotation
+    params["ifRotateRoom"] = if_rotate_room
+    params["roomRotation"] = room_rotation
 
     # Apply room rotation to the room vertices and source/receiver positions
     if if_rotate_room:

@@ -119,7 +119,6 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("attenuations", &Room_deism<3>::attenuations)
         .def_readonly("gen_walls", &Room_deism<3>::gen_walls)
         .def_readonly("visible_mics", &Room_deism<3>::visible_mics)
-        .def_readonly("walls", &Room_deism<3>::walls)
         .def_readonly("obstructing_walls", &Room_deism<3>::obstructing_walls)
         .def_readonly("microphones", &Room_deism<3>::microphones)
         .def_readonly("max_dist", &Room_deism<3>::max_dist)
@@ -172,9 +171,9 @@ PYBIND11_MODULE(libroom_deism, m) {
             (void(Room_deism<2>::*)(size_t n_rays, const Vectorf<2> source_pos)) &
                 Room_deism<2>::ray_tracing)
         .def("contains", &Room_deism<2>::contains)
-        .def("image_sources_dfs",(void(Room_deism<2>::*)(ImageSource<2> &is, int max_order))&Room_deism<2>::image_sources_dfs)      //-->new 
-        .def("image_sources_dfs",(void(Room_deism<2>::*)(ImageSource<2> &is, int max_order,
-            std::vector<Vectorf<2>>& list_intercep_p_to_is))&Room_deism<2>::image_sources_dfs)    //-->new
+        .def("image_sources_dfs",(void(Room_deism<2>::*)(ImageSource<2> &is, int max_order))&Room_deism<2>::image_sources_dfs)      //-->new
+        // .def("image_sources_dfs",(void(Room_deism<2>::*)(ImageSource<2> &is, int max_order,
+        //     std::vector<Vectorf<2>>& list_intercep_p_to_is))&Room_deism<2>::image_sources_dfs)    //-->new
         // .def("is_visible_dfs",(bool (Room_deism<2>::*)(const Vectorf<2> &p, ImageSource<2> &is))&Room_deism<2>::is_visible_dfs)    //-->new
         .def("is_visible_dfs",(std::pair<bool,std::vector<Vectorf<2>>> (Room_deism<2>::*)(const Vectorf<2> &p, ImageSource<2> &is))&Room_deism<2>::is_visible_dfs)    //-->new
         .def("is_obstructed_dfs",&Room_deism<2>::is_obstructed_dfs)   //-->new
@@ -190,7 +189,6 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("attenuations", &Room_deism<2>::attenuations)
         .def_readonly("gen_walls", &Room_deism<2>::gen_walls)
         .def_readonly("visible_mics", &Room_deism<2>::visible_mics)
-        .def_readonly("walls", &Room_deism<2>::walls)
         .def_readonly("obstructing_walls", &Room_deism<2>::obstructing_walls)
         .def_readonly("microphones", &Room_deism<2>::microphones)
         .def_readonly("max_dist", &Room_deism<2>::max_dist)
@@ -257,7 +255,7 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("basis", &Wall_deism<3>::basis)
         .def_readonly("flat_corners", &Wall_deism<3>::flat_corners)
         .def_readonly("reflection_matrix", &Wall_deism<3>::reflection_matrix)     //tan new
-        // .def_readonly("impedence_bands", &Wall_deism<3>::impedence_bands)     //tan new
+        .def_readonly("impedence_bands", &Wall_deism<3>::impedence_bands)     //tan new
         .def_readonly("centroid", &Wall_deism<3>::centroid);     //-->new
 
     py::enum_<Wall_deism<3>::Isect>(wall_cls, "Isect_deism")
