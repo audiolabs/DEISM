@@ -1146,12 +1146,19 @@ def interpolate_functions(datain, sparse_freqs, dense_freqs):
         result = np.broadcast_to(datain, expanded_shape).copy()
         return result
 
-    # perform interpolation when there are at least 2 frequency points
+    # perform interpolation when there are at least 2 frequency points.
+    # Hold the endpoint values outside the measured band instead of
+    # extrapolating: the PCHIP continuation beyond the last knot is an
+    # unconstrained cubic that can drive the impedance non-passive
+    # (Re{Z} < 0, reflection gain > 1). Clipping the query frequencies
+    # keeps shape-preserving PCHIP inside the band and constant endpoint
+    # values below the first / above the last material band.
+    dense_freqs = np.clip(dense_freqs, sparse_freqs[0], sparse_freqs[-1])
     real_interp_func = PchipInterpolator(
-        sparse_freqs, datain.real, axis=-1, extrapolate=True
+        sparse_freqs, datain.real, axis=-1, extrapolate=False
     )
     imag_interp_func = PchipInterpolator(
-        sparse_freqs, datain.imag, axis=-1, extrapolate=True
+        sparse_freqs, datain.imag, axis=-1, extrapolate=False
     )
     return real_interp_func(dense_freqs) + 1j * imag_interp_func(dense_freqs)
 
