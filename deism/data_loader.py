@@ -2,6 +2,7 @@ import fnmatch
 import yaml
 import argparse
 import os
+import sys
 import scipy.io as sio
 import numpy as np
 
@@ -606,7 +607,7 @@ def parseCmdArgs(mode="RTF"):
         action="store_true",
         help="Flag to indicate whether to output messages in the command line",
     )
-    return parse.parse_args()
+    return parse.parse_args(args=[] if "pytest" in sys.modules else None)
 
 
 def parseCmdArgs_ARG(mode="RTF"):
@@ -766,7 +767,7 @@ def parseCmdArgs_ARG(mode="RTF"):
         action="store_true",
         help="Flag to indicate whether to output messages in the command line",
     )
-    return parse.parse_args()
+    return parse.parse_args(args=[] if "pytest" in sys.modules else None)
 
 
 def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):

@@ -2930,18 +2930,16 @@ if SHOEBOX_IMAGE_NUMBA_AVAILABLE:
 
 def _shoebox_use_compact_storage(params):
     """
-    Use compact shoebox image storage by default for the Numba image generator.
+    Return whether the Numba image generator should use compact storage.
 
     The compact format stores only geometry and reflection metadata; attenuation
-    is reconstructed in the solver backend on demand. Users can override the
-    default via ``shoeboxCompactImages``.
-
-    Compact storage is supported for shoebox `v2-numba` in both `RIR` and
-    `RTF`, so the default is enabled unless explicitly disabled.
+    is reconstructed in the solver backend on demand. Users can opt into this
+    mode via ``shoeboxCompactImages`` while the default remains materialized for
+    compatibility with callers that inspect attenuation arrays directly.
     """
     if "shoeboxCompactImages" in params:
         return bool(params["shoeboxCompactImages"])
-    return True
+    return False
 
 
 def _process_shoebox_parity_combination_nofs(args):
