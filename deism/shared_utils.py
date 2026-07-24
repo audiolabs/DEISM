@@ -5,6 +5,12 @@ Shared utilities for DEISM modules to avoid circular imports
 import numpy as np
 from scipy import special as scy
 
+if not hasattr(scy, "sph_harm"):
+    def _sph_harm_compat(m, n, azimuth, inclination):
+        return scy.sph_harm_y(n, m, inclination, azimuth)
+
+    scy.sph_harm = _sph_harm_compat
+
 
 def rotation_matrix_ZXZ(alpha, beta, gamma):
     """

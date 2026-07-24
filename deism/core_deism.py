@@ -7,6 +7,12 @@ Zeyu Xu
 import gc
 import time
 import numpy as np
+
+# ``sound_field_analysis`` still references this NumPy 1.x alias.  Restore it
+# locally for NumPy 2 compatibility before the dependency is exercised.
+if not hasattr(np, "complex_"):
+    np.complex_ = np.complex128
+
 from scipy import special as scy
 from scipy.integrate import trapezoid
 from scipy.optimize import least_squares
@@ -20,6 +26,16 @@ from deism.data_loader import *
 # from deism.core_deism_arg import Room_deism_cpp  # Moved to avoid circular import
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from multiprocessing import cpu_count
+
+# SciPy 1.17 renamed ``sph_harm`` to ``sph_harm_y`` and removed the former
+# alias in 1.18.  Keep the historical DEISM call signature (m, n, azimuth,
+# inclination) while mapping it to the new signature (n, m, inclination,
+# azimuth) when required.
+if not hasattr(scy, "sph_harm"):
+    def _sph_harm_compat(m, n, azimuth, inclination):
+        return scy.sph_harm_y(n, m, inclination, azimuth)
+
+    scy.sph_harm = _sph_harm_compat
 
 try:
     import numba
@@ -2138,10 +2154,16 @@ def pre_calc_Wigner(params, timeit=True):
                 for u in range(-1 * v, v + 1):
                     for l in range(np.abs(n - v), n + v + 1):
                         if np.abs(u - m) <= l:
-                            W_1 = wigner_3j(n, v, l, 0, 0, 0)
-                            W_1_all[n, v, l] = np.array([W_1], dtype=float)
-                            W_2 = wigner_3j(n, v, l, -m, u, m - u)
-                            W_2_all[n, v, l, m, u] = np.array([W_2], dtype=float)
+                            # ``l`` originates from a NumPy scalar on recent
+                            # NumPy versions.  Convert every argument before
+                            # handing it to SymPy, which otherwise may return
+                            # a one-element object array instead of a scalar.
+                            W_1 = float(wigner_3j(int(n), int(v), int(l), 0, 0, 0))
+                            W_1_all[n, v, l] = W_1
+                            W_2 = float(
+                                wigner_3j(int(n), int(v), int(l), int(-m), int(u), int(m - u))
+                            )
+                            W_2_all[n, v, l, m, u] = W_2
 
     Wigner = {
         "W_1_all": W_1_all.astype(np.complex64),

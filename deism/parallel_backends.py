@@ -14,8 +14,18 @@ Usage:
 import gc
 import time
 import numpy as np
+
+if not hasattr(np, "complex_"):
+    np.complex_ = np.complex128
+
 from scipy import special as scy
 from sound_field_analysis.sph import sphankel2
+
+if not hasattr(scy, "sph_harm"):
+    def _sph_harm_compat(m, n, azimuth, inclination):
+        return scy.sph_harm_y(n, m, inclination, azimuth)
+
+    scy.sph_harm = _sph_harm_compat
 
 
 # ============================================================================
