@@ -38,6 +38,10 @@ def build_shoebox_case(image_calc_version, max_order=5, angdep=1, workers=2):
     deism.params["DEISM_method"] = "MIX"
     deism.params["shoeboxImageCalcVersion"] = image_calc_version
     deism.params["shoeboxImageCalcWorkers"] = workers
+    # This script compares the stored attenuation arrays across generators, so
+    # it needs materialized storage; the v2-numba default is compact, which
+    # omits atten_all_early / atten_all_late entirely.
+    deism.params["shoeboxCompactImages"] = 0
 
     deism.update_wall_materials()
     deism.update_freqs()

@@ -1,10 +1,9 @@
 #include <cmath>
+#include <pybind11/pybind11.h>
 
-extern "C" {
-    // Fast C++ implementation of reflection path counting
-    // For fixed positions: source at (0,0,0) and receiver at (room_dims)
-    
-    long long count_reflections_shoebox_test(
+// Fast C++ implementation of reflection path counting.
+// For fixed positions: source at (0,0,0) and receiver at (room_dims).
+long long count_reflections_shoebox_test(
         int order,
         double Lx, double Ly, double Lz,  // room dimensions
         double c,
@@ -84,8 +83,11 @@ extern "C" {
                                                                       Ly_sq * dy_factor * dy_factor +
                                                                       Lz_sq * dz_factor * dz_factor;
                                                 
-                                                // Check if within maximum distance
-                                                if (dist_squared < max_distance_squared) {
+                                                // Check if within maximum distance.
+                                                // `<=` matches the image filtering,
+                                                // which keeps images exactly on the
+                                                // T60 distance boundary.
+                                                if (dist_squared <= max_distance_squared) {
                                                     count++;
                                                 }
                                             }
@@ -100,6 +102,18 @@ extern "C" {
         }
         
         return count;
-    }
 }
 
+PYBIND11_MODULE(_count_reflections, module) {
+    module.doc() = "Native reflection-path counting helpers for DEISM";
+    module.def(
+        "count_reflections_shoebox_test",
+        &count_reflections_shoebox_test,
+        pybind11::arg("order"),
+        pybind11::arg("Lx"),
+        pybind11::arg("Ly"),
+        pybind11::arg("Lz"),
+        pybind11::arg("c"),
+        pybind11::arg("T60")
+    );
+}

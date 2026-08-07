@@ -1,0 +1,7 @@
+# Normalize line endings: text files are LF in the repository and on checkout
+# on every platform. This prevents whole-file phantom conflicts in merges
+# between checkouts that disagree on CRLF.
+* text=auto eol=lf
+
+# Vendored third-party sources: keep byte-for-byte as imported.
+deism/libroom_src/ext/eigen/** -text

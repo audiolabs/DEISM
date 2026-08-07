@@ -46,7 +46,7 @@ class ParamsAccessVisitor(ast.NodeVisitor):
         if self._is_self_params(node):
             key = self._extract_key(node)
             if key is not None:
-                if isinstance(node.ctx, ast.Store):
+                if isinstance(node.ctx, (ast.Store, ast.Del)):
                     self.writes.add(key)
                 else:
                     self.reads.add(key)

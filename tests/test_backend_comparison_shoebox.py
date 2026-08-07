@@ -27,6 +27,9 @@ def setup_deism(method="MIX", max_order=5):
     deism = DEISM("RTF", "shoebox", silent=True)
     deism.params["maxReflOrder"] = max_order
     deism.params["DEISM_method"] = method
+    # The Ray backend cannot consume compact image storage, which is the
+    # default, so this comparison needs materialized attenuation to run at all.
+    deism.params["shoeboxCompactImages"] = 0
     deism.update_wall_materials()
     deism.update_freqs()
     deism.update_directivities()

@@ -1,6 +1,6 @@
 import argparse
 import json
-from typing import Dict
+from typing import Dict, Union
 
 import numpy as np
 
@@ -59,7 +59,7 @@ def estimate_image_memory_bytes(
 
 def classify_budget(
     total_bytes: int, max_ram_gb: float, safety_fraction: float
-) -> Dict[str, float | str]:
+) -> Dict[str, Union[float, str]]:
     budget_bytes = int(max_ram_gb * safety_fraction * (1024**3))
     ratio = total_bytes / max(budget_bytes, 1)
     if ratio <= 0.6:

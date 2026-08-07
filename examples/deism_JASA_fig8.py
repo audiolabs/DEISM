@@ -5,7 +5,7 @@ Simulating room transfer functions between transducers mounted on audio devices 
 J. Acoust. Soc. Am. 1 January 2024; 155 (1): 343–357. https://doi.org/10.1121/10.0023935
 In figure 8, the Sound pressure levels and phase responses are shown for the following scenarios:
 1. Small spherical loudspeakers
-2. Varying the distance between the source and receiver louspeakers, in Configuration 1-3
+2. Varying the distance between the source and receiver loudspeakers, in Configuration 1-3
 For three position configurations, the following solutions are shown:
 1. DEISM (ORG)
 2. DEISM-LC
@@ -20,13 +20,10 @@ range in the active shoebox configuration file.
 # Authors: Zeyu Xu
 # Email: zeyu.xu@audiolabs-erlangen.de
 # -------------------------------------------------------
-import yaml
-import argparse
 import os
-import time
+import shutil
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy import special as scy
 from deism.core_deism import (
     DEISM,
     load_directpath_pressure,
@@ -90,7 +87,7 @@ def init_parameters(params):
 
 
 def plot_shifted_SPLs(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
-    plt.rcParams["text.usetex"] = True
+    plt.rcParams["text.usetex"] = shutil.which("latex") is not None
     # Get SPLs
     SPL_DEISMs = [get_SPL(P_DEISM) for P_DEISM in P_DEISMs]
     SPL_DEISM_LCs = [get_SPL(P_DEISM_LC) for P_DEISM_LC in P_DEISM_LCs]
@@ -237,7 +234,7 @@ def plot_shifted_SPLs(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
 
 
 def plot_shifted_Phases(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
-    plt.rcParams["text.usetex"] = True
+    plt.rcParams["text.usetex"] = shutil.which("latex") is not None
     fig = plt.figure(figsize=(18, 8))
     ax = fig.add_subplot(1, 1, 1)
     # Config. 1

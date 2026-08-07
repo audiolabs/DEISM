@@ -67,21 +67,21 @@ What to check:
 - whether the selected directivity names match the available files
 - whether the example depends on external reference data such as COMSOL results
 
-Optional compiler issues
-------------------------
+Compiler issues
+---------------
 
 Symptom:
-  installation succeeds, but optional C++ acceleration helpers are unavailable.
+  installing from source fails while building a C++ extension.
 
 Cause:
 
-- the optional ``count_reflections`` helper could not be compiled
+- a supported native compiler or platform SDK is unavailable
 
 What to do:
 
 - install a working C++ compiler
 - reinstall the package in editable mode
-- note that the rest of the package can still run without that helper
+- use a published wheel when source compilation is not required
 
 LaTeX plotting failures
 -----------------------

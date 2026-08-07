@@ -28,9 +28,9 @@ def setup_deism_convex(method="MIX", max_order=3):
     deism.params["maxReflOrder"] = max_order
     deism.params["DEISM_method"] = method
 
-    roomVolumn = 36
+    roomVolume = 36
     roomAreas = np.array([9, 10, 9, 10, 12, np.sqrt(10) * 4])
-    deism.update_room(roomVolumn=roomVolumn, roomAreas=roomAreas)
+    deism.update_room(roomVolume=roomVolume, roomAreas=roomAreas)
 
     imp = np.ones((6, 2)) * 18.0
     deism.update_wall_materials(imp, np.array([10, 20]), "impedance")

@@ -203,6 +203,10 @@ def load_format_materials_checks(datain, datatype):
     elif datatype == "reverberationTime":
         if isinstance(datain, (int, float)):
             dataout = np.full((1, 1), datain)
+        elif isinstance(datain, (list, np.ndarray)) and np.size(datain) == 1:
+            # e.g. a single-element list from an argparse nargs=1 CLI flag,
+            # or a single-value array produced by readYaml
+            dataout = np.full((1, 1), np.asarray(datain).reshape(-1)[0])
         else:
             raise ValueError(f"Invalid data shape for {datatype}!")
     return dataout
@@ -449,7 +453,13 @@ def parseCmdArgs(mode="RTF"):
         type=float,
     )
     # Reflections
-    parse.add_argument("-nro", help="maximum reflection order, integer", type=int)
+    parse.add_argument(
+        "-nro",
+        help="maximum reflection order, non-negative integer (0 = direct sound \
+            only); required unless Reflections.maxReflectionOrder is set in the \
+            config file",
+        type=int,
+    )
     # ------------------------------------------------------------
     # The user can only define one of the following three parameters, e.g., -zs or -absp or -t60, if more than one is defined, a warning will be raised
     # Impedance of the walls, can be complex number or a list of complex numbers or a string or a list of strings
@@ -628,7 +638,13 @@ def parseCmdArgs_ARG(mode="RTF"):
     parse.add_argument("-rho", metavar="rho0", help="constant of air", type=float)
     # Room parameters
     # Reflections
-    parse.add_argument("-nro", help="maximum reflection order, integer", type=int)
+    parse.add_argument(
+        "-nro",
+        help="maximum reflection order, non-negative integer (0 = direct sound \
+            only); required unless Reflections.maxReflectionOrder is set in the \
+            config file",
+        type=int,
+    )
     # Impedance of the walls, can be complex number or a list of complex numbers or a string or a list of strings
     parse.add_argument(
         "-zs",
@@ -826,13 +842,21 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
         )
     # ------------------------------------------------------------
     # Reflections
-    # The maximum reflection order is either defined or set to -1, if not defined
-    if args.nro is not None or configs["Reflections"]["maxReflectionOrder"] is not None:
-        params["maxReflOrder"] = (
-            args.nro or configs["Reflections"]["maxReflectionOrder"]
+    # The maximum reflection order must be defined explicitly, either via the
+    # -nro command-line flag or Reflections.maxReflectionOrder in the config
+    configured_order = configs["Reflections"].get("maxReflectionOrder")
+    max_order = args.nro if args.nro is not None else configured_order
+    if max_order is None:
+        raise ValueError(
+            "The maximum reflection order must be defined: set "
+            "Reflections.maxReflectionOrder in the config file or pass -nro "
+            "on the command line"
         )
-    else:
-        params["maxReflOrder"] = -1
+    if isinstance(max_order, bool) or not isinstance(max_order, int) or max_order < 0:
+        raise ValueError(
+            f"maxReflectionOrder must be a non-negative integer, got {max_order!r}"
+        )
+    params["maxReflOrder"] = max_order
     # Impedance, float or list of floats, !!! Should support string or list of strings
     givenMaterials = []
     try:
@@ -897,7 +921,11 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     )
     # Frequency parameters
     if mode == "RTF":
-        params["startFreq"] = args.fmin or configs["Frequencies"]["startFrequency"]
+        params["startFreq"] = (
+            args.fmin
+            if args.fmin is not None
+            else configs["Frequencies"]["startFrequency"]
+        )
         params["freqStep"] = args.fstep or configs["Frequencies"]["frequencyStep"]
         params["endFreq"] = args.fmax or configs["Frequencies"]["endFrequency"]
     elif mode == "RIR":
@@ -908,10 +936,14 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
 
     # Directivity parameters
     params["sourceOrder"] = (
-        args.srcorder or configs["MaxSphDirectivityOrder"]["sourceOrder"]
+        args.srcorder
+        if args.srcorder is not None
+        else configs["MaxSphDirectivityOrder"]["sourceOrder"]
     )
     params["receiverOrder"] = (
-        args.recorder or configs["MaxSphDirectivityOrder"]["receiverOrder"]
+        args.recorder
+        if args.recorder is not None
+        else configs["MaxSphDirectivityOrder"]["receiverOrder"]
     )
     params["radiusSource"] = args.srcr0 or configs["Radius"]["source"]
     params["radiusReceiver"] = args.recr0 or configs["Radius"]["receiver"]
@@ -923,7 +955,11 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     )
     params["DEISM_method"] = args.method or configs["DEISM_specs"]["Method"]
     try:
-        params["mixEarlyOrder"] = args.meo or configs["DEISM_specs"]["mixEarlyOrder"]
+        # `is not None` rather than `or`: -meo 0 is a valid request for
+        # "no early reflections" and must not fall through to the config value.
+        params["mixEarlyOrder"] = (
+            args.meo if args.meo is not None else configs["DEISM_specs"]["mixEarlyOrder"]
+        )
     except:
         pass
     params["numParaImages"] = args.npi or configs["DEISM_specs"]["numParaImages"]
@@ -1025,6 +1061,9 @@ def printDict(dict):
                         valueStr = f"{value}"
                     else:
                         valueStr = f"{value[:2]} ... {value[-2:]}"
+                else:
+                    # Other numpy arrays (e.g. 2D wallCenters, 0-d arrays)
+                    valueStr = str(value)
 
             else:
                 # Otherwise, the value is converted to a string
@@ -1091,8 +1130,14 @@ def cmdArgsToDict(mode="RTF", roomtype="shoebox"):
         raise ValueError(f"Invalid room: {roomtype}, must be 'shoebox' or 'convex'")
     # replace the corresponding variables in configsInYaml with the values entered from the command line
     params = loadSingleParam(configsInYaml, cmdArgs, mode, roomtype)
-    # Compute the rest of the parameters
-    # params = compute_rest_params(params)
+    # The DEISM classes turn this on in init_params; the module-level functions
+    # read params["track_updated_where"] unconditionally, so it must exist even
+    # when the standalone API is used without a class.
+    params.setdefault("track_updated_where", False)
+    # Compute the frequency grid and derived quantities. The DEISM classes
+    # recompute these in update_freqs(), but the module-level API has no other
+    # entry point, so callers using it were left without params["freqs"].
+    params = compute_rest_params(params)
 
     return params, cmdArgs
 
@@ -1111,16 +1156,12 @@ def load_directive_pressure(silentMode, src_or_rec, name):
     path = "data/sampled_directivity"
     # Use try to find the file in the tests/ directory
     # if it is found, add tests/ to the file path
-    try:
-        # If the file is found, assign the file path to filePath
-        if os.path.exists("examples/data"):
-            path = "./examples/" + path
-        elif os.path.exists("data"):
-            # do nothing
-            pass
-        # If the path is not found, an exception is raised
-    except FileNotFoundError:
-        # stop the program and print the error message
+    # os.path.exists() never raises FileNotFoundError (it returns False),
+    # so this is a plain existence check, not something that needs a try/except
+    if os.path.exists("examples/data"):
+        path = "./examples/" + path
+    elif os.path.exists("data"):
+        # do nothing
         pass
     data_location = "{}/{}/{}.mat".format(path, src_or_rec, name)
     try:
@@ -1152,16 +1193,12 @@ def load_directpath_pressure(silentMode, name):
     path = "data/sampled_directivity"
     # Use try to find the file in the tests/ directory
     # if it is found, add tests/ to the file path
-    try:
-        # If the file is found, assign the file path to filePath
-        if os.path.exists("examples/data"):
-            path = "./examples/" + path
-        elif os.path.exists("data"):
-            # do nothing
-            pass
-        # If the path is not found, an exception is raised
-    except FileNotFoundError:
-        # stop the program and print the error message
+    # os.path.exists() never raises FileNotFoundError (it returns False),
+    # so this is a plain existence check, not something that needs a try/except
+    if os.path.exists("examples/data"):
+        path = "./examples/" + path
+    elif os.path.exists("data"):
+        # do nothing
         pass
     data_location = "{}/source/{}.mat".format(path, name)
     try:
@@ -1187,16 +1224,12 @@ def load_RTF_data(silentMode, name):
     """
     path = "data/RTF_COMSOL"
     # Use try to find the file in the tests/ directory
-    try:
-        # If the file is found, assign the file path to filePath
-        if os.path.exists("examples/data"):
-            path = "./examples/" + path
-        elif os.path.exists("data"):
-            # do nothing
-            pass
-        # If the path is not found, an exception is raised
-    except FileNotFoundError:
-        # stop the program and print the error message
+    # os.path.exists() never raises FileNotFoundError (it returns False),
+    # so this is a plain existence check, not something that needs a try/except
+    if os.path.exists("examples/data"):
+        path = "./examples/" + path
+    elif os.path.exists("data"):
+        # do nothing
         pass
 
     data_location = "{}/{}.mat".format(path, name)

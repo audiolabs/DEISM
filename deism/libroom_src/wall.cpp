@@ -170,7 +170,7 @@ void Wall_deism<D>::init()
   }
 }
 
-// original constructor without centroid and impedence_bands
+// original constructor without centroid and impedance_bands
 template<>
 Wall_deism<2>::Wall_deism(
     const Eigen::Matrix<float,2,Eigen::Dynamic> &_corners,
@@ -241,7 +241,7 @@ template<>
 Wall_deism<2>::Wall_deism(
     const Eigen::Matrix<float,2,Eigen::Dynamic> &_corners,
     const Eigen::Matrix<float,2,1>& _centroid,
-    const Eigen::ArrayXf &_impedence_bands,
+    const Eigen::ArrayXf &_impedance_bands,
     const Eigen::ArrayXf &_absorption,
     const Eigen::ArrayXf &_scatter,
     const std::string &_name
@@ -249,7 +249,7 @@ Wall_deism<2>::Wall_deism(
   
   : Wall_deism<2>::Wall_deism(_corners,_centroid,_absorption,_scatter,_name) 
 {
-  impedence_bands=_impedence_bands;
+  impedance_bands=_impedance_bands;
 }
 
 // New constructor with complex impedance for 2D
@@ -257,7 +257,7 @@ template<>
 Wall_deism<2>::Wall_deism(
     const Eigen::Matrix<float,2,Eigen::Dynamic> &_corners,
     const Eigen::Matrix<float,2,1>& _centroid,
-    const Eigen::ArrayXcf &_impedence_bands_complex,
+    const Eigen::ArrayXcf &_impedance_bands_complex,
     const Eigen::ArrayXf &_absorption,
     const Eigen::ArrayXf &_scatter,
     const std::string &_name
@@ -265,9 +265,9 @@ Wall_deism<2>::Wall_deism(
   
   : Wall_deism<2>::Wall_deism(_corners,_centroid,_absorption,_scatter,_name) 
 {
-  impedence_bands_complex = _impedence_bands_complex;
+  impedance_bands_complex = _impedance_bands_complex;
   // Also store real part for backward compatibility
-  impedence_bands = _impedence_bands_complex.real();
+  impedance_bands = _impedance_bands_complex.real();
 }
 /******************************************************************************/
 
@@ -403,13 +403,13 @@ template<>
 Wall_deism<3>::Wall_deism(
     const Eigen::Matrix<float,3,Eigen::Dynamic> &_corners,
     const Eigen::Matrix<float,3,1>& _centroid,
-    const Eigen::ArrayXf &_impedence_bands,
+    const Eigen::ArrayXf &_impedance_bands,
     const Eigen::ArrayXf &_absorption,
     const Eigen::ArrayXf &_scatter,
     const std::string &_name
   ):Wall_deism<3>::Wall_deism(_corners,_centroid,_absorption,_scatter,_name)
 {
-    impedence_bands=_impedence_bands;
+    impedance_bands=_impedance_bands;
 }
 
 // New constructor with complex impedance for 3D
@@ -417,15 +417,15 @@ template<>
 Wall_deism<3>::Wall_deism(
     const Eigen::Matrix<float,3,Eigen::Dynamic> &_corners,
     const Eigen::Matrix<float,3,1>& _centroid,
-    const Eigen::ArrayXcf &_impedence_bands_complex,
+    const Eigen::ArrayXcf &_impedance_bands_complex,
     const Eigen::ArrayXf &_absorption,
     const Eigen::ArrayXf &_scatter,
     const std::string &_name
   ):Wall_deism<3>::Wall_deism(_corners,_centroid,_absorption,_scatter,_name)
 {
-    impedence_bands_complex = _impedence_bands_complex;
+    impedance_bands_complex = _impedance_bands_complex;
     // Also store real part for backward compatibility
-    impedence_bands = _impedence_bands_complex.real();
+    impedance_bands = _impedance_bands_complex.real();
 }
 /******************************************************************************/
 
@@ -631,15 +631,15 @@ float Wall_deism<D>::cosine_angle(
 // called freq. besides, one more arg, wall_id is necessary
 template<size_t D>
 Eigen::ArrayXf Wall_deism<D>::get_attenuation(float theta) const {
-    return (impedence_bands*cos(theta)-1)/(impedence_bands*cos(theta)+1);
+    return (impedance_bands*cos(theta)-1)/(impedance_bands*cos(theta)+1);
 };
 
 // if frequency and wall are considered, then args should be wall_id, frequency
 // this should be confirmed.
 // template<size_t D>
 // float Wall_deism<D>::get_attenuation(float theta,float freq) const {
-//     // return (this->impedence*cos(theta)-1)/(this->impedence*cos(theta)+1);
-//     // return (impedence[freq]*cos(theta)-1)/(impedence[freq]*cos(theta)+1);
+//     // return (this->impedance*cos(theta)-1)/(this->impedance*cos(theta)+1);
+//     // return (impedance[freq]*cos(theta)-1)/(impedance[freq]*cos(theta)+1);
 // };
 
 /**************************************************************************/

@@ -1,14 +1,15 @@
 Installation
 ============
 
-DEISM supports Python 3.9, 3.10, and 3.11 on Windows, macOS, and Linux. This
+DEISM supports Python 3.10, 3.11, and 3.12 on Windows, macOS, and Linux. This
 page uses the same installation guidance as the repository ``README.md``.
 
 Supported environments
 ----------------------
 
-The project metadata requires Python 3.9 or newer. The repository CI currently
-tests Python 3.9, 3.10, and 3.11 on Windows, macOS, and Linux.
+The project metadata requires Python 3.10 or newer. Per-commit CI tests Python
+3.12 on Windows, macOS, and Linux. Release CI additionally builds and tests
+Python 3.10 and 3.11 wheels on all supported platforms.
 
 Check Python version
 --------------------
@@ -74,7 +75,7 @@ Conda-based environment
 End users can create a clean Conda environment and install the published
 package::
 
-    conda create -n deism python=3.9
+    conda create -n deism python=3.12
     conda activate deism
     python -m pip install --upgrade pip
     python -m pip install deism
@@ -85,19 +86,11 @@ Developers can create the repository environment and install in editable mode::
     conda activate DEISM
     python -m pip install -e .
 
-If the general environment file fails on your machine, try the exact-version
-lock file instead::
-
-    conda env create -f deism_env_exact.yml
-    conda activate DEISM
-    python -m pip install -e .
-
 Build tools
 -----------
 
-The package builds a C++ extension during installation. A working compiler is
-recommended. If the optional ``count_reflections`` helper cannot be compiled,
-the package still runs, but that specific optimization is unavailable.
+Published wheels include the package's two C++ extensions. Building from a
+source checkout or source distribution requires a working C++ compiler.
 
 macOS::
 
@@ -112,8 +105,7 @@ RHEL, CentOS, or Fedora::
 
     sudo yum install gcc-c++ python3-devel
 
-On Windows, install either MinGW-w64 and add it to ``PATH``, or install Visual
-Studio Build Tools with the C++ workload.
+On Windows, install Visual Studio Build Tools with the C++ workload.
 
 Optional tools
 --------------
@@ -128,6 +120,10 @@ Verify the installation
 Basic import check::
 
     python -c "import deism; print('DEISM import OK')"
+
+Native-extension check::
+
+    python -c "from deism import libroom_deism; from deism.count_reflections_wrapper import CPP_COUNTING_AVAILABLE; assert libroom_deism and CPP_COUNTING_AVAILABLE"
 
 Example-script help check::
 
@@ -153,8 +149,8 @@ Common issues
     Run ``Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser``.
 
 **Missing compiler**
-    The editable install may skip the optional ``count_reflections`` helper if
-    ``g++`` or an equivalent compiler is unavailable.
+    Source installations fail when a supported C++ compiler is unavailable.
+    Install the platform build tools above and reinstall the package.
 
 **pybind11 import errors during install**
     Use ``python -m pip install -e .`` instead of a bare ``pip install -e .``
@@ -166,4 +162,4 @@ Common issues
 
 **Environment mismatch**
     If the base environment does not behave consistently, recreate it from
-    ``deism_env.yml`` or ``deism_env_exact.yml``.
+    ``deism_env.yml``.

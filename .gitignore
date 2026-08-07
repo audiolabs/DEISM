@@ -34,8 +34,9 @@ outputs/figures/
 examples/**/*.csv
 
 # Agent / IDE worktrees
-.claude/
+.claude/settings.local.json
 
 # Office lock files
 ~$*
 **/~$*
+.venv/

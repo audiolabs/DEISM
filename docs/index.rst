@@ -35,6 +35,7 @@ Quick Links
    examples
    api_reference
    troubleshooting
+   changelog
 
 Indices and tables
 ==================

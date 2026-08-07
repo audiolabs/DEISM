@@ -114,7 +114,7 @@ def main():
         print(f"  {res['label']:<18}: {diff:.3e}")
 
     plot_scale = "dB"
-    if_freqs_db = 0
+    if_freqs_log = 0
     if_same_magscale = 0
     if_unwrap_phase = 0
     if_save_plot = 1
@@ -130,7 +130,7 @@ def main():
         P_labels,
         P_freqs,
         plot_scale,
-        if_freqs_db,
+        if_freqs_log,
         if_same_magscale,
         if_unwrap_phase,
         if_save_plot,
