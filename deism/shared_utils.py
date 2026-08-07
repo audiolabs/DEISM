@@ -3,7 +3,36 @@ Shared utilities for DEISM modules to avoid circular imports
 """
 
 import numpy as np
-from scipy import special as scy
+
+try:  # SciPy >= 1.15; scipy.special.sph_harm is removed in 1.17
+    from scipy.special import sph_harm_y as _sph_harm_y
+
+    def sph_harm(m, n, theta, phi):
+        """Drop-in for the removed scipy.special.sph_harm.
+
+        Legacy argument order (m, n, azimuth, polar); sph_harm_y takes
+        (n, m, polar, azimuth).
+        """
+        return _sph_harm_y(n, m, phi, theta)
+
+except ImportError:  # SciPy < 1.15
+    from scipy.special import sph_harm
+
+
+def check_max_refl_order(params):
+    """Reject invalid maxReflOrder values before image generation.
+
+    loadSingleParam already validates config/CLI input, but params dicts
+    built programmatically bypass it; a negative order would silently
+    produce zero images in the range(N_o + 1)-style shoebox generators and
+    recurse without bound in the DEISM-ARG image-source DFS.
+    """
+    N_o = params["maxReflOrder"]
+    if isinstance(N_o, bool) or not isinstance(N_o, (int, np.integer)) or N_o < 0:
+        raise ValueError(
+            f"params['maxReflOrder'] must be a non-negative integer, got {N_o!r}"
+        )
+    return int(N_o)
 
 
 def rotation_matrix_ZXZ(alpha, beta, gamma):
@@ -39,7 +68,7 @@ def SHCs_from_pressure_LS(Psh, Dir_all, sph_order_FEM, freqs_all):
     Y = np.zeros([len(Dir_all), (sph_order_FEM + 1) ** 2], dtype=complex)
     for n in range(sph_order_FEM + 1):
         for m in range(-n, n + 1):
-            Y[:, n**2 + n + m] = scy.sph_harm(m, n, Dir_all[:, 0], Dir_all[:, 1])
+            Y[:, n**2 + n + m] = sph_harm(m, n, Dir_all[:, 0], Dir_all[:, 1])
     Y_pinv = np.linalg.pinv(Y)
     fnm = Y_pinv @ Psh.T
 

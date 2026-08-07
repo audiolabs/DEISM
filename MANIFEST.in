@@ -1,24 +1,44 @@
-graft thirdPartyLegalNotices
 include README.md
-include deism_env_exact.yml
-include deism_env.yml
 include LICENSE
+graft thirdPartyLegalNotices
 
-graft deism
-
-# Include C++ source files for count_reflections
+# Python sources and the native-extension sources needed for an sdist install.
+include deism/*.py
 include deism/count_reflections.cpp
-include deism/build_count_reflections.sh
+include deism/libroom_src/*.cpp
+include deism/libroom_src/*.hpp
 
-# Exclude large data files in examples/data
-prune examples/data
+# Only Eigen's headers are needed to build libroom. Exclude its benchmarks,
+# tests, documentation, and build system from release artifacts.
+prune deism/libroom_src/ext/eigen
+recursive-include deism/libroom_src/ext/eigen/Eigen *
+include deism/libroom_src/ext/eigen/COPYING.MPL2
 
-global-exclude *.py[co]
-global-exclude __pycache__
-# Note: *.so, *.dylib, *.dll are excluded from source distributions
-# but will be included in wheels after compilation during build
+# setuptools-scm exposes all tracked files to setuptools' file finder. Keep
+# repository-only material out of source distributions.
+prune .claude
+prune .github
+prune benchmarks
+prune development
+prune docs
+prune examples
+prune playground
+prune tests
+prune tools
+prune deism/tests
+prune deism/__pycache__
+exclude .gitignore
+exclude .readthedocs.yml
+exclude __init__.py
+exclude deism_env.yml
+exclude requirements.txt
+
+# Never package editable-build outputs or generated Numba/Python caches.
 global-exclude *.so
 global-exclude *.dylib
 global-exclude *.dll
 global-exclude *.pyd
+global-exclude *.py[cod]
+global-exclude *.nbc
+global-exclude *.nbi
 global-exclude .DS_Store

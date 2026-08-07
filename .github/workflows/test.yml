@@ -6,66 +6,44 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+# Pull-request updates supersede older runs. Main pushes use the commit SHA so
+# every merged commit receives its own complete verdict.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: ${{ matrix.os }} / Python 3.12
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.9", "3.10", "3.11"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
+          cache: pip
 
-      - name: (Ubuntu) system deps for gmsh
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install OpenGL libraries for gmsh
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libglu1-mesa-dev libgl1-mesa-dev build-essential
+          sudo apt-get install -y libglu1-mesa libgl1
 
-      - name: (Windows) Setup C++ compiler for count_reflections
-        if: matrix.os == 'windows-latest'
-        run: |
-          # Try to use existing g++ if available, otherwise try to install MinGW
-          if (Get-Command g++ -ErrorAction SilentlyContinue) {
-            echo "g++ is already available"
-          } else {
-            # Try to install MinGW via Chocolatey (if available)
-            if (Get-Command choco -ErrorAction SilentlyContinue) {
-              choco install mingw -y
-              $mingwPath = "$env:ChocolateyInstall\lib\mingw\tools\install\mingw64\bin"
-              if (Test-Path $mingwPath) {
-                echo "$mingwPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-              }
-            } else {
-              echo "Warning: g++ not found and Chocolatey not available. count_reflections will not be compiled."
-              echo "This is non-fatal - the package will still work without the C++ optimization."
-            }
-          }
-
-      - name: Install package + test deps
+      - name: Install package and test dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -U pytest
-          # Build C++ extension via editable install
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            export ARCHFLAGS="-arch x86_64 -arch arm64"
-          fi
-          python -m pip install -e .
-        shell: bash
+          python -m pip install -r requirements.txt
+          python -m pip install --editable . pytest
 
-      - name: Run pytest
-        run: pytest
-
-      # Optional: a smoke run that won't fail CI if plotting/LaTeX is required
-      - name: Quick example smoke test (non-blocking)
-        run: |
-          python -c "print('Import smoke test:'); import deism; print('deism:', getattr(deism, '__version__', 'unknown'))"
-        shell: bash
+      - name: Run critical tests
+        run: python -m pytest -m "not examples and not slow and not integration"

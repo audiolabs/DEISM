@@ -15,6 +15,7 @@ from sympy.physics.wigner import wigner_3j
 from sound_field_analysis.sph import sphankel2
 from deism.utilities import *
 from deism.data_loader import *
+from deism.shared_utils import check_max_refl_order, sph_harm
 
 # from deism.core_deism_arg import Room_deism_cpp  # Moved to avoid circular import
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -29,12 +30,13 @@ except ImportError:
     numba = None
     SHOEBOX_IMAGE_NUMBA_AVAILABLE = False
 
-# Try to import C++ wrapper for fast counting (optional)
+# Try to import the native reflection counter.
 try:
-    from deism.count_reflections_wrapper import count_reflections_cpp
-
-    CPP_COUNTING_AVAILABLE = True
-except (ImportError, RuntimeError):
+    from deism.count_reflections_wrapper import (
+        CPP_COUNTING_AVAILABLE,
+        count_reflections_cpp,
+    )
+except ImportError:
     CPP_COUNTING_AVAILABLE = False
 
 
@@ -146,7 +148,26 @@ class DEISM:
                 self._update_where_tracking(key, "update_source_receiver")
         elif self.roomtype == "convex":
             # TODO: Better writing here?
-            from deism.core_deism_arg import get_ref_paths_ARG
+            from deism.core_deism_arg import (
+                Room_deism_cpp,
+                Room_deism_python,
+                _convex_compact_engine,
+                _convex_use_compact_storage,
+                get_ref_paths_ARG,
+            )
+
+            desired_room_cls = (
+                Room_deism_python
+                if (
+                    _convex_use_compact_storage(self.params)
+                    and _convex_compact_engine(self.params) == "python"
+                )
+                else Room_deism_cpp
+            )
+            if not hasattr(self, "room_convex") or not isinstance(
+                self.room_convex, desired_room_cls
+            ):
+                self.room_convex = desired_room_cls(self.params)
 
             # Update images
             self.room_convex.update_images(source, receiver)
@@ -162,6 +183,26 @@ class DEISM:
             self.params["images"] = merge_images(self.params["images"])
         # -----------------------------------------------------------
 
+    def recompute_arg_attenuation(self):
+        """Rebuild convex compact attenuation without recomputing geometry."""
+        # Compact attenuation reuse only makes sense for convex ARG rooms; shoebox
+        # rooms do not carry wall_sequence/incidence_cos descriptors.
+        if self.roomtype != "convex":
+            raise ValueError("ARG attenuation recompute is only valid for convex rooms")
+        # The compact geometry cache lives in params["images"].  The geometry can
+        # be reused only if both compact path arrays are still present.
+        images = self.params.get("images")
+        if not images or "wall_sequence" not in images or "incidence_cos" not in images:
+            raise ValueError("No compact ARG geometry is cached in params['images']")
+        # Import lazily to avoid importing numba/backend code during basic class setup.
+        from deism.parallel_backends import _build_arg_attenuation_batch
+
+        # Recompute attenuation for the current impedance/frequency grid while
+        # preserving the already generated image geometry.
+        images["atten_all"] = _build_arg_attenuation_batch(self.params, images)
+        self._update_where_tracking("images", "recompute_arg_attenuation")
+        return images["atten_all"]
+
     def _update_where_tracking(self, parameter_name, function_name):
         """
         Helper function to safely update the updated_where tracking dictionary
@@ -174,7 +215,7 @@ class DEISM:
             self.params["updated_where"][parameter_name].append(function_name)
 
     def update_room(
-        self, roomDimensions=None, wallCenters=None, roomVolumn=None, roomAreas=None
+        self, roomDimensions=None, wallCenters=None, roomVolume=None, roomAreas=None
     ):
         """
         Update the room dimensions
@@ -184,10 +225,10 @@ class DEISM:
         For convex room:
         - roomDimensions: numpy array of size (N, 3), N is the number of vertices of the room
         - wallCenters: numpy array of size (M, 3), M is the number of wall centers, used for more accurate impedance definition
-        - roomVolumn: float, the room volumn
+        - roomVolume: float, the room volume
         - roomAreas: numpy array of size (M,), M is the number of walls, the areas of the walls
         """
-        # For shoebox room, calculate the room volumn
+        # For shoebox room, calculate the room volume
         if self.roomtype == "shoebox":
             if roomDimensions is not None:
                 # roomDimensions Can only be a size-3 1D array
@@ -201,8 +242,8 @@ class DEISM:
                 length = self.params["roomSize"][0]
                 width = self.params["roomSize"][1]
                 height = self.params["roomSize"][2]
-            # Update room volumn
-            self.params["roomVolumn"] = length * width * height
+            # Update room volume
+            self.params["roomVolume"] = length * width * height
             # Update room areas
             # all the areas of the walls
             # Order from walls x1, x2, y1, y2, z1, z2
@@ -218,7 +259,7 @@ class DEISM:
                 ]
             )
             # Add the function name "update_room" to the updated_where dictionary
-            for key in ["roomSize", "roomVolumn", "roomAreas"]:
+            for key in ["roomSize", "roomVolume", "roomAreas"]:
                 self._update_where_tracking(key, "update_room")
         elif self.roomtype == "convex":
             # Input update
@@ -233,20 +274,20 @@ class DEISM:
             else:
                 pass
             # Calculate volume and per-face areas for convex room when not provided
-            if roomVolumn is None or roomAreas is None:
+            if roomVolume is None or roomAreas is None:
                 if self.params.get("vertices") is not None:
                     from deism.core_deism_arg import convex_room_volume_and_areas
                     vol, areas = convex_room_volume_and_areas(self.params["vertices"])
-                    if roomVolumn is None:
-                        self.params["roomVolumn"] = vol
-                        self._update_where_tracking("roomVolumn", "update_room")
+                    if roomVolume is None:
+                        self.params["roomVolume"] = vol
+                        self._update_where_tracking("roomVolume", "update_room")
                     if roomAreas is None:
                         self.params["roomAreas"] = areas
                         self._update_where_tracking("roomAreas", "update_room")
             # Input known volume and areas when provided
-            if roomVolumn is not None:
-                self.params["roomVolumn"] = roomVolumn
-                self._update_where_tracking("roomVolumn", "update_room")
+            if roomVolume is not None:
+                self.params["roomVolume"] = roomVolume
+                self._update_where_tracking("roomVolume", "update_room")
             if roomAreas is not None:
                 self.params["roomAreas"] = roomAreas
                 self._update_where_tracking("roomAreas", "update_room")
@@ -291,7 +332,7 @@ class DEISM:
             # Convert the input data to impedance, absorption coefficients, and reverberation time
             if self.roomtype == "shoebox":
                 imp, abs_coeff, t60 = convert_imp_abs_t60_shoebox(
-                    self.params["roomVolumn"],
+                    self.params["roomVolume"],
                     self.params["roomAreas"],
                     self.params["soundSpeed"],
                     datain,
@@ -303,7 +344,7 @@ class DEISM:
             elif self.roomtype == "convex":
                 # Use the forward conversion used in shoebox room
                 imp, abs_coeff, t60 = convert_imp_abs_t60_shoebox(
-                    self.params["roomVolumn"],
+                    self.params["roomVolume"],
                     self.params["roomAreas"],
                     self.params["soundSpeed"],
                     datain,
@@ -346,7 +387,7 @@ class DEISM:
             # -----------------------------------------------------------
             if self.roomtype == "shoebox":
                 imp, abs_coeff, t60 = convert_imp_abs_t60_shoebox(
-                    self.params["roomVolumn"],
+                    self.params["roomVolume"],
                     self.params["roomAreas"],
                     self.params["soundSpeed"],
                     datain,
@@ -359,7 +400,7 @@ class DEISM:
                 # Use the forward conversion used in shoebox room
                 # TODO: Support T60 input for convex room
                 imp, abs_coeff, t60 = convert_imp_abs_t60_shoebox(
-                    self.params["roomVolumn"],
+                    self.params["roomVolume"],
                     self.params["roomAreas"],
                     self.params["soundSpeed"],
                     datain,
@@ -458,11 +499,30 @@ class DEISM:
         if self.roomtype == "convex":
             from deism.core_deism_arg import (
                 Room_deism_cpp,
+                Room_deism_python,
+                _convex_compact_engine,
+                _convex_use_compact_storage,
             )  # Lazy import to avoid circular import
 
-            self.room_convex = Room_deism_cpp(self.params)
-            # Update the updated_where dictionary
-            self._update_where_tracking("room_convex", "update_freqs")
+            if (
+                _convex_use_compact_storage(self.params)
+                and "images" in self.params
+                and "wall_sequence" in self.params["images"]
+                and "incidence_cos" in self.params["images"]
+            ):
+                self.recompute_arg_attenuation()
+            else:
+                room_cls = (
+                    Room_deism_python
+                    if (
+                        _convex_use_compact_storage(self.params)
+                        and _convex_compact_engine(self.params) == "python"
+                    )
+                    else Room_deism_cpp
+                )
+                self.room_convex = room_cls(self.params)
+                # Update the updated_where dictionary
+                self._update_where_tracking("room_convex", "update_freqs")
 
     def update_directivities(self):
         """
@@ -804,11 +864,11 @@ def convert_imp_abs_t60_convex(room=None, datain=None, params_type=None):
     return imp, abs_coeff, np.max(t60)
 
 
-def convert_imp_abs_t60_shoebox(Volumn, Areas, c, datain, params_type):
+def convert_imp_abs_t60_shoebox(Volume, Areas, c, datain, params_type):
     """
     Conversions between impedance, absorption coefficients and reverberation time
     Inputs:
-    - Volumn: float, the volumn of the room (shoebox room)
+    - Volume: float, the volume of the room (shoebox room)
     - Areas: numpy array of length 6, ordered as [x1, x2, y1, y2, z1, z2]
     - c: float, the speed of sound
     - datain:
@@ -826,16 +886,16 @@ def convert_imp_abs_t60_shoebox(Volumn, Areas, c, datain, params_type):
     """
     if params_type == "impedance":
         imp = datain
-        t60 = convert_imp_to_t60(Volumn, Areas, c, imp)
+        t60 = convert_imp_to_t60(Volume, Areas, c, imp)
         # Take the max value no matter 2D or 1D array of t60
         abs_coeff = convert_imp_to_abs(imp)
     elif params_type == "absorption":
         abs_coeff = datain
         imp = convert_abs_to_imp(abs_coeff)
-        t60 = convert_imp_to_t60(Volumn, Areas, c, imp)
+        t60 = convert_imp_to_t60(Volume, Areas, c, imp)
     elif params_type == "reverberationTime":
         t60 = datain
-        imp = convert_t60_to_imp(Volumn, Areas, c, t60)
+        imp = convert_t60_to_imp(Volume, Areas, c, t60)
         abs_coeff = convert_imp_to_abs(imp)
         # If T60 is a float number, the imp and abs_coeff is float now,
         # Convert it to arrays of size (6,1)
@@ -961,12 +1021,12 @@ def _get_imp_abs_scalar(z_scalar, aran_scalar):
     return result
 
 
-def convert_t60_to_imp(Volumn, Areas, c, t60):
+def convert_t60_to_imp(Volume, Areas, c, t60):
     """
     Estimate impedance from reverberation time (T60)
     Inputs:
     - t60: numpy array of size (len(frequency bands),) or scalar, reverberation time
-    - Volumn: float, room volume
+    - Volume: float, room volume
     - Areas: numpy array of size (6,), areas of the six walls
     - c: float, speed of sound
     Outputs:
@@ -974,24 +1034,24 @@ def convert_t60_to_imp(Volumn, Areas, c, t60):
     """
     # Handle scalar input
     if np.isscalar(t60):
-        return _convert_t60_to_imp_scalar(Volumn, Areas, c, t60)
+        return _convert_t60_to_imp_scalar(Volume, Areas, c, t60)
 
     # Handle array input
     t60 = np.asarray(t60)
     if t60.ndim == 0:  # scalar array
-        return _convert_t60_to_imp_scalar(Volumn, Areas, c, float(t60))
+        return _convert_t60_to_imp_scalar(Volume, Areas, c, float(t60))
 
     # Initialize output array with same shape
     imp = np.zeros((6, t60.shape[0]), dtype=complex)
 
     # Process each element
     for i in range(t60.shape[0]):
-        imp[:, i] = _convert_t60_to_imp_scalar(Volumn, Areas, c, t60[i])
+        imp[:, i] = _convert_t60_to_imp_scalar(Volume, Areas, c, t60[i])
 
     return imp
 
 
-def _convert_t60_to_imp_scalar(Volumn, Areas, c, t60_scalar):
+def _convert_t60_to_imp_scalar(Volume, Areas, c, t60_scalar):
     """
     Convert a single T60 value to impedance
     """
@@ -999,7 +1059,7 @@ def _convert_t60_to_imp_scalar(Volumn, Areas, c, t60_scalar):
     S = np.sum(Areas)
 
     def objective(z_r):
-        return estimate_imp_t60(z_r, t60_scalar, Volumn, S, c)
+        return estimate_imp_t60(z_r, t60_scalar, Volume, S, c)
 
     # Try different initial guesses if the first one fails
     initial_guesses = [10, 5, 20, 1.5]
@@ -1057,12 +1117,12 @@ def estimate_imp_t60(z, ref, V, S, c):
     return result
 
 
-def convert_imp_to_t60(Volumn, Areas, c, zeta):
+def convert_imp_to_t60(Volume, Areas, c, zeta):
     """
     Calculate reverberation time from impedance using Badeau's formula:
     Eq.(124) in Roland Badeau; Statistical wave field theory. J. Acoust. Soc. Am. 1 July 2024; 156 (1): 573–599. https://doi.org/10.1121/10.0027914
     Inputs:
-    - Volumn: float, the volumn of the room (shoebox room)
+    - Volume: float, the volume of the room (shoebox room)
     - Areas: numpy array of length 6, ordered as [x1, x2, y1, y2, z1, z2]
     - c: float, the speed of sound
     - zeta: complex number, the impedance, shape (6, num_freqs)
@@ -1092,7 +1152,7 @@ def convert_imp_to_t60(Volumn, Areas, c, zeta):
     for surface_id in range(num_walls):
         integrals += d_s[surface_id, :] * Areas[surface_id]
 
-    T60 = 24 * np.log(10) * Volumn / c / integrals
+    T60 = 24 * np.log(10) * Volume / c / integrals
     return T60
 
 
@@ -1254,7 +1314,7 @@ def init_source_directivities(params):
     if params["sourceType"] == "monopole":
         k = params["waveNumbers"]
         # Calculate source directivity coefficients C_nm^s
-        C_nm_s = -1j * k * scy.spherical_jn(0, 0) * np.conj(scy.sph_harm(0, 0, 0, 0))
+        C_nm_s = -1j * k * scy.spherical_jn(0, 0) * np.conj(sph_harm(0, 0, 0, 0))
         params["C_nm_s"] = C_nm_s[..., None, None].astype(np.complex64)
         params["sourceOrder"] = 0
         # Update the updated_where dictionary if track_updated_where is True
@@ -1325,7 +1385,7 @@ def init_receiver_directivities(params):
         # If monopole source is used, the directivity coefficients are calculated analytically
         k = params["waveNumbers"]
         # Calculate receiver directivity coefficients C_vu^r
-        C_vu_r = -1j * k * scy.spherical_jn(0, 0) * np.conj(scy.sph_harm(0, 0, 0, 0))
+        C_vu_r = -1j * k * scy.spherical_jn(0, 0) * np.conj(sph_harm(0, 0, 0, 0))
         params["C_vu_r"] = C_vu_r[..., None, None].astype(np.complex64)
         params["receiverOrder"] = 0
         params["ifReceiverNormalize"] = 0
@@ -1493,7 +1553,7 @@ def SHCs_from_pressure_LS(Psh, Dir_all, sph_order_FEM, freqs_all):
     Y = np.zeros([len(Dir_all), (sph_order_FEM + 1) ** 2], dtype=complex)
     for n in range(sph_order_FEM + 1):
         for m in range(-n, n + 1):
-            Y[:, n**2 + n + m] = scy.sph_harm(m, n, Dir_all[:, 0], Dir_all[:, 1])
+            Y[:, n**2 + n + m] = sph_harm(m, n, Dir_all[:, 0], Dir_all[:, 1])
     Y_pinv = np.linalg.pinv(Y)
     fnm = Y_pinv @ Psh.T
 
@@ -1542,7 +1602,7 @@ def get_directivity_coefs(k, maxSHorder, Pmnr0, r0):
     return C_nm_s
 
 
-def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
+def cal_C_nm_s_arg(reflection_matrix, Psh_source, src_Psh_coords, params, method="fast"):
     """
     Calculating the reflected source directivity coefficients for each reflection path (image source)
     Input:
@@ -1550,16 +1610,75 @@ def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
     2. Psh_source: Sampled pressure of original directional source on the sphere, shape (N_freqs, N_src_dir) numpy array
     3. src_Psh_coords: the Cartesian coordinates of the original sampling points, shape (3, N_src_dir) numpy array
     4. params: the parameters of the room and the simulation
+    5. method: "fast" (default, algebraic acceleration via probe-recovered SH rotation)
+       or "legacy" (per-image SH least-squares refit, the original implementation).
     Output:
     1. C_nm_s_new_all: the reflected source directivity coefficients for each reflection path, shape (N_freqs, N_src_dir+1, 2*N_src_dir+1, N_images)
 
     """
+    # Keep the public dispatcher small: callers select the numerical strategy
+    # through params["directivityRefitMethod"] or this explicit method argument.
+    if method == "legacy":
+        # Original implementation: for every image, rotate all sampled source
+        # directions and solve a full spherical-harmonic least-squares problem.
+        return _cal_C_nm_s_arg_legacy(
+            reflection_matrix, Psh_source, src_Psh_coords, params
+        )
+    elif method == "fast":
+        # Accelerated implementation: solve the base source SH fit once, then
+        # recover per-image coefficient transforms using a small probe basis.
+        return _cal_C_nm_s_arg_fast(
+            reflection_matrix,
+            Psh_source,
+            src_Psh_coords,
+            params,
+        )
+    else:
+        raise ValueError(
+            f"Unknown directivity refit method '{method}'; "
+            "expected 'legacy' or 'fast'."
+        )
 
+
+def _divide_by_sphankel(Pmnr0_source_all, k, N_src_dir, r0_src):
+    """
+    Per-degree spherical-Hankel normalization that turns pressure SH coefficients
+    Pmnr0 into source directivity coefficients C_nm = Pmnr0 / h_n^(2)(k r0).
+    Matches the legacy division loop exactly.
+    """
+    # Allocate in the historical tensor layout:
+    # (frequency, degree n, shifted order m+n, image index).
+    n_images = Pmnr0_source_all.shape[3]
+    C_nm_s_new_all = np.zeros(
+        [
+            k.size,
+            N_src_dir + 1,
+            2 * N_src_dir + 1,
+            n_images,
+        ],
+        dtype="complex",
+    )
+    for n in range(N_src_dir + 1):
+        # h_n^(2)(k r0) is shared by all m values and all images for one degree.
+        hn_r0_all = sphankel2(n, k * r0_src)
+        for m in range(-n, n + 1):
+            # Convert pressure SH coefficients to source directivity coefficients.
+            C_nm_s_new_all[:, n, m, :] = (
+                Pmnr0_source_all[: len(k), n, m + n, :] / hn_r0_all[:, None]
+            )
+    return C_nm_s_new_all
+
+
+def _cal_C_nm_s_arg_legacy(reflection_matrix, Psh_source, src_Psh_coords, params):
+    """
+    Legacy per-image SH least-squares refit (verbatim the original cal_C_nm_s_new body).
+    """
     k = params["waveNumbers"]
     N_src_dir = params["sourceOrder"]
     r0_src = params["radiusSource"]
     n_images = reflection_matrix.shape[2]
-    # Create the reflected SH coefficients for each image source
+    # Intermediate pressure SH coefficients before dividing by h_n^(2)(k r0).
+    # This preserves the original storage convention used by SHCs_from_pressure_LS.
     Pmnr0_source_all = np.zeros(
         [
             k.size,
@@ -1569,11 +1688,14 @@ def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
         ],
         dtype="complex",
     )
-    # for each image source
     for i in range(n_images):
+        # Rotate the original source sampling coordinates by the reflection
+        # matrix for this image source.
         Psh_source_coords = reflection_matrix[:, :, i] @ (
             src_Psh_coords  # - room.source[:, None]
         )
+        # Convert the rotated Cartesian directions to the azimuth/inclination
+        # format expected by SHCs_from_pressure_LS.
         az, el, r = cart2sph(
             Psh_source_coords[0, :],
             Psh_source_coords[1, :],
@@ -1585,7 +1707,8 @@ def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
             N_src_dir,
             params["freqs"],
         )
-    # create the reflected source directivity coefficients
+    # Final directivity coefficients use the same per-degree Hankel scaling as
+    # get_directivity_coefs().
     C_nm_s_new_all = np.zeros(
         [
             k.size,
@@ -1596,13 +1719,150 @@ def cal_C_nm_s_new(reflection_matrix, Psh_source, src_Psh_coords, params):
         dtype="complex",
     )
     for n in range(N_src_dir + 1):
+        # h_n^(2)(k r0) only depends on degree and frequency.
         hn_r0_all = sphankel2(n, k * r0_src)
         for m in range(-n, n + 1):
-            # The source directivity coefficients
+            # m is stored in shifted form m+n to avoid negative tensor indices.
             C_nm_s_new_all[:, n, m, :] = (
                 Pmnr0_source_all[: len(k), n, m + n, :] / hn_r0_all[:, None]
             )
     return C_nm_s_new_all
+
+
+def _flat_nm_index_maps(N_src_dir):
+    """
+    Index arrays for scattering flat SH coefficients (index j = n**2 + n + m)
+    into the Pmnr0 tensor storage Pmnr0[:, n, m+n, :], matching SHCs_from_pressure_LS.
+    Returns (n_arr, col_arr) with col_arr = m + n = j - n**2.
+    """
+    # Flat SH columns are ordered by j = n**2 + n + m.  Recover degree n by
+    # floor(sqrt(j)), then map the within-degree column to the shifted m+n slot.
+    j = np.arange((N_src_dir + 1) ** 2)
+    n_arr = np.floor(np.sqrt(j)).astype(int)
+    col_arr = j - n_arr**2
+    return n_arr, col_arr
+
+
+def _build_sh_basis_from_coords(coords, N_src_dir):
+    """
+    Build the SH basis Y exactly as SHCs_from_pressure_LS does, from Cartesian coords.
+    coords: (3, K) array. Returns Y: (K, (N_src_dir+1)**2), column index n**2 + n + m.
+    """
+    # The sampled directivity coordinates are Cartesian unit directions.
+    # SHCs_from_pressure_LS uses azimuth and inclination, so mirror that conversion.
+    az, el, r = cart2sph(coords[0, :], coords[1, :], coords[2, :])
+    azimuth = az
+    inclination = np.pi / 2 - el
+    # Each row is one direction; each column is one spherical-harmonic mode.
+    Y = np.zeros((coords.shape[1], (N_src_dir + 1) ** 2), dtype=complex)
+    for n in range(N_src_dir + 1):
+        for m in range(-n, n + 1):
+            Y[:, n**2 + n + m] = sph_harm(m, n, azimuth, inclination)
+    return Y
+
+
+def _select_well_conditioned_probe(src_Psh_coords, N_src_dir, cond_thresh=1e6):
+    """
+    Pick K >= n_modes probe directions whose SH basis Y(P) is well-conditioned.
+    Tries evenly spaced indices first, then a fixed-seed random spread, with K sized
+    relative to n_modes so it generalizes to any sourceOrder.
+    Returns (idx, Y_probe, Y_probe_pinv, cond) or (None, None, None, None) on failure.
+    """
+    n_dir = src_Psh_coords.shape[1]
+    n_modes = (N_src_dir + 1) ** 2
+
+    def _try(idx):
+        # Remove duplicate indices from linspace rounding or random sampling.
+        idx = np.unique(idx)
+        if idx.size < n_modes:
+            return None
+        # A usable probe set must span the SH mode space without a large
+        # condition number, otherwise the fast coefficient transform is unstable.
+        Yp = _build_sh_basis_from_coords(src_Psh_coords[:, idx], N_src_dir)
+        c = np.linalg.cond(Yp)
+        if c <= cond_thresh:
+            return idx, Yp, np.linalg.pinv(Yp), c
+        return None
+
+    # Prefer deterministic, evenly spread probes so results are reproducible and
+    # independent of the global NumPy random state.
+    for mult in (2, 3, 4, 6):
+        K = min(mult * n_modes, n_dir)
+        if K < n_modes:
+            continue
+        res = _try(np.linspace(0, n_dir - 1, K).astype(int))
+        if res is not None:
+            return res
+    # If evenly spaced probes are ill-conditioned for this sampling grid, try a
+    # fixed-seed random subset before failing explicitly.
+    rng = np.random.default_rng(0)
+    for mult in (3, 4, 6, 8):
+        K = min(mult * n_modes, n_dir)
+        if K < n_modes:
+            continue
+        res = _try(rng.choice(n_dir, size=K, replace=False))
+        if res is not None:
+            return res
+    return None, None, None, None
+
+
+def _cal_C_nm_s_arg_fast(reflection_matrix, Psh_source, src_Psh_coords, params):
+    """
+    Algebraic acceleration of the per-image SH refit.
+
+    Exploits the SH rotation identity Y(R_i @ C) = Y(C) @ M_i for orthogonal R_i:
+    fit the base pressure SH coefficients once (fnm_base), recover the small rotation
+    matrix M_i from a probe set, and solve M_i @ fnm_i = fnm_base per image instead of
+    a full 1764-direction pseudoinverse.
+    """
+    k = params["waveNumbers"]
+    N_src_dir = params["sourceOrder"]
+    r0_src = params["radiusSource"]
+    n_images = reflection_matrix.shape[2]
+    nf = len(k)
+
+    # Select one well-conditioned source-direction subset.  The same probe set is
+    # reused for every reflection matrix, which is the main source of speedup.
+    # Fast mode should not silently switch algorithms.
+    probe_idx, Y_probe, Y_probe_pinv, _cond = _select_well_conditioned_probe(
+        src_Psh_coords, N_src_dir
+    )
+    if probe_idx is None:
+        raise ValueError(
+            "Unable to select a well-conditioned source-directivity probe set "
+            "for fast ARG C_nm refit; use method='legacy'."
+        )
+    # P contains the Cartesian probe directions before reflection.
+    P = src_Psh_coords[:, probe_idx]
+
+    # Fit the original source pressure data once in the full sampling grid.  This
+    # replaces the legacy repeated full-grid LS solve for every image source.
+    Y_base = _build_sh_basis_from_coords(src_Psh_coords, N_src_dir)
+    fnm_base = np.linalg.pinv(Y_base) @ Psh_source[:nf, :].T  # (n_modes, nf)
+
+    # These arrays map flat SH coefficient rows back into the legacy tensor layout.
+    n_arr, col_arr = _flat_nm_index_maps(N_src_dir)
+    Pmnr0_source_all = np.zeros(
+        [
+            k.size,
+            N_src_dir + 1,
+            2 * N_src_dir + 1,
+            n_images,
+        ],
+        dtype="complex",
+    )
+    for i in range(n_images):
+        # Ri maps original source directions into the reflected image-source frame.
+        Ri = reflection_matrix[:, :, i].astype(np.float64)
+        # Build the SH basis only at reflected probe directions.
+        Yi_probe = _build_sh_basis_from_coords(Ri @ P, N_src_dir)  # (K, n_modes)
+        # M_i is the small SH-space transform satisfying Y(R_i P) ~= Y(P) @ M_i.
+        M_i = Y_probe_pinv @ Yi_probe  # (n_modes, n_modes)
+        # Recover reflected coefficients from M_i @ fnm_i = fnm_base.
+        fnm_i = np.linalg.solve(M_i, fnm_base)  # (n_modes, nf)
+        # Scatter flat n**2+n+m rows into Pmnr0[:, n, m+n, i] (SHCs convention).
+        Pmnr0_source_all[:, n_arr, col_arr, i] = fnm_i.T
+    return _divide_by_sphankel(Pmnr0_source_all, k, N_src_dir, r0_src)
 
 
 def init_source_directivities_ARG(params):
@@ -1623,7 +1883,7 @@ def init_source_directivities_ARG(params):
     if params["sourceType"] == "monopole":
         k = params["waveNumbers"]
         # Calculate source directivity coefficients C_nm^s
-        C_nm_s = -1j * k * scy.spherical_jn(0, 0) * np.conj(scy.sph_harm(0, 0, 0, 0))
+        C_nm_s = -1j * k * scy.spherical_jn(0, 0) * np.conj(sph_harm(0, 0, 0, 0))
         # Duplicate the directivity coefficients for each image source by adding a fourth dimension
         # We can do this by multiplying the directivity coefficients with a 1x1x1xN_images array
         params["C_nm_s_ARG"] = C_nm_s[..., None, None, None].astype(
@@ -1636,8 +1896,8 @@ def init_source_directivities_ARG(params):
         params["sourceOrder"] = 0
         # Update the updated_where dictionary
         if params["track_updated_where"]:
-            params["updated_where"]["C_nm_s_ARG"] = ["init_source_directivities"]
-            params["updated_where"]["sourceOrder"] = ["init_source_directivities"]
+            params["updated_where"]["C_nm_s_ARG"] = ["init_source_directivities_ARG"]
+            params["updated_where"]["sourceOrder"] = ["init_source_directivities_ARG"]
     else:  # If not simple source directivities are used, load the directivity data
         # load directivities
         freqs, Psh_source, Dir_all_source, r0_source = load_directive_pressure(
@@ -1699,16 +1959,17 @@ def init_source_directivities_ARG(params):
                     end="",
                 )
         # Get source directivity coefficients
-        C_nm_s_ARG = cal_C_nm_s_new(
+        C_nm_s_ARG = cal_C_nm_s_arg(
             reflection_matrix,
             Psh_source,
             rotated_coords_src,
             params,
+            method=params.get("directivityRefitMethod", "fast"),
         )
         params["C_nm_s_ARG"] = C_nm_s_ARG.astype(np.complex64)
         # Update the updated_where dictionary if track_updated_where is True
         if params["track_updated_where"]:
-            params["updated_where"]["C_nm_s_ARG"] = ["init_source_directivities"]
+            params["updated_where"]["C_nm_s_ARG"] = ["init_source_directivities_ARG"]
     if not params["silentMode"]:
         print(" Done!", end="\n\n")
     return params
@@ -1732,16 +1993,16 @@ def init_receiver_directivities_ARG(params):
         # If monopole source is used, the directivity coefficients are calculated analytically
         k = params["waveNumbers"]
         # Calculate receiver directivity coefficients C_vu^r
-        C_vu_r = -1j * k * scy.spherical_jn(0, 0) * np.conj(scy.sph_harm(0, 0, 0, 0))
+        C_vu_r = -1j * k * scy.spherical_jn(0, 0) * np.conj(sph_harm(0, 0, 0, 0))
         params["C_vu_r"] = C_vu_r[..., None, None].astype(np.complex64)
         params["receiverOrder"] = 0
         params["ifReceiverNormalize"] = 0
         # Update the updated_where dictionary
         if params["track_updated_where"]:
-            params["updated_where"]["C_vu_r"] = ["init_receiver_directivities"]
-            params["updated_where"]["receiverOrder"] = ["init_receiver_directivities"]
+            params["updated_where"]["C_vu_r"] = ["init_receiver_directivities_ARG"]
+            params["updated_where"]["receiverOrder"] = ["init_receiver_directivities_ARG"]
             params["updated_where"]["ifReceiverNormalize"] = [
-                "init_receiver_directivities"
+                "init_receiver_directivities_ARG"
             ]
     else:  # If not simple source directivities are used, load the directivity data
         freqs, Psh_receiver, Dir_all_receiver, r0_receiver = load_directive_pressure(
@@ -1778,7 +2039,7 @@ def init_receiver_directivities_ARG(params):
         if ifRotateRoom == 1:
             # Check if roomRotation is in params
             if "roomRotation" in params:
-                room_rotation = params["roomRotation"]
+                roomRotation = params["roomRotation"]
                 # Print orientation information, e.g., facing direction from +x axis to the orientation angles and room rotation angles
                 if not params["silentMode"]:
                     print(
@@ -1830,7 +2091,7 @@ def init_receiver_directivities_ARG(params):
         params["C_vu_r"] = C_vu_r.astype(np.complex64)
         # Update the updated_where dictionary
         if params["track_updated_where"]:
-            params["updated_where"]["C_vu_r"] = ["init_receiver_directivities"]
+            params["updated_where"]["C_vu_r"] = ["init_receiver_directivities_ARG"]
         if not params["silentMode"]:
             print(" Done!", end="\n\n")
     return params
@@ -1894,9 +2155,9 @@ def pre_calc_Wigner(params, timeit=True):
                     for l in range(np.abs(n - v), n + v + 1):
                         if np.abs(u - m) <= l:
                             W_1 = wigner_3j(n, v, l, 0, 0, 0)
-                            W_1_all[n, v, l] = np.array([W_1], dtype=float)
+                            W_1_all[n, v, l] = float(W_1)
                             W_2 = wigner_3j(n, v, l, -m, u, m - u)
-                            W_2_all[n, v, l, m, u] = np.array([W_2], dtype=float)
+                            W_2_all[n, v, l, m, u] = float(W_2)
 
     Wigner = {
         "W_1_all": W_1_all.astype(np.complex64),
@@ -1942,7 +2203,7 @@ def pre_calc_images_src_rec_original_nofs(params):
     if RefCoef_angdep_flag == 1:
         if not params["silentMode"]:
             print("using angle-dependent reflection coefficients, ", end="")
-    N_o = params["maxReflOrder"]
+    N_o = check_max_refl_order(params)
     Z_S = params["impedance"]
     T60 = params["reverberationTime"]
     c = params["soundSpeed"]
@@ -1989,7 +2250,7 @@ def pre_calc_images_src_rec_original_nofs(params):
                                 + np.abs(2 * q_y - p_y)
                                 + np.abs(2 * q_z - p_z)
                             )
-                            if ref_order <= N_o or N_o == -1:
+                            if ref_order <= N_o:
 
                                 R_q = np.array(
                                     [
@@ -2216,8 +2477,11 @@ def get_reflection_path_shoebox_test(order, room_dims, c, T60):
                                                 * dz_factor
                                             )
 
-                                            # Check if within maximum distance
-                                            if dist_squared < max_distance_squared:
+                                            # Check if within maximum distance.
+                                            # `<=` matches the image filtering,
+                                            # which keeps images exactly on the
+                                            # T60 distance boundary.
+                                            if dist_squared <= max_distance_squared:
                                                 count += 1
     return count
 
@@ -2267,9 +2531,14 @@ def _pre_calc_images_src_rec_optimized_nofs_impl(
         if not params["silentMode"]:
             print("using angle-dependent reflection coefficients, ", end="")
 
-    N_o = params["maxReflOrder"]
+    N_o = check_max_refl_order(params)
     Z_S = params["impedance"]
-    c = np.float32(params["soundSpeed"])
+    # Full precision: the counter must use the same sound speed as the
+    # generator's max_distance_squared above. A float32 copy here shifted the
+    # counter's distance threshold below the generator's, so images exactly on
+    # a boundary shell were generated but not counted -- and shell degeneracy
+    # can put hundreds of images on one boundary, overflowing the allocation.
+    c = float(params["soundSpeed"])
     T60 = params["reverberationTime"]
     N_o_ORG = params["mixEarlyOrder"]
 
@@ -2933,13 +3202,14 @@ def _shoebox_use_compact_storage(params):
     Return whether the Numba image generator should use compact storage.
 
     The compact format stores only geometry and reflection metadata; attenuation
-    is reconstructed in the solver backend on demand. Users can opt into this
-    mode via ``shoeboxCompactImages`` while the default remains materialized for
-    compatibility with callers that inspect attenuation arrays directly.
+    is reconstructed per batch in the solver backend, so the (n_images, n_freqs)
+    attenuation array is never held whole. This is the default. Set
+    ``shoeboxCompactImages=0`` for materialized storage, which callers that read
+    ``images["atten_all"]`` (or the early/late pair) directly still need.
     """
     if "shoeboxCompactImages" in params:
         return bool(params["shoeboxCompactImages"])
-    return False
+    return True
 
 
 def _process_shoebox_parity_combination_nofs(args):
@@ -3179,7 +3449,7 @@ def _pre_calc_images_src_rec_optimized_nofs_parallel_impl(
     if RefCoef_angdep_flag == 1 and not params["silentMode"]:
         print("using angle-dependent reflection coefficients, ", end="")
 
-    N_o = params["maxReflOrder"]
+    N_o = check_max_refl_order(params)
     Z_S = params["impedance"]
     N_o_ORG = params["mixEarlyOrder"]
 
@@ -3351,7 +3621,7 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
     if RefCoef_angdep_flag == 1 and not params["silentMode"]:
         print("using angle-dependent reflection coefficients, ", end="")
 
-    N_o = params["maxReflOrder"]
+    N_o = check_max_refl_order(params)
     Z_S = np.asarray(params["impedance"], dtype=np.complex128)
     N_o_ORG = params["mixEarlyOrder"]
     compact_storage = _shoebox_use_compact_storage(params)
@@ -3508,7 +3778,7 @@ def pre_calc_images_src_rec_original(params):
     if RefCoef_angdep_flag == 1:
         if not params["silentMode"]:
             print("using angle-dependent reflection coefficients, ", end="")
-    N_o = params["maxReflOrder"]
+    N_o = check_max_refl_order(params)
     Z_S = params["impedance"]
     # Maximum reflection order for the original DEISM in the DEISM-MIX mode
     N_o_ORG = params["mixEarlyOrder"]
@@ -3553,7 +3823,7 @@ def pre_calc_images_src_rec_original(params):
                                 + np.abs(2 * q_y - p_y)
                                 + np.abs(2 * q_z - p_z)
                             )
-                            if ref_order <= N_o or N_o == -1:
+                            if ref_order <= N_o:
 
                                 R_q = np.array(
                                     [
@@ -3717,7 +3987,7 @@ def pre_calc_images_src_rec_optimized(params):
         if not params["silentMode"]:
             print("using angle-dependent reflection coefficients, ", end="")
 
-    N_o = params["maxReflOrder"]
+    N_o = check_max_refl_order(params)
     Z_S = params["impedance"]
     N_o_ORG = params["mixEarlyOrder"]
 
@@ -4150,7 +4420,7 @@ def pre_calc_images_src_rec_optimized_parallel(params):
         if not params["silentMode"]:
             print("using angle-dependent reflection coefficients, ", end="")
 
-    N_o = params["maxReflOrder"]
+    N_o = check_max_refl_order(params)
     Z_S = params["impedance"]
     N_o_ORG = params["mixEarlyOrder"]
 
@@ -4339,4 +4609,3 @@ def T_z(k, Lz):
                 [0, 0, 0, 1],
             ]
         ) @ T_z(-k + np.sign(k), Lz)
-

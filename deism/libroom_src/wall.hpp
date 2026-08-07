@@ -90,16 +90,16 @@ class Wall_deism
 
     /**************************************************************************/
     // area for new parameters
-    // float impedence;        //-->new
+    // float impedance;        //-->new
 
-    // if impedence is connected with frequency, then how to set the corresponding 
-    // impedence under some freqneucy? use map? the question is how do we get 
-    // the impedence of e.g. 1000Hz? since impedence is defined as a dynamic array
+    // if impedance is connected with frequency, then how to set the corresponding 
+    // impedance under some freqneucy? use map? the question is how do we get 
+    // the impedance of e.g. 1000Hz? since impedance is defined as a dynamic array
     // n_bands-->how many frequency bands are there.
     // int n_bands;    //-->new
-    Eigen::ArrayXf impedence_bands;     //-->new (real part)
-    Eigen::ArrayXcf impedence_bands_complex;  //-->new (complex support)
-    // solution: define impedence under certain points and propagate to all 
+    Eigen::ArrayXf impedance_bands;     //-->new (real part)
+    Eigen::ArrayXcf impedance_bands_complex;  //-->new (complex support)
+    // solution: define impedance under certain points and propagate to all 
     // frequency by interpolation
     /**************************************************************************/
 
@@ -137,7 +137,7 @@ class Wall_deism
     // Wall_deism(
     //     const Eigen::Matrix<float, D, Eigen::Dynamic> &_corners,
     //     const Eigen::Matrix<float,D,1>& _centroid,    //-->new
-    //     float _impedence,
+    //     float _impedance,
     //     const Eigen::ArrayXf &_absorption,
     //     const Eigen::ArrayXf &_scatter,
     //     const std::string &_name
@@ -147,7 +147,7 @@ class Wall_deism
     Wall_deism(
         const Eigen::Matrix<float, D, Eigen::Dynamic> &_corners,
         const Eigen::Matrix<float,D,1>& _centroid,    //-->new
-        const Eigen::ArrayXf &_impedence_bands,         //-->new
+        const Eigen::ArrayXf &_impedance_bands,         //-->new
         const Eigen::ArrayXf &_absorption,
         const Eigen::ArrayXf &_scatter,
         const std::string &_name
@@ -157,7 +157,7 @@ class Wall_deism
     Wall_deism(
         const Eigen::Matrix<float, D, Eigen::Dynamic> &_corners,
         const Eigen::Matrix<float,D,1>& _centroid,    //-->new
-        const Eigen::ArrayXcf &_impedence_bands_complex,  //-->new (complex)
+        const Eigen::ArrayXcf &_impedance_bands_complex,  //-->new (complex)
         const Eigen::ArrayXf &_absorption,
         const Eigen::ArrayXf &_scatter,
         const std::string &_name
@@ -166,14 +166,14 @@ class Wall_deism
     /**************************************************************************/
 
     // Copy constructor
-    // here only copy parameter impedence_bands, but not consider the parameter impedence(float)
+    // here only copy parameter impedance_bands, but not consider the parameter impedance(float)
     Wall_deism(const Wall_deism<D> &w) :
       absorption(w.absorption), scatter(w.scatter), name(w.name),
       transmission(w.transmission), energy_reflection(w.energy_reflection),
       normal(w.normal), corners(w.corners),
       origin(w.origin), basis(w.basis), flat_corners(w.flat_corners),
       reflection_matrix(w.reflection_matrix), centroid(w.centroid),
-      impedence_bands(w.impedence_bands), impedence_bands_complex(w.impedence_bands_complex)
+      impedance_bands(w.impedance_bands), impedance_bands_complex(w.impedance_bands_complex)
     {}
 
     // public methods
@@ -216,12 +216,12 @@ class Wall_deism
 
     /**************************************************************************/
     // area for new member functions
-    // since impedence is a array, so the attenuation should be a array,too.
+    // since impedance is a array, so the attenuation should be a array,too.
     // float get_attenuation(float theta) const;   //-->new
     Eigen::ArrayXf get_attenuation(float theta) const;   //-->new
     
     // Get complex impedance
-    const Eigen::ArrayXcf &get_impedence_complex() const { return impedence_bands_complex; }
+    const Eigen::ArrayXcf &get_impedance_complex() const { return impedance_bands_complex; }
 
     Eigen::Matrix<float,D,Eigen::Dynamic> orderPoints(
         const Eigen::Matrix<float,D,Eigen::Dynamic>& points);   //-->new

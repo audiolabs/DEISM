@@ -35,6 +35,7 @@ Reflections:
   # 1. When you define impedance, T60 will be calculated and used in the following calculations
   # 2. When you define absorption coefficient, impedance will be calculated, followed by T60
   # 3. When you define reverberation time, impedance will be calculated
+  # Required: non-negative integer (0 = direct sound only); can be overridden with -nro on the command line
   maxReflectionOrder: 25 
 
 # Simulation parameters # 

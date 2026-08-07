@@ -12,15 +12,12 @@ import scipy.spatial as spatial
 import matplotlib.patches as mpatches
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.pyplot as plt
-from sound_field_analysis.sph import sphankel2
-import ray
 from deism.utilities import (
     cart2sph,
-    sph2cart,
 )
 from deism.shared_utils import (
     rotation_matrix_ZXZ,
-    SHCs_from_pressure_LS,
+    check_max_refl_order,
 )
 from deism import libroom_deism
 
@@ -269,13 +266,13 @@ class Wall_deism_python:
         """
         Reflects point across the wall.
 
+        Uses self.origin (the origin of the wall) and self.normal (the
+        normal vector of the wall).
+
         :param point: a point in space.
-        :param self.origin: the origin of the wall.
-        :param self.normal: the normal vector of the wall.
         :returns: the reflected point and a flag. The flag is 1 if reflection is in the same direction as the normal,
         0 if the point is within tolerance of the wall, -1 if the reflection is in the opposite direction of the normal.
         """
-        # TODO: Implement the incidence angle calculation
         # Projection onto normal axis
         distance_wall2p = np.dot(self.normal, self.origin - point)
 
@@ -341,42 +338,120 @@ class Wall_deism_python:
 # -------------------------------------
 # ----------- Room Class --------------
 # -------------------------------------
+def _convex_use_compact_storage(params):
+    """Return whether DEISM should decouple ARG geometry from attenuation."""
+    # Compact is the default: geometry (wall sequence, incidence cosines) is
+    # enumerated once and attenuation is rebuilt from it, which keeps image
+    # generation independent of the frequency count and applies complex
+    # impedance exactly.  Set 0 for the legacy path, where libroom computes
+    # per-image attenuation itself and truncates impedance to its real part.
+    return bool(params.get("convexCompactImages", 1))
+
+
+def _convex_compact_engine(params):
+    """Return which engine produces compact ARG geometry: 'cpp' (default) or 'python'."""
+    # The C++ producer is the default: it emits the same descriptors as
+    # Room_deism_python (wall_sequence exact, cosines to 1e-4, end-to-end
+    # attenuation to 1e-5) and avoids the per-image, per-frequency work that
+    # dominates the Python path at large band counts.  Set "python" to select
+    # the reference producer, e.g. when the extension cannot be built.
+    engine = str(params.get("convexCompactEngine", "cpp")).lower()
+    if engine not in ("python", "cpp"):
+        raise ValueError(
+            f"convexCompactEngine must be 'python' or 'cpp', got {engine!r}"
+        )
+    return engine
+
+
+def _arg_impedance_matrix(params):
+    """Return convex wall impedance as (n_walls, n_bands)."""
+    # Keep wall-impedance normalization in one backend helper so Python and C++
+    # compact attenuation paths use the same shape convention.
+    from deism.parallel_backends import get_arg_wall_impedance
+
+    return get_arg_wall_impedance(params)
+
+
 class Room_deism_python:
     def __init__(
         self,
         params,
         *choose_wall_centers,
     ):
-        self.points = params["vertices"]
+        self.params = params
+        # Convex hull input vertices and centroid define the wall planes.
+        self.points = np.asarray(params["vertices"])
         self.centroid = np.mean(self.points, axis=0)
         self.walls = []
         # self.obstructing_walls = obstructing_walls
-        self.source = params["posSource"]
+        # Store source/receiver as arrays because the DFS geometry code mutates
+        # and compares vector quantities frequently.
+        self.source = np.asarray(params["posSource"])
         # self.src_Psh_coords = src_Psh_coords
         # self.src_Psh_dirs = src_Psh_dirs
-        self.microphones = [params["posReceiver"]]
+        self.microphones = [np.asarray(params["posReceiver"])]
         self.c = params["soundSpeed"]
-        self.ism_order = params["maxReflOrder"]
+        self.ism_order = check_max_refl_order(params)
+        # Visible ImageSource objects are collected during DFS and packed into
+        # dense arrays in fill_sources().
         self.visible_sources = []
-        # NTPRA !!!
-        self.Z_S = params["impedance"]
-        self.generate_walls(*choose_wall_centers)
-        self.image_source_model()
+        # Wall impedance is stored per material/wall and frequency band.
+        self.Z_S = _arg_impedance_matrix(params)
+        self.freqs = np.asarray(params["freqs"])
+        # Wall centers map each convex hull face to the intended material row.
+        if "wallCenters" not in params:
+            self.wall_centers = np.asarray(find_wall_centers(self.points))
+        else:
+            self.wall_centers = np.asarray(params["wallCenters"])
+        # Each impedance column must correspond to one simulation frequency.
+        if len(self.freqs) != self.Z_S.shape[1]:
+            raise ValueError(
+                "The number of frequencies in the frequency array and the second "
+                "dimension of the impedance matrix are not the same"
+            )
+        # Marker used by callers/tests to distinguish the compact Python room.
+        self.compact_images = True
+        if params["convexRoom"]:
+            if not params.get("silentMode", 0):
+                print("Convex room generation of walls")
+            self.generate_walls_convex(*choose_wall_centers)
 
-    def generate_walls(self, *choose_wall_centers):
-        # Find the unique normals
+    def generate_walls_convex(self, *choose_wall_centers):
+        # ConvexHull triangulates faces; multiple simplices can belong to the
+        # same planar wall, so first group faces by rounded normal direction.
         hull = ConvexHull(self.points)
         normals = [tuple(face) for face in np.round(hull.equations[:, :3], decimals=5)]
-        unique_normals = list(set(normals))
+        # Deterministic wall order: sorted rounded normals, identical across
+        # both room wrappers and find_wall_centers (local wall ids, material
+        # assignment, and cross-engine tests all depend on this order).
+        unique_normals = sorted(set(normals))
 
-        # For each unique normal, find the points that belong to a face with that normal
+        # For each unique normal, merge all simplex vertices on that plane into
+        # one wall polygon.
         for normal in unique_normals:
             face_points = []
             for i, equation in enumerate(hull.equations):
                 if tuple(np.round(equation[:3], decimals=5)) == normal:
                     face_points.extend(hull.points[hull.simplices[i]])
             face_points = np.unique(face_points, axis=0)
-            new_wall = Wall_deism_python(face_points, self.centroid, self.Z_S)
+            # Match the generated wall to the nearest user/material wall center.
+            face_center = np.mean(face_points, axis=0)
+            center_dis = np.linalg.norm(self.wall_centers - face_center, axis=1)
+            material_index = int(np.argmin(center_dis))
+            # A loose nearest wall would silently assign the wrong impedance, so
+            # fail if the generated face does not match the configured centers.
+            if np.min(center_dis) > 0.001:
+                raise ValueError(
+                    "The face center is not close enough to any wall center"
+                )
+            # The wall object keeps both geometry and the impedance row used for
+            # attenuation reconstruction.
+            new_wall = Wall_deism_python(
+                face_points, self.centroid, self.Z_S[material_index]
+            )
+            new_wall.material_index = material_index
+            # Optional choose_wall_centers is kept for parity with the C++ room
+            # wrapper; normally all convex walls are added.
             if not choose_wall_centers:
                 self.walls.append(new_wall)
             else:
@@ -387,29 +462,76 @@ class Room_deism_python:
                     ):
                         self.walls.append(new_wall)
 
+    def update_images(self, source=None, receiver=None):
+        if not self.params.get("silentMode", 0):
+            print("[Calculating] DEISM-ARG Python image generation, ", end="")
+        begin = time.time()
+        # Allow the DEISM class to update source/receiver without rebuilding walls.
+        if source is not None:
+            self.source = np.asarray(source)
+        if receiver is not None:
+            self.microphones[0] = np.asarray(receiver)
+        # Reset per-run DFS state before generating the new image set.
+        self.visible_sources = []
+        self.image_source_model()
+        elapsed_pra_deism = time.time() - begin
+        minutes, seconds = divmod(elapsed_pra_deism, 60)
+        if not self.params.get("silentMode", 0):
+            print(f"Done [{int(minutes)} minutes, {seconds:.3f} seconds]", end="\n\n")
+
     def image_source_model(self):
+        # Start DFS from the real source.  Recursive reflection creates the
+        # image-source tree up to self.ism_order.
         self.image_sources_dfs(ImageSource(self.source), self.ism_order)
+        # Convert the collected ImageSource objects into vectorized arrays used
+        # by downstream DEISM kernels.
         self.fill_sources()
 
     def fill_sources(self):
+        # Pack the variable-length DFS result into dense arrays.  This mirrors
+        # the C++ engine interface while adding compact path descriptors.
         n_sources = len(self.visible_sources)
-        if n_sources > 0:
-            self.sources = np.zeros((len(self.visible_sources[0].loc), n_sources))
-            self.gen_walls = np.zeros(n_sources, dtype=int)
-            self.orders = np.zeros(n_sources, dtype=int)
-            self.attenuations = np.zeros((n_sources), dtype=float)
-            self.visible_mics = np.zeros((len(self.microphones), n_sources), dtype=bool)
-            # NTPRA !!!
-            self.reflection_matrix = np.zeros([3, 3, n_sources], dtype=float)
-            for i in range(n_sources - 1, -1, -1):
-                top = self.visible_sources.pop()
-                self.sources[:, i] = top.loc
-                self.gen_walls[i] = top.gen_wall
-                self.orders[i] = top.order
-                self.attenuations[i] = top.attenuation
-                self.visible_mics[:, i] = top.visible_mics
-                # NTPRA !!!
-                self.reflection_matrix[:, :, i] = top.reflect_matrix
+        dim = self.points.shape[1]
+        n_bands = self.Z_S.shape[1]
+        if n_sources == 0:
+            # Preserve expected array ranks even when no image source is visible.
+            self.sources = np.empty((dim, 0), dtype=np.float32)
+            self.gen_walls = np.empty(0, dtype=np.int32)
+            self.orders = np.empty(0, dtype=np.int32)
+            self.attenuations = np.empty((n_bands, 0), dtype=np.complex64)
+            self.visible_mics = np.empty((len(self.microphones), 0), dtype=bool)
+            self.reflection_matrix = np.empty((dim, dim, 0), dtype=np.float32)
+            self.wall_sequence = np.empty((0, int(self.ism_order)), dtype=np.int32)
+            self.incidence_cos = np.empty((0, int(self.ism_order)), dtype=np.float32)
+            return 0
+
+        max_order = int(self.ism_order)
+        # Image arrays are image-major in the second dimension to match libroom.
+        self.sources = np.zeros((dim, n_sources), dtype=np.float32)
+        self.gen_walls = np.zeros(n_sources, dtype=np.int32)
+        self.orders = np.zeros(n_sources, dtype=np.int32)
+        self.attenuations = np.zeros((n_bands, n_sources), dtype=np.complex64)
+        self.visible_mics = np.zeros((len(self.microphones), n_sources), dtype=bool)
+        self.reflection_matrix = np.zeros((dim, dim, n_sources), dtype=np.float32)
+        self.wall_sequence = np.full((n_sources, max_order), -1, dtype=np.int32)
+        self.incidence_cos = np.full((n_sources, max_order), np.nan, dtype=np.float32)
+
+        # DFS pushes visible sources in recursive order; the reverse pop keeps the
+        # ordering aligned with the historical C++/libroom outputs used by tests.
+        for i in range(n_sources - 1, -1, -1):
+            top = self.visible_sources.pop()
+            self.sources[:, i] = top.loc
+            self.gen_walls[i] = top.gen_wall
+            self.orders[i] = top.order
+            self.attenuations[:, i] = self._as_band_vector(top.attenuation)
+            self.visible_mics[:, i] = top.visible_mics
+            self.reflection_matrix[:, :, i] = top.reflect_matrix
+            if top.wall_sequence:
+                # Pad unused reflection levels with -1/NaN.  Used levels contain
+                # material indices and incidence cosines for attenuation rebuilds.
+                n_levels = len(top.wall_sequence)
+                self.wall_sequence[i, :n_levels] = top.wall_sequence
+                self.incidence_cos[i, :n_levels] = top.incidence_cos
         return n_sources
 
     def image_sources_dfs(self, old_is, max_order):
@@ -417,21 +539,27 @@ class Room_deism_python:
         any_visible = False
         # TO DO: if later the microphone array is supported, changes the codes
         for m, mic in enumerate(self.microphones):
+            # Visibility is checked from the receiver back through the parent
+            # image chain.  The returned segments are reused to build compact
+            # path descriptors when this image is visible.
             is_visible, list_intecp_p_to_is = self.is_visible_dfs(mic, old_is)
             if is_visible and not any_visible:
                 any_visible = is_visible
                 old_is.visible_mics = np.zeros(len(self.microphones), dtype=bool)
             if any_visible:
                 old_is.visible_mics[m] = is_visible
-                # NTPRA !!!
-                old_is.attenuation = self.get_image_attenuation(
-                    old_is, list_intecp_p_to_is
-                )
+                if is_visible:
+                    (
+                        old_is.wall_sequence,
+                        old_is.incidence_cos,
+                    ) = self.get_compact_path(old_is, list_intecp_p_to_is)
         if any_visible:
+            # Store only images visible from at least one receiver.
             self.visible_sources.append(deepcopy(old_is))  #!!!IMPORTANT
         if max_order == 0:
             return
         for wi, wall in enumerate(self.walls):
+            # Reflect the current source across each wall to generate children.
             reflected_point, dir_flag = wall.reflect(old_is.loc)
             if (
                 dir_flag <= 0
@@ -441,28 +569,48 @@ class Room_deism_python:
             new_is.order = old_is.order + 1
             new_is.gen_wall = wi
             new_is.parent = old_is
-            # new_is.attenuation = self.get_image_attenuation(new_is)
-            # NTPRA !!!
+            # Accumulate the reflection matrix along the image-source ancestry.
             new_is.reflect_matrix = wall.reflection_matrix @ old_is.reflect_matrix
             self.image_sources_dfs(new_is, max_order - 1)
 
-    # NTPRA !!! the whole function below
-    def get_image_attenuation(self, old_is, list_intecp_p_to_is):  # !!! Speed up?
-        wall_id = old_is.gen_wall
-        if wall_id >= 0:
+    def get_compact_path(self, old_is, list_intecp_p_to_is):
+        # Convert the visible path into compact material/cos(theta) rows.  The
+        # list order follows the receiver-to-image recursion used by visibility.
+        wall_sequence = []
+        incidence_cos = []
+        node = old_is
+        for intecp_p_to_is in list_intecp_p_to_is:
+            # gen_wall tells which wall generated this image level.
+            wall_id = node.gen_wall
+            if wall_id < 0:
+                break
             wall = self.walls[wall_id]
-            intecp_p_to_is = list_intecp_p_to_is.pop(0)
-            inc_angle = np.arccos(
-                np.dot(intecp_p_to_is, wall.normal) / np.linalg.norm(intecp_p_to_is)
+            # The segment from wall-intersection point to image source gives the
+            # incidence angle relative to the wall normal.
+            nrm = np.linalg.norm(intecp_p_to_is)
+            if nrm <= libroom_eps:
+                raise RuntimeError("zero-length reflection segment in compact ARG path")
+            cos_theta = abs(float(np.dot(intecp_p_to_is / nrm, wall.normal)))
+            # Store material index rather than local wall index so attenuation can
+            # index the correct impedance row directly.
+            wall_sequence.append(int(getattr(wall, "material_index", wall_id)))
+            incidence_cos.append(cos_theta)
+            # Walk to the parent image for the next reflection level.
+            node = node.parent
+        return wall_sequence, incidence_cos
+
+    def _as_band_vector(self, value):
+        # Direct-path attenuation may be scalar 1; reflected paths should already
+        # be per-band.  Normalize both forms to a complex64 frequency vector.
+        arr = np.asarray(value)
+        if arr.ndim == 0:
+            return np.full(self.Z_S.shape[1], arr.item(), dtype=np.complex64)
+        arr = arr.reshape(-1)
+        if arr.size != self.Z_S.shape[1]:
+            raise ValueError(
+                f"attenuation has {arr.size} bands, expected {self.Z_S.shape[1]}"
             )
-            attenuation = wall.get_attenuation(inc_angle)
-        else:
-            return old_is.attenuation
-        if old_is.parent is not None:
-            return attenuation * self.get_image_attenuation(
-                old_is.parent, list_intecp_p_to_is
-            )
-        return attenuation
+        return arr.astype(np.complex64)
 
     def is_visible_dfs(self, p, old_is):
         # Most time consuming function !
@@ -594,6 +742,8 @@ class ImageSource:
         self.psh_dirs = None  # not useful
         self.v_intecp_p_to_is = []  # not useful
         self.inc_angle = None  # not useful
+        self.wall_sequence = []
+        self.incidence_cos = []
         # NTPRA !!!
         self.reflect_matrix = np.identity(3)
         # self.intersect_p = None
@@ -610,21 +760,21 @@ eps = libroom_deism.get_eps()
 
 # Wall_deism class defined in python is only a wrapper of the C++ class Wall_deism
 class Wall_deism_cpp:
-    def __init__(self, points, centroid, impedence, wall_name=None):
+    def __init__(self, points, centroid, impedance, wall_name=None):
         """
         The Wall_deism class calling functions from libroom
         parameters:
             points:     Nx2 or Nx3 NDArrays
             centroid:   algebraic center of the wall
-            impedence:  acoustic impedence,type:complex number, now is a array-like
+            impedance:  acoustic impedance,type:complex number, now is a array-like
             1D array, has the same length with freqs
             wall_name: str, used to identify the wall by name, not so important
         """
 
         self.energy_absorp_coef = (
-            np.ones_like(impedence, dtype=np.float32) * 0.15
+            np.ones_like(impedance, dtype=np.float32) * 0.15
         )  # -->new
-        self.scatter_coef = np.ones_like(impedence, dtype=np.float32) * 0.1  # -->new
+        self.scatter_coef = np.ones_like(impedance, dtype=np.float32) * 0.1  # -->new
         self.centroid = centroid
         # the name of the wall
         self.name = "" if wall_name is None else wall_name  # -->new
@@ -633,7 +783,7 @@ class Wall_deism_cpp:
         self.libroom_walls = self._init_wall(
             points.T,
             self.centroid.T,
-            impedence,
+            impedance,
             self.energy_absorp_coef,
             self.scatter_coef,
             self.name,
@@ -644,14 +794,14 @@ class Wall_deism_cpp:
         self.origin = self.libroom_walls.origin
         # self.points=self.order_points(points)
         self.points = self.libroom_walls.corners.T
-        self.impedence_bands = impedence
+        self.impedance_bands = impedance
         self.basis = self.libroom_walls.basis
         self.flat_corners = self.libroom_walls.flat_corners
         self.reflection_matrix = self.libroom_walls.reflection_matrix
         self.dim = self.libroom_walls.dim
 
     def _init_wall(
-        self, points, centroid, impedence, energy_absorp_coef, scatter_coef, name
+        self, points, centroid, impedance, energy_absorp_coef, scatter_coef, name
     ):
         """
         to initialize a Wall_deism object from libroom.Wall_deism/Wall2D
@@ -659,26 +809,26 @@ class Wall_deism_cpp:
         -----------
         parameters:
             points:     (2,N)or (3,N) NDArrays
-            centoid:    (2,1) or (3,1) NDArrays, the centroid of a room, used to
+            centroid:   (2,1) or (3,1) NDArrays, the centroid of a room, used to
                 reorient the direction of norm vector of current wall
             energy_absorp_coef:   numpy 1D array, not so useful
             scatter_coef:   numpy 1D array,not so useful
-            impedence_bands: numpy 1D array, which defines the impedence under different freqs
+            impedance_bands: numpy 1D array, which defines the impedance under different freqs
 
         returns:
             the Wall_deism initialized object
         """
         walls = None
         # Check if impedance is complex and use appropriate constructor
-        if np.iscomplexobj(impedence):
+        if np.iscomplexobj(impedance):
             # Use complex constructor to preserve full impedance information
             # Convert to complex array explicitly to match C++ signature
-            impedence_complex = impedence.astype(np.complex64)
+            impedance_complex = impedance.astype(np.complex64)
             if points.shape[0] == 2:
                 walls = libroom_deism.Wall2D_deism.from_complex_impedance(
                     points,
                     centroid,
-                    impedence_complex,  # Complex impedance passed to complex constructor
+                    impedance_complex,  # Complex impedance passed to complex constructor
                     energy_absorp_coef,
                     scatter_coef,
                     name,
@@ -687,7 +837,7 @@ class Wall_deism_cpp:
                 walls = libroom_deism.Wall_deism.from_complex_impedance(
                     points,
                     centroid,
-                    impedence_complex,  # Complex impedance passed to complex constructor
+                    impedance_complex,  # Complex impedance passed to complex constructor
                     energy_absorp_coef,
                     scatter_coef,
                     name,
@@ -698,7 +848,7 @@ class Wall_deism_cpp:
                 walls = libroom_deism.Wall2D_deism(
                     points,
                     centroid,
-                    impedence,  # Real impedance
+                    impedance,  # Real impedance
                     energy_absorp_coef,
                     scatter_coef,
                     name,
@@ -707,7 +857,7 @@ class Wall_deism_cpp:
                 walls = libroom_deism.Wall_deism(
                     points,
                     centroid,
-                    impedence,  # Real impedance
+                    impedance,  # Real impedance
                     energy_absorp_coef,
                     scatter_coef,
                     name,
@@ -827,11 +977,11 @@ class Room_deism_cpp:
         """
         -----------
         parameters:
-            points: Nx2 or Nx3 NDArrays
-            params: dict containing multiple configuration parameters
-            x_s: position of sound source
-            x_r: position of receiver,should be a (3,) NDArray
-            *choose_wall_centers: ?
+            params: dict containing multiple configuration parameters,
+                including the room vertices, source/receiver positions
+                (params["posSource"], params["posReceiver"]), and materials
+            *choose_wall_centers: optional explicit wall-center coordinates,
+                forwarded to generate_walls_convex()
         """
         # parameters initialization
         self.params = params
@@ -841,11 +991,11 @@ class Room_deism_cpp:
         self.source = params["posSource"]
         self.microphones = [params["posReceiver"]]
         self.c = params["soundSpeed"]
-        self.ism_order = params["maxReflOrder"]
+        self.ism_order = check_max_refl_order(params)
         self.visible_sources = []
         # --------------------new------------------------------------------
-        # self.Z_S = params["Z_S"]  # Change to self.impedence later
-        self.impedence = params["impedance"]
+        # self.Z_S = params["Z_S"]  # Change to self.impedance later
+        self.impedance = params["impedance"]
         self.freqs = params["freqs"]
         # if params["wallCenters"] is not defined, use the default one
         if "wallCenters" not in params:
@@ -854,7 +1004,7 @@ class Room_deism_cpp:
             self.wall_centers = params["wallCenters"]
 
         # check the freqs and the second dimension of Z_S, if they are not the same, raise an error
-        if len(self.freqs) != self.impedence.shape[1]:
+        if len(self.freqs) != self.impedance.shape[1]:
             raise ValueError(
                 "The number of frequencies in the frequency array and the second\
                      dimension of the impedance matrix are not the same"
@@ -882,9 +1032,73 @@ class Room_deism_cpp:
         self.room_engine = None
         # initialize the parameter self.room_engine
         self._init_room()
+        # Maps local wall index -> impedance/material row, used to remap the
+        # raw C++ descriptors (which store local wall ids).
+        self.material_index_per_wall = np.asarray(
+            [w.material_index for w in self.walls], dtype=np.int32
+        )
+        # Compact state and room state are re-derived per update_images() call,
+        # never cached once: DEISM.update_source_receiver() reuses this object
+        # across calls (core_deism.py keys the rebuild on the class only), so
+        # flags, materials, and frequencies may all change between calls.
+        self.compact_images = self._compact_mode()
+        self.wall_sequence = None
+        self.incidence_cos = None
+        self._fingerprint = self._room_fingerprint()
+
+    def _compact_mode(self):
+        """Return whether this room should produce compact Tier-A output NOW."""
+        return (
+            _convex_use_compact_storage(self.params)
+            and _convex_compact_engine(self.params) == "cpp"
+        )
+
+    def _room_fingerprint(self):
+        """Hashable snapshot of every param the walls/engine are built from."""
+        p = self.params
+        return (
+            int(p["maxReflOrder"]),
+            np.asarray(p["freqs"]).tobytes(),
+            np.asarray(p["impedance"]).tobytes(),
+            np.asarray(p["vertices"]).tobytes(),
+        )
+
+    def _refresh_room_state(self):
+        """Re-derive walls and engine when self.params changed since last run.
+
+        The DEISM front end mutates params in place (materials, frequencies,
+        reflection order) and reuses this room object; without this check a
+        legacy run after a material update would compute libroom attenuation
+        from stale wall impedance.
+        """
+        fp = self._room_fingerprint()
+        if fp == self._fingerprint:
+            return
+        self.points = self.params["vertices"]
+        self.centroid = np.mean(self.points, axis=0)
+        self.impedance = self.params["impedance"]
+        self.freqs = self.params["freqs"]
+        self.ism_order = check_max_refl_order(self.params)
+        if len(self.freqs) != self.impedance.shape[1]:
+            raise ValueError(
+                "The number of frequencies in the frequency array and the "
+                "second dimension of the impedance matrix are not the same"
+            )
+        if "wallCenters" not in self.params:
+            self.wall_centers = find_wall_centers(self.points)
+        else:
+            self.wall_centers = self.params["wallCenters"]
+        self.walls = []
+        if self.params["convexRoom"]:
+            self.generate_walls_convex()
+        self._init_room()
+        self.material_index_per_wall = np.asarray(
+            [w.material_index for w in self.walls], dtype=np.int32
+        )
+        self._fingerprint = fp
 
     def update_images(self, source=None, receiver=None):
-        if not self.params["silentMode"]:
+        if not self.params.get("silentMode", 0):
             print("[Calculating] DEISM-ARG image generation, ", end="")
         begin = time.time()
         # Update source and receiver positions and update images
@@ -892,15 +1106,60 @@ class Room_deism_cpp:
             self.source = source
         if receiver is not None:
             self.microphones[0] = receiver
-        self.room_engine.add_mic(self.microphones[0].T)
-        self.room_engine.n_bands = len(self.freqs)  # -->new
-        self.room_engine.image_source_model(self.source.T)
-        self.sources = self.room_engine.sources
-        self.gen_walls = self.room_engine.gen_walls
+        # Re-sync cached room state (freqs/impedance/order/walls) with params,
+        # then re-derive compact mode: both may have changed on this reused
+        # room object since the previous call.
+        self._refresh_room_state()
+        self.compact_images = self._compact_mode()
+        engine = self.room_engine
+        # libroom's add_mic appends; clear first so repeated update_images()
+        # calls never accumulate stale receivers (visibility, attenuation, and
+        # descriptors all depend on the microphone set). Old binaries without
+        # clear_mics fall back to a full engine rebuild.
+        if hasattr(engine, "clear_mics"):
+            engine.clear_mics()
+        else:
+            self._init_room()
+            engine = self.room_engine
+        if self.compact_images:
+            if not hasattr(engine, "compact_mode"):
+                raise RuntimeError(
+                    "libroom_deism was built without compact ARG support; "
+                    "rebuild the extension (python setup.py build_ext --inplace)"
+                )
+            engine.compact_mode = True
+            # Tier A only: one band suffices, no per-band arrays travel
+            # through the DFS. Both settings must precede add_mic — the
+            # microphone constructor allocates n_bands histograms.
+            engine.n_bands = 1
+        else:
+            if hasattr(engine, "compact_mode"):
+                engine.compact_mode = False
+            engine.n_bands = len(self.freqs)  # -->new
+        engine.add_mic(self.microphones[0].T)
+        engine.image_source_model(self.source.T)
+        self.sources = engine.sources
+        self.gen_walls = engine.gen_walls
+        if self.compact_images:
+            raw_ws = np.asarray(engine.wall_sequence, dtype=np.int32)
+            # Remap local wall ids to material rows; keep -1 padding intact.
+            self.wall_sequence = np.where(
+                raw_ws >= 0,
+                self.material_index_per_wall[np.clip(raw_ws, 0, None)],
+                np.int32(-1),
+            )
+            self.incidence_cos = np.asarray(
+                engine.incidence_cos, dtype=np.float32
+            )
+        else:
+            # Never leave stale descriptors on a room whose mode was toggled
+            # back to legacy — get_ref_geometry_ARG reads room-level attrs.
+            self.wall_sequence = None
+            self.incidence_cos = None
         elapsed_pra_deism = time.time() - begin
         minutes, seconds = divmod(elapsed_pra_deism, 60)
         minutes = int(minutes)
-        if not self.params["silentMode"]:
+        if not self.params.get("silentMode", 0):
             print(f"Done [{minutes} minutes, {seconds:.3f} seconds]", end="\n\n")
 
     def _init_room(self, *args):
@@ -922,7 +1181,7 @@ class Room_deism_cpp:
             self.rt_args["receiver_radius"],
             self.rt_args["hist_bin_size"],
             self.simulationRequired,
-            # self.impedence,  # !!!!!!!!!!!
+            # self.impedance,  # !!!!!!!!!!!
         ]
 
         if self.dim == 2:
@@ -937,7 +1196,10 @@ class Room_deism_cpp:
         hull = ConvexHull(self.points)
         # find those unique normals
         normals = [tuple(face) for face in np.round(hull.equations[:, :3], decimals=5)]
-        unique_normals = list(set(normals))
+        # Deterministic wall order: sorted rounded normals, identical across
+        # both room wrappers and find_wall_centers (local wall ids, material
+        # assignment, and cross-engine tests all depend on this order).
+        unique_normals = sorted(set(normals))
 
         # For each unique normal, find the points that belong to a face with that normal
         for normal in unique_normals:
@@ -950,7 +1212,7 @@ class Room_deism_cpp:
                     face_points.extend(hull.points[hull.simplices[i]])
             face_points = np.unique(face_points, axis=0)
             # The purpose should be to establish a unique surface based on the points passed in, by calculating the convex hull form,
-            # new_wall = Wall_deism_cpp(face_points, self.centroid, self.impedence)
+            # new_wall = Wall_deism_cpp(face_points, self.centroid, self.impedance)
             # -------------------------------new--------------------------------
             # calculate the center of the face
             face_center = np.mean(face_points, axis=0)
@@ -959,6 +1221,7 @@ class Room_deism_cpp:
             center_dis = np.linalg.norm(
                 np.array(self.wall_centers) - face_center, axis=1
             )
+            material_index = int(np.argmin(center_dis))
             # raise an error if the minimum distance is too large than 0.001
             if np.min(center_dis) > 0.001:
                 raise ValueError(
@@ -966,10 +1229,11 @@ class Room_deism_cpp:
                 )
             else:
                 new_wall = Wall_deism_cpp(
-                    face_points, self.centroid, self.impedence[np.argmin(center_dis)]
+                    face_points, self.centroid, self.impedance[material_index]
                 )
-            # new_wall = Wall_deism(face_points, self.centroid, self.impedence)
-            # new_wall = Wall_deism(face_points, self.centroid, self.impedence[self.centroid])
+                new_wall.material_index = material_index
+            # new_wall = Wall_deism(face_points, self.centroid, self.impedance)
+            # new_wall = Wall_deism(face_points, self.centroid, self.impedance[self.centroid])
             # ------------------------------------------------------------------
             if not choose_wall_centers:
                 self.walls.append(new_wall)
@@ -1117,7 +1381,10 @@ def find_wall_centers(vertices, *choose_wall_centers):
     hull = ConvexHull(vertices)
     # find those unique normals
     normals = [tuple(face) for face in np.round(hull.equations[:, :3], decimals=5)]
-    unique_normals = list(set(normals))
+    # Deterministic wall order: sorted rounded normals, identical across
+    # both room wrappers and find_wall_centers (local wall ids, material
+    # assignment, and cross-engine tests all depend on this order).
+    unique_normals = sorted(set(normals))
 
     # For each unique normal, find the points that belong to a face with that normal
     for normal in unique_normals:
@@ -1169,7 +1436,10 @@ def convex_room_volume_and_areas(vertices):
     hull = ConvexHull(vertices)
     volume = float(hull.volume)
     normals = [tuple(face) for face in np.round(hull.equations[:, :3], decimals=5)]
-    unique_normals = list(set(normals))
+    # Deterministic wall order: sorted rounded normals, identical across
+    # both room wrappers and find_wall_centers (local wall ids, material
+    # assignment, and cross-engine tests all depend on this order).
+    unique_normals = sorted(set(normals))
     areas = []
     for normal in unique_normals:
         face_area = 0.0
@@ -1192,8 +1462,9 @@ def get_R_sI_to_r_from_room(receiver, sources):
     1. receiver: 1D numpy array, the receiver position
     2. sources: 2D numpy array, the image sources' positions
     """
-    # calculate vectors from source images to receiver
+    # Vector from each image source to the receiver, one column per image.
     R_sI_to_r_all = receiver[:, None] - sources
+    # DEISM kernels use spherical coordinates [azimuth, inclination, radius].
     phi_x0, theta_x0, r_x0 = cart2sph(
         R_sI_to_r_all[0, :], R_sI_to_r_all[1, :], R_sI_to_r_all[2, :]
     )
@@ -1201,64 +1472,254 @@ def get_R_sI_to_r_from_room(receiver, sources):
     return np.asarray([phi_x0, theta_x0, r_x0])
 
 
-def get_ref_paths_ARG(params, room_pra_deism):
-    """
-    Get the reflection paths for DEISM-ARG
-    """
-    # get the reflection matrices to describe the reflected source directivity coefficients
-    reflection_matrix = np.array(
-        room_pra_deism.room_engine.reflection_matrix, dtype=np.float32
-    )
-    reflection_matrix = np.moveaxis(reflection_matrix, 0, 2)
-    # Get vectors from source images to receiver
+def _reflection_matrix_from_engine(engine):
+    # C++ and Python room engines historically expose reflection matrices with
+    # different axis order.  Normalize to (dim, dim, n_images).
+    sources = np.asarray(engine.sources)
+    n_images = sources.shape[1]
+    dim = sources.shape[0]
+    reflection_matrix = np.asarray(engine.reflection_matrix, dtype=np.float32)
+    if reflection_matrix.shape == (n_images, dim, dim):
+        reflection_matrix = np.moveaxis(reflection_matrix, 0, 2)
+    elif reflection_matrix.shape != (dim, dim, n_images):
+        raise ValueError(
+            "reflection_matrix must be (N, dim, dim) or (dim, dim, N), got "
+            f"{reflection_matrix.shape}"
+        )
+    return reflection_matrix
+
+
+def _attenuation_from_engine(engine, n_images):
+    # Non-compact C++ path already computed attenuation inside libroom.
+    # Normalize it to (n_freqs, n_images) for downstream kernels.
+    atten_all = np.asarray(engine.attenuations, dtype=np.complex64)
+    if atten_all.ndim == 1:
+        atten_all = atten_all[None, :]
+    if atten_all.shape[1] != n_images and atten_all.shape[0] == n_images:
+        atten_all = atten_all.T
+    if atten_all.shape[1] != n_images:
+        raise ValueError(
+            f"attenuations must have one column per image, got {atten_all.shape}"
+        )
+    return atten_all
+
+
+def _arg_image_data_owner(room):
+    """Return the object that owns generated ARG image arrays."""
+    # Room_deism_cpp stores image arrays on room.room_engine; Room_deism_python
+    # stores them directly on the room object.
+    engine = getattr(room, "room_engine", None)
+    return engine if engine is not None else room
+
+
+def trace_paths_from_libroom(params, room):
+    """Return compact path descriptors reconstructed from libroom outputs."""
+    # This helper is not used by the normal Python compact engine.  It rebuilds
+    # compact descriptors from C++/libroom outputs for compatibility and tests.
+    trace_eps = 1e-9
+    engine = _arg_image_data_owner(room)
+    walls = room.walls
+    n_walls = len(walls)
+
+    # Read libroom image data.  gen_walls gives the first generated wall when it
+    # is available, reducing search for the first reflection.
+    sources = np.asarray(engine.sources, dtype=np.float64)
+    orders = np.asarray(engine.orders, dtype=np.int64).reshape(-1)
+    gen_walls = np.asarray(engine.gen_walls, dtype=np.int64).reshape(-1)
+    receiver = np.asarray(params["posReceiver"], dtype=np.float64).reshape(3)
+
+    n_images = sources.shape[1]
+    max_order = int(params.get("maxReflOrder", int(orders.max()) if n_images else 0))
+    # Preallocate padded compact arrays.  Unused reflection levels stay -1/NaN.
+    wall_sequence = np.full((n_images, max_order), -1, dtype=np.int32)
+    incidence_cos = np.full((n_images, max_order), np.nan, dtype=np.float32)
+    valid = np.zeros(n_images, dtype=bool)
+    # Cache normals to avoid repeatedly converting wall attributes in the loops.
+    wall_normals = [np.asarray(w.normal, dtype=np.float64).reshape(3) for w in walls]
+
+    for img_idx in range(n_images):
+        order = int(orders[img_idx])
+        if order == 0:
+            # Direct path has no wall hits, but the descriptor row is valid.
+            valid[img_idx] = True
+            continue
+
+        # Reconstruct the path by walking from receiver to image source, then
+        # reflecting the image back toward its parent at each level.
+        cur = receiver.copy()
+        img = sources[:, img_idx].copy()
+        prev_wall = -1
+        ok = True
+        for level in range(order):
+            wall_id = -1
+            point = None
+            # Try the libroom-generated wall first for the first reflection.
+            if level == 0 and 0 <= gen_walls[img_idx] < n_walls:
+                wall_id = int(gen_walls[img_idx])
+                flag, point = walls[wall_id].intersection(
+                    cur.astype(np.float32), img.astype(np.float32)
+                )
+                if flag < 0:
+                    wall_id = -1
+
+            if wall_id < 0:
+                # If gen_walls was not enough, search all walls except the wall
+                # just used by the previous level.
+                wall_id, point = _find_exit_wall(walls, cur, img, prev_wall)
+            if wall_id < 0:
+                ok = False
+                break
+
+            point = np.asarray(point, dtype=np.float64).reshape(3)
+            # Segment from current wall intersection to the current image gives
+            # the incidence direction for this wall hit.
+            seg = img - point
+            nrm = np.linalg.norm(seg)
+            if nrm < trace_eps:
+                ok = False
+                break
+
+            incidence_cos[img_idx, level] = abs(
+                float(np.dot(seg / nrm, wall_normals[wall_id]))
+            )
+            wall_sequence[img_idx, level] = int(
+                getattr(walls[wall_id], "material_index", wall_id)
+            )
+
+            # Reflect the current image across this wall to obtain the parent
+            # image for the next level, then continue from the intersection point.
+            parent_img, _ = walls[wall_id].reflect(img.astype(np.float32))
+            cur = point
+            img = np.asarray(parent_img, dtype=np.float64).reshape(3)
+            prev_wall = wall_id
+
+        valid[img_idx] = ok
+
+    return {
+        "wall_sequence": wall_sequence,
+        "incidence_cos": incidence_cos,
+        "valid": valid,
+    }
+
+
+def _find_exit_wall(walls, cur, img, prev_wall):
+    # Search for the next wall intersected by the segment from current point to
+    # current image source.  prev_wall is skipped to avoid immediately reusing
+    # the wall just crossed.
+    cur32 = cur.astype(np.float32)
+    img32 = img.astype(np.float32)
+    for wall_id in range(len(walls)):
+        if wall_id == prev_wall:
+            continue
+        flag, point = walls[wall_id].intersection(cur32, img32)
+        if flag >= 0:
+            return wall_id, point
+    return -1, None
+
+
+def get_ref_geometry_ARG(params, room_pra_deism):
+    """Get material-free reflection geometry for DEISM-ARG."""
+    # Support both Room_deism_cpp (arrays live on room_engine) and
+    # Room_deism_python (arrays live on the room object).
+    engine = _arg_image_data_owner(room_pra_deism)
+    sources = np.asarray(engine.sources, dtype=np.float32)
+    orders = np.asarray(engine.orders, dtype=np.int32).reshape(-1)
+    reflection_matrix = _reflection_matrix_from_engine(engine)
+    # Convert image-source positions into receiver-relative spherical vectors.
     R_sI_r_all = get_R_sI_to_r_from_room(
-        params["posReceiver"], room_pra_deism.room_engine.sources
+        np.asarray(params["posReceiver"]), sources
     ).astype(np.float32)
-    # get attenuation values for each image source
-    atten_all = np.asarray(
-        room_pra_deism.room_engine.attenuations, dtype=np.complex64
-    )
-    # remove the direct path if params["ifRemoveDirectPath"] = 1
+
+    # By default keep all images.  If requested, remove only the direct path
+    # image, identified by reflection order zero.
+    image_mask = np.ones(orders.shape[0], dtype=bool)
     if params["ifRemoveDirectPath"]:
-        R_sI_r_all = R_sI_r_all[:, 1:]
-        reflection_matrix = reflection_matrix[:, :, 1:]
-        atten_all = atten_all[:, 1:]
-    # If using the MIX mode, we need to separate the early reflections and late reflections
+        image_mask = orders != 0
+
+    # Apply the same mask to every geometry array so image columns remain aligned.
+    geometry = {
+        "R_sI_r_all": R_sI_r_all[:, image_mask],
+        "reflection_matrix": reflection_matrix[:, :, image_mask],
+        "orders": orders[image_mask],
+        "image_mask": image_mask,
+    }
+
+    if _convex_use_compact_storage(params):
+        # Descriptors are read from the ROOM object, never the raw C++ engine:
+        # both wrappers store material-mapped arrays on themselves
+        # (Room_deism_python during fill_sources and, in compact mode,
+        # Room_deism_cpp during update_images). The raw C++ engine's
+        # wall_sequence holds LOCAL wall ids, which must never index the
+        # impedance matrix.
+        if (
+            getattr(room_pra_deism, "wall_sequence", None) is not None
+            and getattr(room_pra_deism, "incidence_cos", None) is not None
+        ):
+            wall_sequence = np.asarray(room_pra_deism.wall_sequence, dtype=np.int32)
+            incidence_cos = np.asarray(
+                room_pra_deism.incidence_cos, dtype=np.float32
+            )
+        else:
+            # Fallback oracle: compact mode requested but the room wrapper
+            # exposes no descriptors (legacy Room_deism_cpp). Reconstruct
+            # from libroom outputs; the oracle emits material indices.
+            traced = trace_paths_from_libroom(params, room_pra_deism)
+            if not np.all(traced["valid"]):
+                bad = np.where(~traced["valid"])[0]
+                raise RuntimeError(
+                    f"libroom ARG path tracing failed for images {bad.tolist()}"
+                )
+            wall_sequence = traced["wall_sequence"]
+            incidence_cos = traced["incidence_cos"]
+        # Mask compact descriptors with the same image_mask as all other arrays.
+        geometry["wall_sequence"] = wall_sequence[image_mask]
+        geometry["incidence_cos"] = incidence_cos[image_mask]
+
     if params["DEISM_method"] == "MIX":
-        # Find the indices of the early reflections using the 1D numpy array room_pra_deism.room_engine.orders
-        # This array contains the order of each image source
-        # Find this indices of the early reflections whose order is less than or equal to params["mixEarlyOrder"]
-        early_indices = np.where(
-            room_pra_deism.room_engine.orders <= params["mixEarlyOrder"]
-        )[0]
-        # # Save the early reflections
-        # R_sI_r_all_early = R_sI_r_all[:, early_indices]
-        # reflection_matrix_early = reflection_matrix[:, :, early_indices]
-        # atten_all_early = atten_all[early_indices]
-        # Find the indices of the late reflections by excluding the indices of the early reflections
-        late_indices = np.setdiff1d(np.arange(R_sI_r_all.shape[1]), early_indices)
-        # # Save the late reflections
-        # R_sI_r_all_late = R_sI_r_all[:, late_indices]
-        # reflection_matrix_late = reflection_matrix[:, :, late_indices]
-        # atten_all_late = atten_all[late_indices]
-        # Save the early and late reflections in the params dictionary
-        images = {
-            # "R_sI_r_all_early": R_sI_r_all_early,
-            # "atten_all_early": atten_all_early,
-            "early_indices": early_indices,
-            # "R_sI_r_all_late": R_sI_r_all_late,
-            # "atten_all_late": atten_all_late,
-            "late_indices": late_indices,
-            "R_sI_r_all": R_sI_r_all,
-            "atten_all": atten_all,
-        }
+        # MIX runs ORG on early images and LC on the rest.  These indices are
+        # relative to the already-masked geometry arrays.
+        early_indices = np.where(geometry["orders"] <= params["mixEarlyOrder"])[0]
+        late_indices = np.setdiff1d(
+            np.arange(geometry["orders"].shape[0]), early_indices
+        )
+        geometry["early_indices"] = early_indices
+        geometry["late_indices"] = late_indices
+
+    return geometry
+
+
+def get_ref_paths_ARG(params, room_pra_deism):
+    """Get reflection paths and attenuation for DEISM-ARG."""
+    # First collect geometry that is independent of the current wall impedance.
+    geometry = get_ref_geometry_ARG(params, room_pra_deism)
+    images = {
+        "R_sI_r_all": geometry["R_sI_r_all"],
+        "orders": geometry["orders"],
+    }
+
+    if "wall_sequence" in geometry:
+        # Compact path: attenuation is rebuilt from material index and incidence
+        # cosine descriptors instead of stored per-image attenuation.
+        from deism.parallel_backends import _build_arg_attenuation_batch
+
+        images["wall_sequence"] = geometry["wall_sequence"]
+        images["incidence_cos"] = geometry["incidence_cos"]
+        images["atten_all"] = _build_arg_attenuation_batch(params, geometry)
     else:
-        images = {
-            "R_sI_r_all": R_sI_r_all,
-            "atten_all": atten_all,
-        }
+        # Non-compact C++ path: attenuation already came from libroom, so only
+        # apply the direct-path mask if needed.
+        engine = _arg_image_data_owner(room_pra_deism)
+        atten_all = _attenuation_from_engine(engine, len(geometry["image_mask"]))
+        images["atten_all"] = atten_all[:, geometry["image_mask"]]
+
+    if params["DEISM_method"] == "MIX":
+        # Preserve the early/late split for downstream MIX kernels.
+        images["early_indices"] = geometry["early_indices"]
+        images["late_indices"] = geometry["late_indices"]
+
+    # Store the DEISM image bundle and reflection matrices back into params.
     params["images"] = images
-    params["reflection_matrix"] = reflection_matrix
+    params["reflection_matrix"] = geometry["reflection_matrix"]
     return params
 
 

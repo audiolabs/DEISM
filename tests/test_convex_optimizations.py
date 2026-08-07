@@ -1,17 +1,22 @@
 """
-Test script verifying the DEISM-ARG (convex room) optimisations applied to
+Tests verifying the DEISM-ARG (convex room) optimisations applied to
 core_deism.py and core_deism_arg.py:
 
   1. float32/complex64 storage for geometry and attenuation arrays
 
 Uses the standard DEISM class workflow (same as examples/deism_arg_singleparam_example.py).
 Compares RTF output across methods and verifies dtype/memory savings.
+
+Wall-clock measurements used to live here as a test. They enforced no threshold,
+so they were informational rather than regression checks and now sit in
+benchmarks/bench_convex_optimizations.py.
 """
 
 import os
 import sys
-import time
+
 import numpy as np
+import pytest
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if project_root not in sys.path:
@@ -20,8 +25,11 @@ if project_root not in sys.path:
 from deism.core_deism import DEISM
 
 
+METHODS = ["ORG", "LC", "MIX"]
+
+
 # ---------------------------------------------------------------------------
-# Helper: set up a convex DEISM instance
+# Helpers
 # ---------------------------------------------------------------------------
 def _setup_convex_deism(method="MIX", max_order=3, impedance_val=18.0):
     """Create and configure a DEISM instance for convex room testing."""
@@ -29,9 +37,9 @@ def _setup_convex_deism(method="MIX", max_order=3, impedance_val=18.0):
     deism.params["maxReflOrder"] = max_order
     deism.params["DEISM_method"] = method
 
-    roomVolumn = 36
+    roomVolume = 36
     roomAreas = np.array([9, 10, 9, 10, 12, np.sqrt(10) * 4])
-    deism.update_room(roomVolumn=roomVolumn, roomAreas=roomAreas)
+    deism.update_room(roomVolume=roomVolume, roomAreas=roomAreas)
 
     imp = np.ones((6, 2)) * impedance_val
     deism.update_wall_materials(imp, np.array([10, 20]), "impedance")
@@ -40,192 +48,115 @@ def _setup_convex_deism(method="MIX", max_order=3, impedance_val=18.0):
     return deism
 
 
-# ---------------------------------------------------------------------------
-# Test 1: dtype verification for convex room images
-# ---------------------------------------------------------------------------
-def test_convex_dtype_verification(method="MIX", max_order=3, label=""):
-    """Verify float32/complex64 dtypes in convex room image arrays."""
-    print(f"\nTest 1: Convex dtype verification [{label}]")
-    print(f"  method={method}, max_order={max_order}")
-
+def _build_convex(method="MIX", max_order=3):
+    """Configure a convex DEISM instance through image generation."""
     deism = _setup_convex_deism(method=method, max_order=max_order)
     deism.update_source_receiver()
     deism.update_directivities()
+    return deism
 
+
+def _expected_image_dtypes(images):
+    """Map image-array key -> expected dtype, keyed off the name so the check
+    adapts to whichever arrays a given method produces."""
+    expected = {}
+    for key, val in images.items():
+        if not isinstance(val, np.ndarray):
+            continue
+        if key.startswith("R_"):
+            expected[key] = np.float32
+        elif key.startswith("atten_"):
+            expected[key] = np.complex64
+    return expected
+
+
+def _storage_reduction_percent(arrays):
+    """Percent storage saved by float32/complex64 vs float64/complex128."""
+    actual = 0
+    hypothetical = 0
+    for val in arrays:
+        actual += val.nbytes
+        if val.dtype == np.float32:
+            hypothetical += val.size * 8  # float64
+        elif val.dtype == np.complex64:
+            hypothetical += val.size * 16  # complex128
+        else:
+            hypothetical += val.nbytes
+
+    if hypothetical == 0:
+        return 0.0
+    return (1 - actual / hypothetical) * 100
+
+
+# ---------------------------------------------------------------------------
+# Test 1: dtype verification for convex room images
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("method", METHODS)
+def test_convex_image_dtypes(method):
+    """Geometry arrays stay float32 and attenuation arrays stay complex64."""
+    deism = _build_convex(method=method, max_order=3)
     images = deism.params["images"]
-    all_ok = True
 
-    # Check R_sI_r_all dtype
-    r_dtype = images["R_sI_r_all"].dtype
-    ok_r = r_dtype == np.float32
-    print(f"  R_sI_r_all dtype: {r_dtype} {'OK' if ok_r else 'EXPECTED float32'}")
+    expected = _expected_image_dtypes(images)
+    assert expected, (
+        f"convex/{method}: no R_*/atten_* image arrays found in {sorted(images)}"
+    )
 
-    # Check atten_all dtype
-    a_dtype = images["atten_all"].dtype
-    ok_a = a_dtype == np.complex64
-    print(f"  atten_all dtype: {a_dtype} {'OK' if ok_a else 'EXPECTED complex64'}")
+    wrong = {
+        key: images[key].dtype
+        for key, want in expected.items()
+        if images[key].dtype != want
+    }
+    assert not wrong, (
+        f"convex/{method}: image arrays lost their optimised dtype: {wrong} "
+        f"(expected {expected})"
+    )
 
-    # Check reflection_matrix dtype
-    rm_dtype = deism.params["reflection_matrix"].dtype
-    ok_rm = rm_dtype == np.float32
-    print(f"  reflection_matrix dtype: {rm_dtype} {'OK' if ok_rm else 'EXPECTED float32'}")
 
-    all_ok = ok_r and ok_a and ok_rm
-    print(f"  Result: {'PASS' if all_ok else 'FAIL'}")
-    return all_ok
+@pytest.mark.parametrize("method", METHODS)
+def test_convex_reflection_matrix_dtype(method):
+    """The reflection matrix must stay float32."""
+    deism = _build_convex(method=method, max_order=3)
+    dtype = deism.params["reflection_matrix"].dtype
+    assert dtype == np.float32, (
+        f"convex/{method}: reflection_matrix is {dtype}, expected float32"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Test 2: Full DEISM-ARG run with sanity checks
 # ---------------------------------------------------------------------------
-def test_convex_full_run(method="MIX", max_order=3, label=""):
-    """Run DEISM-ARG convex and verify output sanity."""
-    print(f"\nTest 2: Convex DEISM full run [{label}]")
-    print(f"  method={method}, max_order={max_order}")
-
-    deism = _setup_convex_deism(method=method, max_order=max_order)
-
-    # Standard convex workflow
-    deism.update_source_receiver()
-    deism.update_directivities()
-
-    t0 = time.perf_counter()
+@pytest.mark.parametrize("method", METHODS)
+def test_convex_rtf_is_finite_and_nonzero(method):
+    """A full DEISM-ARG run must yield a finite, non-zero RTF."""
+    deism = _build_convex(method=method, max_order=3)
     deism.run_DEISM(if_clean_up=False, if_shutdown_ray=False)
-    t_deism = time.perf_counter() - t0
-    print(f"  DEISM-ARG computation: {t_deism:.3f}s")
 
     P = deism.params["RTF"]
-    print(f"  RTF shape: {P.shape}, dtype: {P.dtype}")
-    print(f"  RTF max magnitude: {np.max(np.abs(P)):.4f}")
-
-    ok_nonzero = np.max(np.abs(P)) > 0
-    ok_finite = np.all(np.isfinite(P))
-    print(f"  Non-zero: {ok_nonzero}, Finite: {ok_finite}")
-
-    ok = ok_nonzero and ok_finite
-    print(f"  Result: {'PASS' if ok else 'FAIL'}")
-    return ok, P
+    assert np.all(np.isfinite(P)), (
+        f"{method}: RTF contains {np.count_nonzero(~np.isfinite(P))} non-finite "
+        f"values out of {P.size}"
+    )
+    assert np.max(np.abs(P)) > 0, f"{method}: RTF is identically zero"
 
 
 # ---------------------------------------------------------------------------
 # Test 3: Memory storage verification
 # ---------------------------------------------------------------------------
-def test_memory_storage(max_order=3, label=""):
-    """Verify reduced storage from float32/complex64 vs hypothetical float64/complex128."""
-    print(f"\nTest 3: Memory storage verification [{label}]")
-
-    deism = _setup_convex_deism(method="MIX", max_order=max_order)
-    deism.update_source_receiver()
-    deism.update_directivities()
+def test_convex_memory_storage():
+    """float32/complex64 storage must roughly halve image-array memory."""
+    deism = _build_convex(method="MIX", max_order=3)
 
     images = deism.params["images"]
-    actual_size = 0
-    hypothetical_size = 0
+    arrays = [val for val in images.values() if isinstance(val, np.ndarray)]
 
-    for key, val in images.items():
-        if isinstance(val, np.ndarray):
-            actual_size += val.nbytes
-            if val.dtype == np.float32:
-                hypothetical_size += val.size * 8  # float64
-            elif val.dtype == np.complex64:
-                hypothetical_size += val.size * 16  # complex128
-            else:
-                hypothetical_size += val.nbytes
+    reflection_matrix = deism.params.get("reflection_matrix")
+    if isinstance(reflection_matrix, np.ndarray):
+        arrays.append(reflection_matrix)
 
-    # Also count reflection_matrix
-    rm = deism.params.get("reflection_matrix")
-    if rm is not None and isinstance(rm, np.ndarray):
-        actual_size += rm.nbytes
-        if rm.dtype == np.float32:
-            hypothetical_size += rm.size * 8
-        else:
-            hypothetical_size += rm.nbytes
+    reduction = _storage_reduction_percent(arrays)
 
-    print(f"  Actual storage:       {actual_size / 1024:.2f} KB")
-    print(f"  Float64/complex128:   {hypothetical_size / 1024:.2f} KB")
-    reduction = (1 - actual_size / hypothetical_size) * 100 if hypothetical_size > 0 else 0
-    print(f"  Reduction:            {reduction:.1f}%")
-
-    ok = reduction > 40  # expect ~50% reduction
-    print(f"  Result: {'PASS' if ok else 'FAIL'}")
-    return ok
-
-
-# ---------------------------------------------------------------------------
-# Test 4: Speed comparison across configurations
-# ---------------------------------------------------------------------------
-def test_speed_comparison():
-    """Measure image generation speed for convex room configurations."""
-    print("\nTest 4: Speed comparison across configurations")
-
-    configs = [
-        {"label": "order3", "max_order": 3},
-        {"label": "order5", "max_order": 5},
-    ]
-
-    for cfg in configs:
-        deism = _setup_convex_deism(method="MIX", max_order=cfg["max_order"])
-
-        t0 = time.perf_counter()
-        deism.update_source_receiver()
-        t_images = time.perf_counter() - t0
-
-        images = deism.params["images"]
-        n_images = images["R_sI_r_all"].shape[1]
-
-        deism.update_directivities()
-
-        t0 = time.perf_counter()
-        deism.run_DEISM(if_clean_up=True, if_shutdown_ray=False)
-        t_deism = time.perf_counter() - t0
-
-        print(f"  {cfg['label']}: images={t_images:.3f}s, DEISM={t_deism:.3f}s, "
-              f"{n_images} image sources")
-
-    print("  Result: PASS (informational)")
-    return True
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-def main():
-    print("=" * 70)
-    print("DEISM Convex Room (ARG) Optimisation Tests")
-    print("=" * 70)
-
-    results = {}
-
-    # Test 1: dtype verification for all methods
-    for method in ["MIX", "ORG", "LC"]:
-        results[f"dtype_{method}"] = test_convex_dtype_verification(
-            method=method, max_order=3, label=f"method_{method}",
-        )
-
-    # Test 2: full DEISM-ARG run for all methods
-    for method in ["MIX", "ORG", "LC"]:
-        ok, _ = test_convex_full_run(method=method, max_order=3, label=f"{method}_order3")
-        results[f"run_{method}"] = ok
-
-    # Test 3: memory storage
-    results["memory"] = test_memory_storage(max_order=3, label="order_3")
-
-    # Test 4: speed comparison
-    results["speed"] = test_speed_comparison()
-
-    # Summary
-    print("\n" + "=" * 70)
-    print("SUMMARY")
-    print("=" * 70)
-    n_pass = sum(1 for v in results.values() if v)
-    n_total = len(results)
-    for name, passed in results.items():
-        print(f"  {'PASS' if passed else 'FAIL'}  {name}")
-    print(f"\n  {n_pass}/{n_total} tests passed")
-
-    return n_pass == n_total
-
-
-if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    assert reduction > 40, (
+        f"image arrays only {reduction:.1f}% smaller than float64/complex128 "
+        f"(expected ~50%); dtypes: {[a.dtype for a in arrays]}"
+    )

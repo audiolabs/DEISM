@@ -3,7 +3,7 @@ Recreating the results of Figure 9 from the following journal paper:
 Zeyu Xu, Adrian Herzog, Alexander Lodermeyer, Emanuël A. P. Habets, Albert G. Prinn;
 Simulating room transfer functions between transducers mounted on audio devices using a modified image source method.
 J. Acoust. Soc. Am. 1 January 2024; 155 (1): 343–357. https://doi.org/10.1121/10.0023935
-In figure 9, the following scnenarios are simulated:
+In figure 9, the following scenarios are simulated:
 1. The source and the receiver are the same loudspeaker
 2. The shapes of the loudspeaker are changing among the spherical, cuboidal and cylindrical shapes
 For three shapes with the same position configuration 3, the following solutions are shown:
@@ -20,6 +20,7 @@ range in the active shoebox configuration file.
 # Email: zeyu.xu@audiolabs-erlangen.de
 # -------------------------------------------------------
 import os
+import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 from deism.core_deism import (
@@ -62,7 +63,7 @@ def init_parameters(params):
 
 
 def plot_shifted_SPLs(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
-    plt.rcParams["text.usetex"] = True
+    plt.rcParams["text.usetex"] = shutil.which("latex") is not None
     # Get SPLs
     SPL_DEISMs = [get_SPL(P_DEISM) for P_DEISM in P_DEISMs]
     SPL_DEISM_LCs = [get_SPL(P_DEISM_LC) for P_DEISM_LC in P_DEISM_LCs]
@@ -189,7 +190,7 @@ def plot_shifted_SPLs(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
 
 
 def plot_shifted_Phases(P_DEISMs, P_DEISM_LCs, P_FEMs, freqs, save_path):
-    plt.rcParams["text.usetex"] = True
+    plt.rcParams["text.usetex"] = shutil.which("latex") is not None
     fig = plt.figure(figsize=(18, 8))
     ax = fig.add_subplot(1, 1, 1)
     # ----------------------------------------------------------------

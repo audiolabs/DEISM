@@ -1,4 +1,5 @@
 import os
+import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 import numpy.typing as npt
@@ -119,6 +120,19 @@ def get_SPL(P):
     return SPL
 
 
+def get_LSD(P_test, P_ref):
+    """Return log-spectral distance in dB."""
+    return np.sqrt(
+        np.sum(np.abs(10 * np.log10((np.abs(P_test) / np.abs(P_ref)) ** 2)) ** 2)
+        / len(P_test)
+    )
+
+
+def get_RTF_relerr(P_test, P_ref):
+    """Return max relative error against a reference RTF."""
+    return np.max(np.abs(P_test - P_ref)) / (np.max(np.abs(P_ref)) + 1e-30)
+
+
 # %% plot_results
 def plot_RTFs(
     figure_name,
@@ -149,8 +163,9 @@ def plot_RTFs(
     1. Two figures: one for the magnitude of the RTFs and the other for the phase of the RTFs
     We save the .png and .pdf files of the figures in the save_path
     """
-    # Set up latex for plotting
-    plt.rcParams["text.usetex"] = True
+    # Use LaTeX for plot text when available; fall back to matplotlib's
+    # mathtext on systems without a TeX installation (e.g. CI runners)
+    plt.rcParams["text.usetex"] = shutil.which("latex") is not None
     # Create save_path if it does not exist
     if not os.path.exists(save_path):
         os.makedirs(save_path)
@@ -285,8 +300,9 @@ def plot_results_LCs(
 ):
     """Plot the results of the simulations."""
 
-    # Set up latex for plotting
-    plt.rcParams["text.usetex"] = True
+    # Use LaTeX for plot text when available; fall back to matplotlib's
+    # mathtext on systems without a TeX installation (e.g. CI runners)
+    plt.rcParams["text.usetex"] = shutil.which("latex") is not None
 
     # Initialize the SPL arrays
     plot_mag_DEISM_LC = np.zeros_like(P_DEISM_LC, dtype="float")

@@ -220,7 +220,7 @@ def deism_method(json_file_path=None):
 
         # Apply DEISM
         deism = DEISM("RIR", room)
-        print("valuess of deism")  #
+        print("values of deism")  #
         print("vertices", vertices)
         print("wall center", wall_centers)
         print("room areas", room_areas)

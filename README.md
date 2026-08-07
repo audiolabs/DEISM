@@ -22,7 +22,7 @@ In DEISM-ARG, we can model the room transfer function between transducers mounte
 
 # Installation
 
-DEISM supports Python 3.9, 3.10, and 3.11 on Windows, macOS, and Linux.
+DEISM supports Python 3.10, 3.11, and 3.12 on Windows, macOS, and Linux.
 The current documentation is organized around the class-based workflow
 implemented by `deism.core_deism.DEISM`.
 
@@ -109,7 +109,7 @@ python -m pip install -e .
 ### End users
 
 ```bash
-conda create -n deism python=3.9
+conda create -n deism python=3.12
 conda activate deism
 python -m pip install --upgrade pip
 python -m pip install deism
@@ -125,19 +125,10 @@ conda activate DEISM
 python -m pip install -e .
 ```
 
-If `deism_env.yml` does not work on your machine, try:
+## Build tools for source installs
 
-```bash
-conda env create -f deism_env_exact.yml
-conda activate DEISM
-python -m pip install -e .
-```
-
-## Optional build tools
-
-DEISM can build an optional C++ helper during installation. If a compiler is
-missing, the package still runs, but the optional `count_reflections` helper
-will not be available.
+Published wheels include DEISM's two C++ extensions. Building from a source
+checkout or source distribution requires a working C++ compiler.
 
 macOS:
 
@@ -160,8 +151,7 @@ sudo yum install gcc-c++ python3-devel
 
 Windows:
 
-- Install [MinGW-w64](https://www.mingw-w64.org/downloads/) and add it to `PATH`, or
-- install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with the C++ workload.
+- Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) with the C++ workload.
 
 ## Verify the installation
 
@@ -169,6 +159,12 @@ Basic import check:
 
 ```bash
 python -c "import deism; print('DEISM import OK')"
+```
+
+Native-extension check:
+
+```bash
+python -c "from deism import libroom_deism; from deism.count_reflections_wrapper import CPP_COUNTING_AVAILABLE; assert libroom_deism and CPP_COUNTING_AVAILABLE"
 ```
 
 Quick help check:
@@ -319,3 +315,83 @@ The current default configuration files are:
 
 See [docs/configuration.rst](docs/configuration.rst) for the configuration
 groups and runtime parameter mappings.
+
+# Compact image storage
+
+Image generation and reflection attenuation are decoupled by default in both
+room types ("compact" mode): the image-source engine emits frequency-
+independent path geometry, and the frequency-dependent attenuation is rebuilt
+from it by a parallel numba kernel. This makes image generation independent of
+the number of frequencies and avoids holding the full
+`(n_images, n_frequencies)` attenuation array.
+
+Each room type has its own flag, because the two paths were implemented
+separately and rebuild attenuation at different points:
+
+| Room type | Flag | Default | Attenuation rebuilt |
+|---|---|---|---|
+| Convex (DEISM-ARG) | `convexCompactImages` | `1` (compact) | Once, in `get_ref_paths_ARG` |
+| Shoebox | `shoeboxCompactImages` | `1` (compact) | Per batch, inside the solver |
+
+Set either flag to `0` for the legacy materialized path. Neither flag is read
+from the YAML configuration files or the command line — both are set
+programmatically, e.g. `deism.params["convexCompactImages"] = 0`.
+
+## Shoebox rooms
+
+Compact shoebox storage is produced only by the numba image generator
+(`shoeboxImageCalcVersion="v2-numba"`, the default). Selecting a serial
+generator degrades to materialized storage rather than failing. Two further
+consequences:
+
+- `images["atten_all"]` (and the `atten_all_early` / `atten_all_late` pair) is
+  absent in compact mode. Code that reads those arrays directly must set
+  `shoeboxCompactImages=0`.
+- The legacy Ray backend cannot consume compact storage and raises
+  `NotImplementedError`. Use the numba backend (`run_DEISM`), which is the
+  faster and supported path.
+
+RTFs agree with materialized storage to ~1e-8 relative error for `ORG`, `LC`,
+and `MIX`, with real and complex impedance alike.
+
+## Convex rooms (DEISM-ARG)
+
+For convex rooms the compact geometry is the wall sequence and incidence
+cosine per image.
+
+Configuration (in the parameter dictionary / config):
+
+- `convexCompactImages` (default `1`): `0` selects the legacy path.
+- `convexCompactEngine` (default `"cpp"`): which engine produces the compact
+  geometry when compact mode is on — `"cpp"` (the libroom C++ extension) or
+  `"python"` (`Room_deism_python`, the reference producer). The C++ engine is
+  the default because it is faster at every band count measured and matches
+  the Python producer exactly on wall sequences, to 1e-4 on incidence cosines
+  and to 1e-5 end to end; select `"python"` when the extension cannot be
+  built. Rebuild the extension after updating the sources:
+  `python setup.py build_ext --inplace`.
+
+Neither flag is read from the YAML configuration files or the command line —
+both are set programmatically on the parameter dictionary, e.g.
+`deism.params["convexCompactImages"] = 0` to select the legacy path.
+
+`convexCompactEngine` is ignored in legacy mode (`convexCompactImages=0`),
+which keeps the original C++ behavior with per-frequency attenuation computed
+in libroom.
+
+Notes:
+
+- Compact mode supports exactly one receiver per run (the standard DEISM-ARG
+  setup). Multiple receivers raise an error.
+- This DEISM-ARG compact path is 3D-only and applies to convex rooms. Shoebox
+  rooms have their own compact storage, described above, selected with
+  `shoeboxCompactImages`.
+- Complex impedance is handled exactly in compact mode (the attenuation is
+  rebuilt by `_build_arg_attenuation_batch`); the legacy C++ path truncates
+  complex impedance to its real part — a known parity gap of order 1e-2.
+- Compatible with the `ORG`, `LC`, and `MIX` DEISM variants and with
+  `ifRemoveDirectPath`; output shapes are unchanged relative to legacy mode.
+- Cross-engine agreement is implementation parity, not acoustic validation:
+  the known DEISM-ARG limitations for arbitrary geometries (reflection-
+  boundary discontinuities, missing spherical-wave reflection effects, edge/
+  corner diffraction) apply to all backends equally.

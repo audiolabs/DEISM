@@ -65,7 +65,7 @@ def main():
 
     # Plot the results
     PLOT_SCALE = "dB"
-    IF_FREQS_DB = 0
+    IF_FREQS_LOG = 0
     IF_SAME_MAGSCALE = 0
     IF_UNWRAP_PHASE = 0
     IF_SAVE_PLOT = 0
@@ -86,7 +86,7 @@ def main():
         P_labels,
         P_freqs,
         PLOT_SCALE,
-        IF_FREQS_DB,
+        IF_FREQS_LOG,
         IF_SAME_MAGSCALE,
         IF_UNWRAP_PHASE,
         IF_SAVE_PLOT,

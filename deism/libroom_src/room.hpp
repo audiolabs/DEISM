@@ -36,7 +36,10 @@
 #include <tuple>
 #include <Eigen/Dense>
 #include <algorithm>
+#include <cmath>
 #include <ctime>
+#include <limits>
+#include <stdexcept>
 
 #include "common.hpp"
 #include "wall.hpp"
@@ -70,6 +73,13 @@ struct ImageSource
 	Eigen::Matrix<float,D,D> reflection_matrix;
 	// std::vector<Vectorf<D>>& list_intercep_p_to_is={};
 	/****************************************************************************/
+
+	// Compact Tier-A path descriptors, receiver-side level first
+	// (same order as Room_deism_python.get_compact_path):
+	// generating wall index and |cos(theta)| per reflection level.
+	// Only populated when Room_deism::compact_mode is true.
+	std::vector<int> wall_seq;
+	std::vector<float> inc_cos;
 
 	ImageSource(size_t n_bands)
 		: order(0), gen_wall(-1), parent(NULL)
@@ -107,7 +117,9 @@ struct ImageSource
 			visible_mics(other.visible_mics),
 			source_impact_dir(other.source_impact_dir),
 			order_xyz(other.order_xyz),
-			reflection_matrix(other.reflection_matrix)
+			reflection_matrix(other.reflection_matrix),
+			wall_seq(other.wall_seq),
+			inc_cos(other.inc_cos)
 	{
 
 	}
@@ -165,19 +177,24 @@ public:
 	// its size is n_microphones * n_sources
 	MatrixXb visible_mics;
 
+	// Tier-A compact descriptors: one row per visible image, ism_order columns.
+	// wall_sequence holds LOCAL wall indices (-1 padding); material mapping is
+	// done in Python. incidence_cos holds |cos(theta)| (NaN padding).
+	// Empty (0 rows) unless compact_mode is set.
+	Eigen::MatrixXi wall_sequence;
+	Eigen::MatrixXf incidence_cos;
+	// Compact Tier-A mode: the ISM DFS records path descriptors and skips the
+	// per-band attenuation entirely (attenuation is rebuilt outside from the
+	// descriptors). Default false = legacy behavior, which pays no compact
+	// cost. Requires exactly one microphone.
+	bool compact_mode = false;
+
 
 
 	// area for new parameters 
 	/*20240705*/
 	/**************************************************************************/
 	/*                                                                        */
-	// impedence is a ndarray value, each value correspondes to a wall, its value 
-	// type is complex, like[], but now is only a integer number
-	// float impedence;   // set initial value of impedence
-
-	// the impedence is connected with frequency, then it should be defined as a 
-	// dynamic array
-	Eigen::ArrayXf impedence_bands;
 	// the last dimension of reflection matrix is dynamic, which depends on running
 	std::vector<Eigen::Matrix<float,D,D>> reflection_matrix;
 	/*                                                                        */
@@ -221,7 +238,7 @@ public:
 
 
 	/**************************************************************************/
-	// new constructor after increasing impedence variable
+	// new constructor after increasing impedance variable
 	// Constructor for general rooms
 	// this is the main constructor we need
 	// Room_deism(
@@ -289,30 +306,6 @@ public:
 
 
 
-	/**************************************************************************/
-	// overloaded set_params
-	// void set_params(
-	// 	float _sound_speed,
-	// 	int _ism_order,
-	// 	float _energy_thres,
-	// 	float _time_thres,
-	// 	float _mic_radius,
-	// 	float _mic_hist_res,
-	// 	bool _is_hybrid_sim,
-	// 	float _impedence
-	// )
-	// {
-	// 	sound_speed = _sound_speed;
-	// 	ism_order = _ism_order;
-	// 	energy_thres = _energy_thres;
-	// 	time_thres = _time_thres;
-	// 	mic_radius = _mic_radius;
-	// 	mic_radius_sq = _mic_radius * _mic_radius;
-	// 	mic_hist_res = _mic_hist_res;
-	// 	is_hybrid_sim = _is_hybrid_sim;
-	// 	impedence=_impedence;
-	// }
-
 	Eigen::ArrayXf get_image_attenuation(ImageSource<D>& old_is,
 										std::vector<Vectorf<D>>& list_intercep_p_to_is);
 
@@ -339,6 +332,11 @@ public:
 	{
 		for (auto mic = microphones.begin() ; mic != microphones.end() ; ++mic)
 			mic->reset();
+	}
+
+	void clear_mics()
+	{
+		microphones.clear();
 	}
 
 	Wall_deism<D> & get_wall(int w) { return walls[w]; }
@@ -398,6 +396,8 @@ public:
 
 	// Image source model internal methods
 	void image_sources_dfs(ImageSource<D> &is, int max_order);
+	void store_compact_path(ImageSource<D> &is,
+							const std::vector<Vectorf<D>> &list_intercep_p_to_is);
 	std::pair<bool,std::vector<Vectorf<D>>> is_visible_dfs(const Vectorf<D> &p, 
 											ImageSource<D> &is);
 	bool is_obstructed_dfs(const Vectorf<D> &p, ImageSource<D> &is);

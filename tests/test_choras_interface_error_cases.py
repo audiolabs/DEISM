@@ -44,6 +44,10 @@ from deism.core_deism import (
     interpolate_functions,
 )
 
+# Downstream coupling tests. Excluded from CI (see .github/workflows/test.yml);
+# run locally with:  pytest -m integration
+pytestmark = pytest.mark.integration
+
 # ---------------------------------------------------------------------------
 # CHORAS inputs (copied from backend/app/models/data/materials.json,
 # seven bands at [63, 125, 250, 500, 1000, 2000, 4000] Hz)
@@ -81,15 +85,40 @@ ROOM_AREAS = np.full(6, 123.00397 / 6)
 SOUND_SPEED = 343.0
 
 
+N_WALLS = 6
+
+_BAND_IMP_CACHE = {}
+
+
 def choras_alpha(name):
     """Five-band absorption exactly as CHORAS transmits it ([1:-1])."""
     return np.asarray(CATALOG_7BAND[name])[1:-1]
 
 
+def wall_alpha(name):
+    """The same five bands on every wall, as the MeasurementRoom sends them."""
+    return np.tile(choras_alpha(name), (N_WALLS, 1))
+
+
+def band_impedance(name):
+    """Band impedance for one material, on all six walls.
+
+    `convert_abs_to_imp` dominates this file's runtime (~150 ms per wall row)
+    and is row-independent, while every case here uses six *identical* walls.
+    Converting one row and tiling is bit-identical to converting six and ~6x
+    cheaper; caching removes the repetition across test functions. Each call
+    returns a fresh array, so callers cannot disturb one another.
+    """
+    if name not in _BAND_IMP_CACHE:
+        _BAND_IMP_CACHE[name] = convert_abs_to_imp(
+            choras_alpha(name).reshape(1, -1)
+        )
+    return np.tile(_BAND_IMP_CACHE[name], (N_WALLS, 1))
+
+
 def dense_impedance(name, df=10.0):
     """Impedance interpolated to a dense grid, as done before the solve."""
-    alpha = np.tile(choras_alpha(name), (6, 1))
-    imp = convert_abs_to_imp(alpha)
+    imp = band_impedance(name)
     dense_freqs = np.arange(df, NYQUIST + df, df)
     return dense_freqs, interpolate_functions(imp, CHORAS_BANDS, dense_freqs)
 
@@ -139,18 +168,21 @@ def test_m1_passivity_formerly_failing_materials(name):
 def test_m1_endpoint_hold_out_of_band(name):
     """Out-of-band impedance must equal the nearest endpoint band value
     (endpoint-hold rule), on both sides of the measured range."""
-    alpha = np.tile(choras_alpha(name), (6, 1))
-    imp = convert_abs_to_imp(alpha)
+    imp = band_impedance(name)
     freqs, z = dense_impedance(name)
 
     below = freqs < CHORAS_BANDS[0]
     above = freqs > CHORAS_BANDS[-1]
     assert below.any() and above.any()
     np.testing.assert_allclose(
-        z[:, below], np.broadcast_to(imp[:, :1], (6, below.sum())), rtol=1e-12
+        z[:, below],
+        np.broadcast_to(imp[:, :1], (N_WALLS, below.sum())),
+        rtol=1e-12,
     )
     np.testing.assert_allclose(
-        z[:, above], np.broadcast_to(imp[:, -1:], (6, above.sum())), rtol=1e-12
+        z[:, above],
+        np.broadcast_to(imp[:, -1:], (N_WALLS, above.sum())),
+        rtol=1e-12,
     )
 
 
@@ -174,8 +206,8 @@ def test_m2a_grid_size_characterization(name, t60_expected, m_expected, monkeypa
     # DEISM's constructor parses sys.argv; strip pytest's arguments
     # (the CHORAS interface sanitizes argv for the same reason).
     monkeypatch.setattr(sys, "argv", [sys.argv[0]])
-    alpha = np.tile(choras_alpha(name), (6, 1))
-    imp = convert_abs_to_imp(alpha)
+    alpha = wall_alpha(name)
+    imp = band_impedance(name)
     t60 = float(np.max(convert_imp_to_t60(ROOM_VOLUME, ROOM_AREAS, SOUND_SPEED, imp)))
     assert t60 == pytest.approx(t60_expected, rel=1e-2)
 
@@ -183,7 +215,7 @@ def test_m2a_grid_size_characterization(name, t60_expected, m_expected, monkeypa
     deism.params["sampleRate"] = SAMPLE_RATE
     deism.params["RIRLength"] = 1.0
     deism.params["soundSpeed"] = SOUND_SPEED
-    deism.update_room(roomVolumn=ROOM_VOLUME, roomAreas=ROOM_AREAS)
+    deism.update_room(roomVolume=ROOM_VOLUME, roomAreas=ROOM_AREAS)
     # NOTE: the CHORAS wrapper now passes "absorption", matching this
     # repo's datatype rename (formerly "absorpCoefficient" in
     # deism==2.2.1.13); both sides must ship together.
@@ -200,8 +232,7 @@ def test_m2a_grid_size_characterization(name, t60_expected, m_expected, monkeypa
 def test_m2a_weak_band_dominates_wood():
     """For Wood, the 125 Hz band (alpha=0.02) alone sets the grid even
     though every higher band is more absorptive."""
-    alpha = np.tile(choras_alpha("wood"), (6, 1))
-    imp = convert_abs_to_imp(alpha)
+    imp = band_impedance("wood")
     t60_bands = convert_imp_to_t60(ROOM_VOLUME, ROOM_AREAS, SOUND_SPEED, imp)
     assert np.argmax(t60_bands) == 0
     # 125 Hz band: T60 ~5.65 s vs ~0.65 s at 2 kHz (~8.6x grid inflation)

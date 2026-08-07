@@ -14,8 +14,9 @@ Usage:
 import gc
 import time
 import numpy as np
-from scipy import special as scy
 from sound_field_analysis.sph import sphankel2
+
+from deism.shared_utils import sph_harm
 
 
 # ============================================================================
@@ -23,8 +24,7 @@ from sound_field_analysis.sph import sphankel2
 # ============================================================================
 
 try:
-    import numba
-    from numba import njit, prange, complex128, float64, int64
+    from numba import njit, prange, complex128
     NUMBA_AVAILABLE = True
 except ImportError:
     NUMBA_AVAILABLE = False
@@ -36,11 +36,12 @@ NUMBA_LC_TEMP_TARGET_MB = 256
 
 
 if NUMBA_AVAILABLE:
+
     @njit(cache=True)
     def _sph_harm_numba(m, n, phi, theta):
         """
         Compute scalar spherical harmonic Y_n^m(theta, phi).
-        Uses scipy convention: theta = polar angle from z-axis, phi = azimuthal.
+        Uses scipy convention: theta = azimuthal angle, phi = polar angle from z-axis.
         Implements via associated Legendre recurrence + normalization.
         """
         x = np.cos(theta)
@@ -186,9 +187,38 @@ if NUMBA_AVAILABLE:
         return atten_all
 
     @njit(parallel=True, cache=True)
+    def _numba_build_arg_attenuation_batch(wall_sequence, incidence_cos, Z_S):
+        n_images = wall_sequence.shape[0]
+        max_order = wall_sequence.shape[1]
+        K = Z_S.shape[1]
+        atten_all = np.empty((n_images, K), dtype=complex128)
+
+        for img in prange(n_images):
+            for ki in range(K):
+                atten = 1.0 + 0.0j
+                for level in range(max_order):
+                    wall_id = wall_sequence[img, level]
+                    if wall_id < 0:
+                        break
+                    atten *= _shoebox_ref_coef_from_cos_numba(
+                        incidence_cos[img, level], Z_S[wall_id, ki]
+                    )
+                atten_all[img, ki] = atten
+
+        return atten_all
+
+    @njit(parallel=True, cache=True)
     def _numba_ORG_batch(
-        N_src_dir, V_rec_dir, C_nm_s, C_vu_r, A_all, atten_all, x0_all,
-        W_1_all, W_2_all, k
+        N_src_dir,
+        V_rec_dir,
+        C_nm_s,
+        C_vu_r,
+        A_all,
+        atten_all,
+        x0_all,
+        W_1_all,
+        W_2_all,
+        k,
     ):
         """
         ORG method: process all shoebox images in parallel using prange.
@@ -228,16 +258,28 @@ if NUMBA_AVAILABLE:
                                     w2 = W_2_all[n, v, l, m_mod_val, u]
                                     if w1 != 0.0 and w2 != 0.0:
                                         Xi = np.sqrt(
-                                            (2*n+1) * (2*v+1) * (2*l+1) / (4*np.pi)
+                                            (2 * n + 1)
+                                            * (2 * v + 1)
+                                            * (2 * l + 1)
+                                            / (4 * np.pi)
                                         )
-                                        Ylm = _sph_harm_numba(m_mod_val - u, l, phi_x0, theta_x0)
+                                        Ylm = _sph_harm_numba(
+                                            m_mod_val - u, l, phi_x0, theta_x0
+                                        )
                                         il = (1j) ** l
                                         for ki in range(K):
                                             local_sum[ki] += (
-                                                il * sphan2_all[l, ki] * Ylm * w1 * w2 * Xi
+                                                il
+                                                * sphan2_all[l, ki]
+                                                * Ylm
+                                                * w1
+                                                * w2
+                                                * Xi
                                             )
 
-                            S_nv_mu_factor = 4.0 * np.pi * (1j) ** (v - n) * (-1.0) ** m_mod_val
+                            S_nv_mu_factor = (
+                                4.0 * np.pi * (1j) ** (v - n) * (-1.0) ** m_mod_val
+                            )
                             sign_u = (-1.0) ** u
                             c_s_idx_m = m
                             c_r_idx_u = -u
@@ -245,10 +287,14 @@ if NUMBA_AVAILABLE:
                             for ki in range(K):
                                 S_nv_mu = S_nv_mu_factor * local_sum[ki]
                                 P_img[ki] += (
-                                    mirror_effect * atten_all[img, ki]
-                                    * C_nm_s[ki, n, c_s_idx_m] * S_nv_mu
+                                    mirror_effect
+                                    * atten_all[img, ki]
+                                    * C_nm_s[ki, n, c_s_idx_m]
+                                    * S_nv_mu
                                     * C_vu_r[ki, v, c_r_idx_u]
-                                    * 1j / k[ki] * sign_u
+                                    * 1j
+                                    / k[ki]
+                                    * sign_u
                                 )
 
             P_all[img, :] = P_img
@@ -262,9 +308,16 @@ if NUMBA_AVAILABLE:
 
     @njit(parallel=True, cache=True)
     def _numba_LC_matrix_batch(
-        n_all_arr, m_all_arr, v_all_arr, u_all_arr,
-        C_nm_s_vec, C_vu_r_vec,
-        R_s_rI_all, R_r_sI_all, atten_all, k
+        n_all_arr,
+        m_all_arr,
+        v_all_arr,
+        u_all_arr,
+        C_nm_s_vec,
+        C_vu_r_vec,
+        R_s_rI_all,
+        R_r_sI_all,
+        atten_all,
+        k,
     ):
         """
         LC matrix method: process all shoebox images in parallel using prange.
@@ -312,8 +365,14 @@ if NUMBA_AVAILABLE:
                     rec_val += phase_r[j] * C_vu_r_vec[ki, j] * Y_r[j]
 
                 factor = (
-                    -1.0 * atten_all[img, ki] * 4.0 * np.pi / k[ki]
-                    * np.exp(-1j * k[ki] * r_s) / k[ki] / r_s
+                    -1.0
+                    * atten_all[img, ki]
+                    * 4.0
+                    * np.pi
+                    / k[ki]
+                    * np.exp(-1j * k[ki] * r_s)
+                    / k[ki]
+                    / r_s
                 )
                 P_all[img, ki] = factor * src_val * rec_val
 
@@ -326,9 +385,15 @@ if NUMBA_AVAILABLE:
 
     @njit(parallel=True, cache=True)
     def _numba_ARG_LC_batch(
-        n_all_arr, m_all_arr, v_all_arr, u_all_arr,
-        C_nm_s_ARG_vec, C_vu_r_vec,
-        R_sI_r_all, atten_all, k
+        n_all_arr,
+        m_all_arr,
+        v_all_arr,
+        u_all_arr,
+        C_nm_s_ARG_vec,
+        C_vu_r_vec,
+        R_sI_r_all,
+        atten_all,
+        k,
     ):
         """
         ARG LC matrix method: all convex-room images in parallel.
@@ -373,8 +438,14 @@ if NUMBA_AVAILABLE:
                     rec_val += phase_r[j] * C_vu_r_vec[ki, j] * Y_r[j]
 
                 factor = (
-                    -1.0 * atten_all[ki, img] * 4.0 * np.pi / k[ki]
-                    * np.exp(-1j * k[ki] * r) / k[ki] / r
+                    -1.0
+                    * atten_all[ki, img]
+                    * 4.0
+                    * np.pi
+                    / k[ki]
+                    * np.exp(-1j * k[ki] * r)
+                    / k[ki]
+                    / r
                 )
                 P_all[img, ki] = factor * src_val * rec_val
 
@@ -386,8 +457,15 @@ if NUMBA_AVAILABLE:
 
     @njit(parallel=True, cache=True)
     def _numba_ARG_ORG_batch(
-        N_src_dir, V_rec_dir, C_nm_s_ARG, C_vu_r,
-        atten_all, R_sI_r_all, W_1_all, W_2_all, k
+        N_src_dir,
+        V_rec_dir,
+        C_nm_s_ARG,
+        C_vu_r,
+        atten_all,
+        R_sI_r_all,
+        W_1_all,
+        W_2_all,
+        k,
     ):
         """
         ARG ORG method: all convex-room images in parallel using prange.
@@ -428,13 +506,23 @@ if NUMBA_AVAILABLE:
                                     w2 = W_2_all[n, v, l, m, u]
                                     if w1 != 0.0 and w2 != 0.0:
                                         Xi = np.sqrt(
-                                            (2*n+1) * (2*v+1) * (2*l+1) / (4*np.pi)
+                                            (2 * n + 1)
+                                            * (2 * v + 1)
+                                            * (2 * l + 1)
+                                            / (4 * np.pi)
                                         )
-                                        Ylm = _sph_harm_numba(m - u, l, phi_x0, theta_x0)
+                                        Ylm = _sph_harm_numba(
+                                            m - u, l, phi_x0, theta_x0
+                                        )
                                         il = (1j) ** l
                                         for ki in range(K):
                                             local_sum[ki] += (
-                                                il * sphan2_all[l, ki] * Ylm * w1 * w2 * Xi
+                                                il
+                                                * sphan2_all[l, ki]
+                                                * Ylm
+                                                * w1
+                                                * w2
+                                                * Xi
                                             )
 
                             S_nv_mu_factor = 4.0 * np.pi * (1j) ** (v - n) * (-1.0) ** m
@@ -445,9 +533,12 @@ if NUMBA_AVAILABLE:
                                 S_nv_mu = S_nv_mu_factor * local_sum[ki]
                                 P_img[ki] += (
                                     atten_all[ki, img]
-                                    * C_nm_s_ARG[ki, n, m, img] * S_nv_mu
+                                    * C_nm_s_ARG[ki, n, m, img]
+                                    * S_nv_mu
                                     * C_vu_r[ki, v, c_r_idx_u]
-                                    * 1j / k[ki] * sign_u
+                                    * 1j
+                                    / k[ki]
+                                    * sign_u
                                 )
 
             P_all[img, :] = P_img
@@ -463,6 +554,7 @@ if NUMBA_AVAILABLE:
 # ============================================================================
 # Numba shoebox dispatchers
 # ============================================================================
+
 
 def _shoebox_images_are_compact(images):
     return images.get("storage") == "compact"
@@ -538,6 +630,94 @@ def _build_shoebox_attenuation_batch(params, A_batch, R_sI_r_batch):
         np.ascontiguousarray(np.asarray(params["impedance"], dtype=np.complex128)),
         int(params["angDepFlag"]),
     )
+
+
+def get_arg_wall_impedance(params, room=None):
+    """Return ARG wall impedance as (n_walls, n_bands) complex128."""
+    if "impedance" not in params:
+        raise KeyError("params must contain 'impedance'")
+
+    Z_S = np.asarray(params["impedance"], dtype=np.complex128)
+    if Z_S.ndim == 1:
+        Z_S = Z_S[:, None]
+
+    if (
+        room is not None
+        and Z_S.shape[0] != len(room.walls)
+        and Z_S.shape[1] == len(room.walls)
+    ):
+        Z_S = Z_S.T
+
+    return Z_S
+
+
+def _validate_arg_compact_geometry(wall_sequence, incidence_cos, n_walls):
+    if wall_sequence.ndim != 2 or incidence_cos.ndim != 2:
+        raise ValueError("wall_sequence and incidence_cos must both be 2D arrays")
+    if wall_sequence.shape != incidence_cos.shape:
+        raise ValueError(
+            "wall_sequence and incidence_cos shapes differ: "
+            f"{wall_sequence.shape} vs {incidence_cos.shape}"
+        )
+
+    if np.any(wall_sequence < -1):
+        bad = wall_sequence[wall_sequence < -1][0]
+        raise ValueError(f"wall_sequence contains invalid padding value {bad}")
+
+    if wall_sequence.shape[1] > 1:
+        pad_seen_before = np.concatenate(
+            [
+                np.zeros((wall_sequence.shape[0], 1), dtype=bool),
+                np.maximum.accumulate(wall_sequence[:, :-1] < 0, axis=1),
+            ],
+            axis=1,
+        )
+        if np.any((wall_sequence >= 0) & pad_seen_before):
+            raise ValueError("wall_sequence contains non-contiguous padding")
+
+    used = wall_sequence >= 0
+    if np.any(wall_sequence[used] >= n_walls):
+        bad = wall_sequence[used][wall_sequence[used] >= n_walls][0]
+        raise ValueError(f"wall_sequence contains invalid wall/material index {bad}")
+    if np.any(~np.isfinite(incidence_cos[used])):
+        raise ValueError("incidence_cos contains non-finite values for used walls")
+    if np.any((incidence_cos[used] < -1e-7) | (incidence_cos[used] > 1.0 + 1e-7)):
+        raise ValueError("incidence_cos values must be in [-1e-7, 1+1e-7]")
+
+    padding = wall_sequence < 0
+    if np.any(np.isfinite(incidence_cos[padding])):
+        raise ValueError("incidence_cos padding must be NaN")
+
+
+def _build_arg_attenuation_batch(params, geom):
+    """Build ARG attenuation from compact wall sequence and incidence cosines."""
+    wall_sequence = np.ascontiguousarray(
+        np.asarray(geom["wall_sequence"], dtype=np.int64)
+    )
+    incidence_cos = np.ascontiguousarray(
+        np.asarray(geom["incidence_cos"], dtype=np.float64)
+    )
+    Z_S = np.ascontiguousarray(get_arg_wall_impedance(params))
+    _validate_arg_compact_geometry(wall_sequence, incidence_cos, Z_S.shape[0])
+
+    if NUMBA_AVAILABLE:
+        atten = _numba_build_arg_attenuation_batch(
+            wall_sequence,
+            incidence_cos,
+            Z_S,
+        )
+    else:
+        n_images, max_order = wall_sequence.shape
+        atten = np.ones((n_images, Z_S.shape[1]), dtype=np.complex128)
+        for img in range(n_images):
+            for level in range(max_order):
+                wall_id = int(wall_sequence[img, level])
+                if wall_id < 0:
+                    break
+                zc = Z_S[wall_id, :] * incidence_cos[img, level]
+                atten[img, :] *= (zc - 1.0) / (zc + 1.0)
+
+    return atten.T.astype(np.complex64)
 
 
 def _run_numba_org_in_batches(params, A_all, R_sI_r_all, atten_all, Wigner):
@@ -652,6 +832,7 @@ def _run_numba_lc_matrix_in_batches(
             k_c,
         )
     return P
+
 
 def _numba_run_DEISM_ORG(params, images, Wigner):
     """ORG dispatcher using Numba."""
@@ -781,6 +962,7 @@ def _numba_run_DEISM_MIX(params, images, Wigner):
 # Numba ARG (convex) dispatchers
 # ============================================================================
 
+
 def _numba_run_DEISM_ARG_ORG(params, images, Wigner):
     """ARG ORG dispatcher using Numba."""
     if not NUMBA_AVAILABLE:
@@ -792,13 +974,14 @@ def _numba_run_DEISM_ARG_ORG(params, images, Wigner):
     k = params["waveNumbers"]
     R_sI_r_all = images["R_sI_r_all"]
     atten_all = images["atten_all"]
-    n_images = max(R_sI_r_all.shape)
+    n_images = R_sI_r_all.shape[1]
 
     if not params["silentMode"]:
         print(f"{n_images} images, ", end="")
 
     P = _numba_ARG_ORG_batch(
-        params["sourceOrder"], params["receiverOrder"],
+        params["sourceOrder"],
+        params["receiverOrder"],
         np.ascontiguousarray(params["C_nm_s_ARG"].astype(np.complex128)),
         np.ascontiguousarray(params["C_vu_r"].astype(np.complex128)),
         np.ascontiguousarray(atten_all.astype(np.complex128)),
@@ -825,7 +1008,7 @@ def _numba_run_DEISM_ARG_LC_matrix(params, images):
     k = params["waveNumbers"]
     R_sI_r_all = images["R_sI_r_all"]
     atten_all = images["atten_all"]
-    n_images = max(R_sI_r_all.shape)
+    n_images = R_sI_r_all.shape[1]
 
     if not params["silentMode"]:
         print(f"{n_images} images, ", end="")
@@ -872,7 +1055,8 @@ def _numba_run_DEISM_ARG_MIX(params, images, Wigner):
         C_nm_s_ARG_early = params["C_nm_s_ARG"][:, :, :, early_indices]
 
         P += _numba_ARG_ORG_batch(
-            params["sourceOrder"], params["receiverOrder"],
+            params["sourceOrder"],
+            params["receiverOrder"],
             np.ascontiguousarray(C_nm_s_ARG_early.astype(np.complex128)),
             np.ascontiguousarray(params["C_vu_r"].astype(np.complex128)),
             np.ascontiguousarray(atten_all_early.astype(np.complex128)),
@@ -892,7 +1076,9 @@ def _numba_run_DEISM_ARG_MIX(params, images, Wigner):
             np.ascontiguousarray(params["m_all"].astype(np.int64)),
             np.ascontiguousarray(params["v_all"].astype(np.int64)),
             np.ascontiguousarray(params["u_all"].astype(np.int64)),
-            np.ascontiguousarray(params["C_nm_s_ARG_vec"][:, :, late_indices].astype(np.complex128)),
+            np.ascontiguousarray(
+                params["C_nm_s_ARG_vec"][:, :, late_indices].astype(np.complex128)
+            ),
             np.ascontiguousarray(params["C_vu_r_vec"].astype(np.complex128)),
             np.ascontiguousarray(R_sI_r_all_late.astype(np.float64)),
             np.ascontiguousarray(atten_all_late.astype(np.complex128)),
@@ -908,6 +1094,7 @@ def _numba_run_DEISM_ARG_MIX(params, images, Wigner):
 # ============================================================================
 # Public API
 # ============================================================================
+
 
 def run_DEISM_numba(params):
     """Run DEISM shoebox with Numba backend."""
@@ -942,6 +1129,7 @@ def run_DEISM_ARG_numba(params):
 try:
     import ray
     import psutil
+
     RAY_AVAILABLE = True
 except ImportError:
     RAY_AVAILABLE = False
@@ -970,19 +1158,36 @@ if RAY_AVAILABLE:
                         local_sum = np.zeros(k.size, dtype="complex")
                         for l in range(np.abs(n - v), n + v + 1):
                             if np.abs(u - m_mod) <= l:
-                                if W_1_all[n, v, l] != 0 and W_2_all[n, v, l, m_mod, u] != 0:
+                                if (
+                                    W_1_all[n, v, l] != 0
+                                    and W_2_all[n, v, l, m_mod, u] != 0
+                                ):
                                     Xi = np.sqrt(
-                                        (2 * n + 1) * (2 * v + 1) * (2 * l + 1) / (4 * np.pi)
+                                        (2 * n + 1)
+                                        * (2 * v + 1)
+                                        * (2 * l + 1)
+                                        / (4 * np.pi)
                                     )
                                     local_sum += (
-                                        (1j) ** l * sphan2_all[l, :]
-                                        * scy.sph_harm(m_mod - u, l, phi_x0, theta_x0)
-                                        * W_1_all[n, v, l] * W_2_all[n, v, l, m_mod, u] * Xi
+                                        (1j) ** l
+                                        * sphan2_all[l, :]
+                                        * sph_harm(m_mod - u, l, phi_x0, theta_x0)
+                                        * W_1_all[n, v, l]
+                                        * W_2_all[n, v, l, m_mod, u]
+                                        * Xi
                                     )
-                        S_nv_mu = 4 * np.pi * (1j) ** (v - n) * (-1.0) ** m_mod * local_sum
+                        S_nv_mu = (
+                            4 * np.pi * (1j) ** (v - n) * (-1.0) ** m_mod * local_sum
+                        )
                         P += (
-                            mirror_effect * atten * C_nm_s[:, n, m] * S_nv_mu
-                            * C_vu_r[:, v, -u] * 1j / k * (-1.0) ** u
+                            mirror_effect
+                            * atten
+                            * C_nm_s[:, n, m]
+                            * S_nv_mu
+                            * C_vu_r[:, v, -u]
+                            * 1j
+                            / k
+                            * (-1.0) ** u
                         )
         return P
 
@@ -994,19 +1199,24 @@ if RAY_AVAILABLE:
         [phi_R_s_rI, theta_R_s_rI, r_R_s_rI] = R_s_rI
         [phi_R_r_sI, theta_R_r_sI, r_R_r_sI] = R_r_sI
         P = np.zeros([k.size], dtype="complex")
-        factor = -1 * atten * 4 * np.pi / k * np.exp(-(1j) * k * r_R_s_rI) / k / r_R_s_rI
+        factor = (
+            -1 * atten * 4 * np.pi / k * np.exp(-(1j) * k * r_R_s_rI) / k / r_R_s_rI
+        )
 
         for n in range(N_src_dir + 1):
             for m in range(-n, n + 1):
                 factor_nm = (
-                    (1j) ** (-n) * (-1.0) ** n * C_nm_s[:, n, m]
-                    * scy.sph_harm(m, n, phi_R_s_rI, theta_R_s_rI)
+                    (1j) ** (-n)
+                    * (-1.0) ** n
+                    * C_nm_s[:, n, m]
+                    * sph_harm(m, n, phi_R_s_rI, theta_R_s_rI)
                 )
                 for v in range(V_rec_dir + 1):
                     for u in range(-1 * v, v + 1):
                         factor_vu = (
-                            (1j) ** v * C_vu_r[:, v, u]
-                            * scy.sph_harm(u, v, phi_R_r_sI, theta_R_r_sI)
+                            (1j) ** v
+                            * C_vu_r[:, v, u]
+                            * sph_harm(u, v, phi_R_r_sI, theta_R_r_sI)
                         )
                         P += factor_nm * factor_vu
         return P * factor
@@ -1016,14 +1226,21 @@ if RAY_AVAILABLE:
         n_all, m_all, v_all, u_all, C_nm_s_vec, C_vu_r_vec, R_s_rI, R_r_sI, atten, k
     ):
         """DEISM LC matrix form: single image source (shoebox), Ray worker."""
-        Y_s_rI = scy.sph_harm(m_all, n_all, R_s_rI[0], R_s_rI[1])
+        Y_s_rI = sph_harm(m_all, n_all, R_s_rI[0], R_s_rI[1])
         source_vec = ((1j) ** n_all * C_nm_s_vec) @ Y_s_rI
-        Y_r_sI = scy.sph_harm(u_all, v_all, R_r_sI[0], R_r_sI[1])
+        Y_r_sI = sph_harm(u_all, v_all, R_r_sI[0], R_r_sI[1])
         receiver_vec = ((1j) ** v_all * C_vu_r_vec) @ Y_r_sI
         return (
-            -1 * atten * 4 * np.pi / k
-            * np.exp(-(1j) * k * R_s_rI[2]) / k / R_s_rI[2]
-            * source_vec * receiver_vec
+            -1
+            * atten
+            * 4
+            * np.pi
+            / k
+            * np.exp(-(1j) * k * R_s_rI[2])
+            / k
+            / R_s_rI[2]
+            * source_vec
+            * receiver_vec
         )
 
     @ray.remote
@@ -1046,19 +1263,33 @@ if RAY_AVAILABLE:
                         local_sum = np.zeros(k.size, dtype="complex")
                         for l in range(np.abs(n - v), n + v + 1):
                             if np.abs(u - m) <= l:
-                                if W_1_all[n, v, l] != 0 and W_2_all[n, v, l, m, u] != 0:
+                                if (
+                                    W_1_all[n, v, l] != 0
+                                    and W_2_all[n, v, l, m, u] != 0
+                                ):
                                     Xi = np.sqrt(
-                                        (2 * n + 1) * (2 * v + 1) * (2 * l + 1) / (4 * np.pi)
+                                        (2 * n + 1)
+                                        * (2 * v + 1)
+                                        * (2 * l + 1)
+                                        / (4 * np.pi)
                                     )
                                     local_sum += (
-                                        (1j) ** l * sphan2_all[l, :]
-                                        * scy.sph_harm(m - u, l, phi_x0, theta_x0)
-                                        * W_1_all[n, v, l] * W_2_all[n, v, l, m, u] * Xi
+                                        (1j) ** l
+                                        * sphan2_all[l, :]
+                                        * sph_harm(m - u, l, phi_x0, theta_x0)
+                                        * W_1_all[n, v, l]
+                                        * W_2_all[n, v, l, m, u]
+                                        * Xi
                                     )
                         S_nv_mu = 4 * np.pi * (1j) ** (v - n) * (-1.0) ** m * local_sum
                         P += (
-                            atten * C_nm_s[:, n, m] * S_nv_mu
-                            * C_vu_r[:, v, -u] * 1j / k * (-1.0) ** u
+                            atten
+                            * C_nm_s[:, n, m]
+                            * S_nv_mu
+                            * C_vu_r[:, v, -u]
+                            * 1j
+                            / k
+                            * (-1.0) ** u
                         )
         return P
 
@@ -1067,18 +1298,26 @@ if RAY_AVAILABLE:
         n_all, m_all, v_all, u_all, C_nm_s_vec, C_vu_r_vec, R_sI_r, atten, k
     ):
         """DEISM-ARG LC matrix form: single image source (convex), Ray worker."""
-        Y_sI_r = scy.sph_harm(m_all, n_all, R_sI_r[0], R_sI_r[1])
+        Y_sI_r = sph_harm(m_all, n_all, R_sI_r[0], R_sI_r[1])
         source_vec = ((1j) ** (-n_all) * (-1.0) ** n_all * C_nm_s_vec) @ Y_sI_r
-        Y_sI_r = scy.sph_harm(u_all, v_all, R_sI_r[0], R_sI_r[1])
+        Y_sI_r = sph_harm(u_all, v_all, R_sI_r[0], R_sI_r[1])
         receiver_vec = ((1j) ** v_all * (-1.0) ** v_all * C_vu_r_vec) @ Y_sI_r
         return (
-            -1 * atten * 4 * np.pi / k
-            * np.exp(-(1j) * k * R_sI_r[2]) / k / R_sI_r[2]
-            * source_vec * receiver_vec
+            -1
+            * atten
+            * 4
+            * np.pi
+            / k
+            * np.exp(-(1j) * k * R_sI_r[2])
+            / k
+            / R_sI_r[2]
+            * source_vec
+            * receiver_vec
         )
 
 
 # --- Ray shoebox dispatchers ---
+
 
 def _ray_run_DEISM_ORG(params, images, Wigner):
     """ORG dispatcher using Ray."""
@@ -1116,8 +1355,16 @@ def _ray_run_DEISM_ORG(params, images, Wigner):
         end_ind = min((n + 1) * batch_size, n_images)
         result_refs = [
             _ray_calc_ORG_single.remote(
-                N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id,
-                A[i], atten_all[i], R_sI_r_all[i], W_1_all_id, W_2_all_id, k_id,
+                N_src_dir_id,
+                V_rec_dir_id,
+                C_nm_s_id,
+                C_vu_r_id,
+                A[i],
+                atten_all[i],
+                R_sI_r_all[i],
+                W_1_all_id,
+                W_2_all_id,
+                k_id,
             )
             for i in range(start_ind, end_ind)
         ]
@@ -1168,8 +1415,14 @@ def _ray_run_DEISM_LC(params, images):
         end_ind = min((n + 1) * batch_size, n_images)
         result_refs = [
             _ray_calc_LC_single.remote(
-                N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id,
-                R_s_rI_all[i], R_r_sI_all[i], atten_all[i], k_id,
+                N_src_dir_id,
+                V_rec_dir_id,
+                C_nm_s_id,
+                C_vu_r_id,
+                R_s_rI_all[i],
+                R_r_sI_all[i],
+                atten_all[i],
+                k_id,
             )
             for i in range(start_ind, end_ind)
         ]
@@ -1226,9 +1479,16 @@ def _ray_run_DEISM_LC_matrix(params, images):
             continue
         result_refs = [
             _ray_calc_LC_matrix_single.remote(
-                n_all_id, m_all_id, v_all_id, u_all_id,
-                C_nm_s_vec_id, C_vu_r_vec_id,
-                R_s_rI_all[i], R_r_sI_all[i], atten_all[i], k_id,
+                n_all_id,
+                m_all_id,
+                v_all_id,
+                u_all_id,
+                C_nm_s_vec_id,
+                C_vu_r_vec_id,
+                R_s_rI_all[i],
+                R_r_sI_all[i],
+                atten_all[i],
+                k_id,
             )
             for i in range(start_ind, end_ind)
         ]
@@ -1298,9 +1558,16 @@ def _ray_run_DEISM_MIX(params, images, Wigner):
     # Early (ORG)
     result_refs = [
         _ray_calc_ORG_single.remote(
-            N_src_dir_id, V_rec_dir_id, C_nm_s_id, C_vu_r_id,
-            A_early[i], atten_all_early[i], R_sI_r_all_early[i],
-            W_1_all_id, W_2_all_id, k_id,
+            N_src_dir_id,
+            V_rec_dir_id,
+            C_nm_s_id,
+            C_vu_r_id,
+            A_early[i],
+            atten_all_early[i],
+            R_sI_r_all_early[i],
+            W_1_all_id,
+            W_2_all_id,
+            k_id,
         )
         for i in range(len(A_early))
     ]
@@ -1315,9 +1582,16 @@ def _ray_run_DEISM_MIX(params, images, Wigner):
         end_ind = min((n + 1) * batch_size, len(A_late))
         result_refs = [
             _ray_calc_LC_matrix_single.remote(
-                n_all_id, m_all_id, v_all_id, u_all_id,
-                C_nm_s_vec_id, C_vu_r_vec_id,
-                R_s_rI_all_late[i], R_r_sI_all_late[i], atten_all_late[i], k_id,
+                n_all_id,
+                m_all_id,
+                v_all_id,
+                u_all_id,
+                C_nm_s_vec_id,
+                C_vu_r_vec_id,
+                R_s_rI_all_late[i],
+                R_r_sI_all_late[i],
+                atten_all_late[i],
+                k_id,
             )
             for i in range(start_ind, end_ind)
         ]
@@ -1337,6 +1611,7 @@ def _ray_run_DEISM_MIX(params, images, Wigner):
 
 
 # --- Ray ARG (convex) dispatchers ---
+
 
 def _ray_run_DEISM_ARG_ORG(params, images, Wigner):
     """ARG ORG dispatcher using Ray."""
@@ -1363,7 +1638,7 @@ def _ray_run_DEISM_ARG_ORG(params, images, Wigner):
     k_id = ray.put(k)
 
     P = np.zeros(k.size, dtype="complex")
-    n_images = max(R_sI_r_all.shape)
+    n_images = R_sI_r_all.shape[1]
     if not params["silentMode"]:
         print(f"{n_images} images, ", end="")
 
@@ -1372,8 +1647,15 @@ def _ray_run_DEISM_ARG_ORG(params, images, Wigner):
         end_ind = min((n + 1) * batch_size, n_images)
         result_refs = [
             _ray_calc_ARG_ORG_single.remote(
-                N_src_dir_id, V_rec_dir_id, C_nm_s_ARG[:, :, :, i], C_vu_r_id,
-                atten_all[:, i], R_sI_r_all[:, i], W_1_all_id, W_2_all_id, k_id,
+                N_src_dir_id,
+                V_rec_dir_id,
+                C_nm_s_ARG[:, :, :, i],
+                C_vu_r_id,
+                atten_all[:, i],
+                R_sI_r_all[:, i],
+                W_1_all_id,
+                W_2_all_id,
+                k_id,
             )
             for i in range(start_ind, end_ind)
         ]
@@ -1416,7 +1698,7 @@ def _ray_run_DEISM_ARG_LC_matrix(params, images):
     k_id = ray.put(k)
 
     P = np.zeros(k.size, dtype="complex")
-    n_images = max(R_sI_r_all.shape)
+    n_images = R_sI_r_all.shape[1]
     if not params["silentMode"]:
         print(f"{n_images} images, ", end="")
 
@@ -1425,9 +1707,15 @@ def _ray_run_DEISM_ARG_LC_matrix(params, images):
         end_ind = min((n + 1) * batch_size, n_images)
         result_refs = [
             _ray_calc_ARG_LC_matrix_single.remote(
-                n_all_id, m_all_id, v_all_id, u_all_id,
-                C_nm_s_ARG_vec[:, :, i], C_vu_r_vec_id,
-                R_sI_r_all[:, i], atten_all[:, i], k_id,
+                n_all_id,
+                m_all_id,
+                v_all_id,
+                u_all_id,
+                C_nm_s_ARG_vec[:, :, i],
+                C_vu_r_vec_id,
+                R_sI_r_all[:, i],
+                atten_all[:, i],
+                k_id,
             )
             for i in range(start_ind, end_ind)
         ]
@@ -1491,8 +1779,15 @@ def _ray_run_DEISM_ARG_MIX(params, images, Wigner):
     # Early (ORG)
     result_refs = [
         _ray_calc_ARG_ORG_single.remote(
-            N_src_dir_id, V_rec_dir_id, C_nm_s_ARG[:, :, :, idx], C_vu_r_id,
-            atten_all[:, idx], R_sI_r_all[:, idx], W_1_all_id, W_2_all_id, k_id,
+            N_src_dir_id,
+            V_rec_dir_id,
+            C_nm_s_ARG[:, :, :, idx],
+            C_vu_r_id,
+            atten_all[:, idx],
+            R_sI_r_all[:, idx],
+            W_1_all_id,
+            W_2_all_id,
+            k_id,
         )
         for idx in early_indices
     ]
@@ -1508,9 +1803,15 @@ def _ray_run_DEISM_ARG_MIX(params, images, Wigner):
         end_ind = min((n + 1) * batch_size, len_late)
         result_refs = [
             _ray_calc_ARG_LC_matrix_single.remote(
-                n_all_id, m_all_id, v_all_id, u_all_id,
-                C_nm_s_ARG_vec[:, :, late_indices[i]], C_vu_r_vec_id,
-                R_sI_r_all[:, late_indices[i]], atten_all[:, late_indices[i]], k_id,
+                n_all_id,
+                m_all_id,
+                v_all_id,
+                u_all_id,
+                C_nm_s_ARG_vec[:, :, late_indices[i]],
+                C_vu_r_vec_id,
+                R_sI_r_all[:, late_indices[i]],
+                atten_all[:, late_indices[i]],
+                k_id,
             )
             for i in range(start_ind, end_ind)
         ]
@@ -1530,14 +1831,19 @@ def _ray_run_DEISM_ARG_MIX(params, images, Wigner):
 
 # --- Ray public entry points ---
 
+
 def run_DEISM_ray(params):
     """Run DEISM shoebox with Ray backend."""
     if not RAY_AVAILABLE:
-        raise ImportError("ray is required for the ray backend. Install with: pip install ray")
+        raise ImportError(
+            "ray is required for the ray backend. Install with: pip install ray"
+        )
     if _shoebox_images_are_compact(params["images"]):
         raise NotImplementedError(
-            "Ray shoebox backend does not support compact image storage. "
-            "Set shoeboxCompactImages=0 or use the default Numba backend."
+            "Ray shoebox backend does not support compact image storage, which "
+            "is the default. Use the Numba backend (run_DEISM), which is faster "
+            "and is the supported path, or set shoeboxCompactImages=0 before "
+            "generating images to fall back to materialized attenuation."
         )
     method = params["DEISM_method"]
     if method == "ORG":
@@ -1553,7 +1859,9 @@ def run_DEISM_ray(params):
 def run_DEISM_ARG_ray(params):
     """Run DEISM-ARG convex with Ray backend."""
     if not RAY_AVAILABLE:
-        raise ImportError("ray is required for the ray backend. Install with: pip install ray")
+        raise ImportError(
+            "ray is required for the ray backend. Install with: pip install ray"
+        )
     method = params["DEISM_method"]
     if method == "ORG":
         return _ray_run_DEISM_ARG_ORG(params, params["images"], params["Wigner"])
@@ -1568,6 +1876,7 @@ def run_DEISM_ARG_ray(params):
 # ============================================================================
 # Unified public API (default: Numba)
 # ============================================================================
+
 
 def run_DEISM(params):
     """Run DEISM shoebox computation. Uses Numba backend (default)."""

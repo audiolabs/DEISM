@@ -7,10 +7,10 @@ def test_deism_arg_simulation():
     """Test DEISM-ARG simulation with impedance update."""
     deism = DEISM("RIR", "convex")
     # Testing impedance update
-    # Example of room volumn and roomAreas
-    roomVolumn = 36
+    # Example of room volume and roomAreas
+    roomVolume = 36
     roomAreas = np.array([9, 10, 9, 10, 12, np.sqrt(10) * 4])
-    deism.update_room(roomVolumn=roomVolumn, roomAreas=roomAreas)
+    deism.update_room(roomVolume=roomVolume, roomAreas=roomAreas)
     deism.update_wall_materials()
     deism.update_wall_materials(
         np.array([[100, 100, 100, 100, 100, 100], [100, 100, 100, 100, 100, 100]]).T,

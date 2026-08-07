@@ -1,12 +1,33 @@
 [build-system]
 # Minimum requirements for the build system to execute.
-requires = ["setuptools", "wheel", "numpy>=1.13.0", "Cython", "pybind11>=2.2", "setuptools-scm"]  # PEP 508 specifications.
+# pybind11 supplies the extension headers; setuptools-scm is the version
+# plugin. numpy and Cython were listed but never used at build time --
+# setup.py imports neither, and the only .pyx rules are commented out.
+requires = ["setuptools", "wheel", "pybind11>=2.2", "setuptools-scm"]  # PEP 508 specifications.
 
 build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
+# Both directories hold real tests. Listing only deism/tests meant a bare
+# `pytest` -- which is what CI runs -- collected a single test and ignored
+# everything under tests/.
 testpaths = [
-  "deism/tests"  # Path to your test directory
+  "tests",
+  "deism/tests",
+]
+markers = [
+  "slow: long-running tests, excluded from the default run (use -m slow)",
+  "examples: end-to-end example smoke tests, run locally (use -m examples)",
+  "integration: downstream-consumer coupling tests, run locally (use -m integration)",
+]
+# The JASA figure examples take ~70s each; keep the default run quick.
+addopts = "-m 'not slow'"
+filterwarnings = [
+  # A test that `return`s its verdict instead of asserting it always passes --
+  # pytest discards the value. Two files' worth of checks were silently
+  # no-ops before this was made fatal. pytest will error on this by default
+  # in a future release; adopt it early.
+  "error::pytest.PytestReturnNotNoneWarning",
 ]
 
 [project]
@@ -18,7 +39,7 @@ license = {file = "LICENSE"}
 authors = [
     { name = "Zeyu Xu", email = "zeyu.xu@audiolabs-erlangen.de" },
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -30,12 +51,46 @@ dependencies = [
     "sympy",
     "psutil",
     "matplotlib",
-    "cython",
     "pybind11>=2.2",
     "ray",
     "numba",
     "sound-field-analysis",
     "gmsh",
 ]
+[project.optional-dependencies]
+# Only needed by examples/deism_arg_pra_compare.py, which cross-checks the
+# DEISM-ARG image sources against pyroomacoustics.
+examples = ["pyroomacoustics"]
+
 [project.urls]
 Homepage = "https://github.com/audiolabs/DEISM"
+
+[tool.cibuildwheel]
+# Keep the published wheel set explicit even when Python or cibuildwheel adds
+# new default build identifiers.
+build = ["cp310-*", "cp311-*", "cp312-*"]
+skip = ["*-musllinux_*"]
+test-requires = ["pytest"]
+test-sources = [
+  "deism/tests/test_deism_arg.py",
+  "deism/tests/test_native_components.py",
+]
+test-command = "python -m pytest deism/tests/test_deism_arg.py deism/tests/test_native_components.py"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+manylinux-x86_64-image = "manylinux_2_28"
+before-all = "dnf install -y mesa-libGLU libglvnd-glx"
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+
+[tool.cibuildwheel.macos]
+archs = ["native"]
+
+[tool.black]
+target-version = ["py311"]
+extend-exclude = '''
+# vendored third-party sources
+deism/libroom_src/ext
+'''

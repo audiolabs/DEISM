@@ -278,6 +278,19 @@ int Room_deism<D>::image_source_model(const Vectorf<D> &source_location)
   while (visible_sources.size() > 0)
     visible_sources.pop();
 
+  if (compact_mode)
+  {
+    // Incidence descriptors are receiver-dependent; per-image storage is only
+    // well-defined for a single receiver. The DEISM-ARG wrapper installs
+    // exactly one microphone per run.
+    if (microphones.size() != 1)
+      throw std::runtime_error(
+          "compact ARG mode requires exactly one microphone");
+    if (is_shoebox)
+      throw std::runtime_error(
+          "compact ARG mode is not supported for shoebox rooms");
+  }
+
   if (is_shoebox)
   {
     return image_source_shoebox(source_location);
@@ -300,45 +313,59 @@ template<size_t D>
 int Room_deism<D>::fill_sources()
 {
   int n_sources = visible_sources.size();
+  int max_levels = ism_order > 0 ? ism_order : 0;
 
-
-  // Create linear arrays to store the image sources
-  if (n_sources > 0)
+  // Clear/resize EVERY output unconditionally: a run with zero visible
+  // images, or a reused engine, must never expose stale data from a previous
+  // run (reflection_matrix previously accumulated across runs).
+  reflection_matrix.clear();
+  sources.resize(D, n_sources);
+  orders.resize(n_sources);
+  gen_walls.resize(n_sources);
+  attenuations.resize(compact_mode ? 0 : n_bands, n_sources);
+  visible_mics.resize(microphones.size(), n_sources);
+  // Descriptor rows exist only in compact mode (legacy pays nothing).
+  // Padding conventions match the Python validator: -1 / NaN. Direct-path
+  // rows (order 0) stay fully padded.
+  wall_sequence.resize(compact_mode ? n_sources : 0, max_levels);
+  incidence_cos.resize(compact_mode ? n_sources : 0, max_levels);
+  if (compact_mode)
   {
-    // resize all the arrays
-    sources.resize(D, n_sources);
-    orders.resize(n_sources);
-    gen_walls.resize(n_sources);
-    attenuations.resize(n_bands, n_sources);
-    visible_mics.resize(microphones.size(), n_sources);
-    // unlike the Eigen arrays above, reflection_matrix is only ever grown via
-    // insert(), so it must be cleared here or repeated calls (e.g. moving
-    // source/receiver) accumulate stale entries from prior calls
-    reflection_matrix.clear();
+    wall_sequence.setConstant(-1);
+    incidence_cos.setConstant(std::numeric_limits<float>::quiet_NaN());
+  }
 
-    for (int i = n_sources - 1 ; i >= 0 ; i--)
-    {
-      ImageSource<D> &top = visible_sources.top();  // sample top of stack
+  for (int i = n_sources - 1 ; i >= 0 ; i--)
+  {
+    ImageSource<D> &top = visible_sources.top();  // sample top of stack
 
-      // fill the arrays
-      sources.col(i) = top.loc;
-      gen_walls.coeffRef(i) = top.gen_wall;
-      orders.coeffRef(i) = top.order;
+    sources.col(i) = top.loc;
+    gen_walls.coeffRef(i) = top.gen_wall;
+    orders.coeffRef(i) = top.order;
+    if (!compact_mode)
       attenuations.col(i) = top.attenuation;
-      visible_mics.col(i) = top.visible_mics;
+    visible_mics.col(i) = top.visible_mics;
 
-
-
-      /************************************************************************/
-      // insert the reflection matrix, but be aware, the size of this->reflection_matrix
-      // is n_source, each element within this std::vector is a DxD reflection matrix.
-      reflection_matrix.insert(reflection_matrix.begin(),top.reflection_matrix);
-      /************************************************************************/
-
-
-
-      visible_sources.pop();  // unstack
+    if (compact_mode)
+    {
+      int n_levels = static_cast<int>(top.wall_seq.size());
+      if (n_levels != top.order || n_levels > max_levels)
+        throw std::runtime_error(
+            "compact ARG: descriptor length mismatch in fill_sources");
+      for (int lv = 0 ; lv < n_levels ; lv++)
+      {
+        wall_sequence(i, lv) = top.wall_seq[lv];
+        incidence_cos(i, lv) = top.inc_cos[lv];
+      }
     }
+
+    /************************************************************************/
+    // insert the reflection matrix, but be aware, the size of this->reflection_matrix
+    // is n_source, each element within this std::vector is a DxD reflection matrix.
+    reflection_matrix.insert(reflection_matrix.begin(),top.reflection_matrix);
+    /************************************************************************/
+
+    visible_sources.pop();  // unstack
   }
 
   return n_sources;
@@ -373,9 +400,20 @@ void Room_deism<D>::image_sources_dfs(ImageSource<D> &is, int max_order)
       is.visible_mics.setZero();
     }
     if (any_visible){
-      // is_visible用来保存当前is对象对接收器是否可见
       is.visible_mics.coeffRef(m) = is_visible;
-      is.attenuation=get_image_attenuation(is,temp_list_intercep);
+      // Both calls are gated on is_visible: the legacy code called
+      // get_image_attenuation even for a NON-visible mic once any earlier mic
+      // was visible, popping the front of a partial/empty segment list (UB
+      // with >1 microphone; single-mic runs never hit it). Do not preserve
+      // that. In compact mode descriptors replace attenuation entirely and
+      // the single-mic guard in image_source_model makes the per-mic
+      // overwrite semantics unambiguous.
+      if (is_visible){
+        if (compact_mode)
+          store_compact_path(is, temp_list_intercep);
+        else
+          is.attenuation = get_image_attenuation(is, temp_list_intercep);
+      }
     }
       
   }
@@ -480,6 +518,52 @@ std::pair<bool,std::vector<Vectorf<D>>> Room_deism<D>::is_visible_dfs(
   return std::make_pair<bool,std::vector<Vectorf<D>>>(true,std::move(temp_list_intercep_p_to_is));
 }
 
+template<size_t D>
+void Room_deism<D>::store_compact_path(
+    ImageSource<D> &is,
+    const std::vector<Vectorf<D>> &list_intercep_p_to_is)
+{
+  /*
+   * Mirror of Room_deism_python.get_compact_path: walk the receiver->image
+   * intersection segments together with the parent chain (still alive on the
+   * recursion stack) and record (generating wall index, |cos(theta)|) per
+   * reflection level. Takes the segment list by const& — unlike
+   * get_image_attenuation it never mutates it. Invariant violations indicate
+   * internal inconsistency and throw rather than pad or truncate.
+   */
+  is.wall_seq.clear();
+  is.inc_cos.clear();
+  if (is.order > ism_order)
+    throw std::runtime_error(
+        "compact ARG: image order exceeds configured ism_order");
+  if (static_cast<int>(list_intercep_p_to_is.size()) != is.order)
+    throw std::runtime_error(
+        "compact ARG: segment count does not match image order");
+  ImageSource<D> *node = &is;
+  for (auto seg = list_intercep_p_to_is.begin();
+       seg != list_intercep_p_to_is.end(); ++seg)
+  {
+    if (node == nullptr || node->gen_wall < 0)
+      throw std::runtime_error(
+          "compact ARG: parent chain shorter than segment list");
+    if (node->gen_wall >= static_cast<int>(walls.size()))
+      throw std::runtime_error("compact ARG: wall index out of range");
+    const Wall_deism<D> &wall = walls[node->gen_wall];
+    float nrm = seg->norm();
+    if (nrm <= libroom_eps)
+      throw std::runtime_error(
+          "compact ARG: zero-length reflection segment");
+    float cos_theta = std::abs(seg->dot(wall.normal)) / nrm;
+    if (!std::isfinite(cos_theta))
+      throw std::runtime_error("compact ARG: non-finite incidence cosine");
+    if (cos_theta > 1.f)
+      cos_theta = 1.f;
+    is.wall_seq.push_back(node->gen_wall);
+    is.inc_cos.push_back(cos_theta);
+    node = node->parent;
+  }
+}
+
 template <size_t D>
 Eigen::ArrayXf Room_deism<D>::get_image_attenuation(ImageSource<D>& old_is,
   std::vector<Vectorf<D>>& list_intercep_p_to_is){
@@ -489,7 +573,7 @@ Eigen::ArrayXf Room_deism<D>::get_image_attenuation(ImageSource<D>& old_is,
     // gen_wall means which wall generates this old_is?
     int wall_id=old_is.gen_wall;
     // float attenuationOfWall=1.0f;
-    // since the impedence is array-like, so attenuationOfWall should be array-like 
+    // since the impedance is array-like, so attenuationOfWall should be array-like 
     Eigen::ArrayXf attenuationOfWall=Eigen::ArrayXf::Ones(1);
     if(wall_id>=0){
       Wall_deism<D> oneWall=walls[wall_id];

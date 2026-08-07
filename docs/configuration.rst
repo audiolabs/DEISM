@@ -108,7 +108,8 @@ important mappings are:
      - Controls angle-dependent reflection handling
    * - ``Reflections.maxReflectionOrder``
      - ``maxReflOrder``
-     - Reflection-order limit
+     - Reflection-order limit; required, non-negative integer (0 = direct
+       sound only). Omitting it raises an error.
    * - ``Positions.source`` / ``Positions.receiver``
      - ``posSource`` / ``posReceiver``
      - Cartesian positions
@@ -173,6 +174,11 @@ Shoebox
 
 - ``Dimensions`` uses ``length``, ``width``, and ``height``.
 - ``update_room()`` derives room volume and wall areas automatically.
+- Compact image storage is selected programmatically, not from YAML:
+  ``params["shoeboxCompactImages"]`` (default ``1``) omits the materialized
+  attenuation array and rebuilds attenuation inside the solver. Set it to
+  ``0`` when reading ``images["atten_all"]`` directly. See the compact image
+  storage section of the README.
 
 Convex
 ~~~~~~
@@ -182,3 +188,9 @@ Convex
   example script chooses to rotate the room.
 - Convex-room geometry and reflection-path state is used later by ARG
   directivity setup, so update order matters more than in the shoebox case.
+- The compact ARG image backend is selected programmatically, not from YAML:
+  ``params["convexCompactImages"]`` (default ``1``) selects compact mode and
+  ``params["convexCompactEngine"]`` (default ``"cpp"``) chooses the producer.
+  The loader builds ``params`` from an explicit list of YAML keys, so adding
+  these names to a configuration file has no effect. See the compact image
+  storage section of the README.
