@@ -215,6 +215,10 @@ DEISM selects its default YAML configuration from the pair `(mode, roomtype)`:
 | `RTF` | `convex` | `examples/configSingleParam_ARG_RTF.yml` |
 | `RIR` | `convex` | `examples/configSingleParam_ARG_RIR.yml` |
 
+These files are also bundled with installed wheels and source distributions.
+Repository-local files retain precedence, while an installed package falls
+back to its bundled defaults when invoked from another working directory.
+
 ## Workflow order
 
 Shoebox workflow:

@@ -233,7 +233,13 @@ setup_kwargs = dict(
     name="deism",
     version=__version__,
     # packages=find_packages(),
-    packages=["deism"],
+    # Keep the example YAML files as the single source of truth while exposing
+    # them from installed distributions through the internal deism.examples
+    # resource package. The small Python examples are intentionally shipped;
+    # examples/data remains excluded from package data and MANIFEST.in.
+    packages=["deism", "deism.examples"],
+    package_dir={"deism.examples": "examples"},
+    package_data={"deism.examples": ["configSingleParam*.yml"]},
     description="An image source-based method used to simulate room transfer functions for arbitrary room shapes.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
@@ -248,10 +254,6 @@ setup_kwargs = dict(
     # Wheels need only the Python modules and compiled extensions. Native
     # sources are included in sdists explicitly by MANIFEST.in.
     include_package_data=False,
-    # Necessary to keep the source files
-    # package_data={"DEISM": ["*.pxd", "*.pyx", "data/materials.json"]},
-    # here controls where the pyd shared lib will be copied.
-    # package_dir={"": os.path.join(os.getcwd(), "deism")},
     python_requires=">=3.10",
     cmdclass={
         "build_ext": BuildExt,

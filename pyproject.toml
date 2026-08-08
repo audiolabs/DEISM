@@ -74,10 +74,6 @@ test-requires = ["pytest"]
 test-sources = [
   "deism/tests/test_deism_arg.py",
   "deism/tests/test_native_components.py",
-  # readYaml() resolves default configs against ./examples, so the wheel test
-  # directory needs the config the convex-room test loads. Copy the file, not
-  # the directory -- examples/data is ~186 MB.
-  "examples/configSingleParam_ARG_RIR.yml",
 ]
 test-command = "python -m pytest deism/tests/test_deism_arg.py deism/tests/test_native_components.py"
 

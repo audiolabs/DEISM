@@ -47,5 +47,8 @@ changelog; update it when cutting a release.
   systems, on both pull requests and pushes to ``main``.
 - Release artifacts are built and tested with cibuildwheel, aggregated into a
   single validated publish job, and rehearsed without upload for prereleases.
+- The four default YAML configurations under ``examples/`` are bundled as
+  package resources, so an installed wheel or sdist works outside a repository
+  checkout while repository-local configurations retain precedence.
 - The conda development environment (``deism_env.yml``) moved to Python 3.12;
   the stale Python 3.9 lock file ``deism_env_exact.yml`` was removed.

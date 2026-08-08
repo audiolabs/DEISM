@@ -1,10 +1,22 @@
-import fnmatch
+from importlib import resources
+from pathlib import Path
+
 import yaml
 import argparse
 import os
 import sys
 import scipy.io as sio
 import numpy as np
+
+
+_DEFAULT_CONFIG_NAMES = frozenset(
+    {
+        "configSingleParam_RTF.yml",
+        "configSingleParam_RIR.yml",
+        "configSingleParam_ARG_RTF.yml",
+        "configSingleParam_ARG_RIR.yml",
+    }
+)
 
 
 class ConflictChecks:
@@ -388,38 +400,72 @@ def detect_conflicts(params):
 
 
 def readYaml(filePath):
-    """
-    This function reads the yaml file and returns a dictionary with the same structure as the yaml file
-    inputs:
-    - filePath: the address of the yaml file to be read, including the file name with the suffix
-    outputs:
-    - yaml->dict: a dictionary with the same structure as the yaml file
-    """
-    # First determine if the file path exists
-    # Either in the .test/ directory or in the specified directory
-    # Use try to find the file in the tests/ directory
-    # if it is found, add tests/ to the file path
-    try:
-        # If the file is found, assign the file path to filePath
-        if fnmatch.filter(os.listdir("examples"), filePath):
-            filePath = "examples/" + filePath
-        # If the file is not found, an exception is raised
-    except:
-        # If the file is not found, assign the file path to filePath
-        filePath = filePath
-    # Then determine if the file path exists
-    if not os.path.exists(filePath):
-        # If it does not exist, an exception is thrown
-        raise FileNotFoundError(f"{filePath} doesn't exist!")
+    """Read a YAML configuration and convert list values to NumPy arrays.
 
-    # Then determine if it is a file
-    if not os.path.isfile(filePath):
-        # raise an exception if it is not a file
-        raise FileNotFoundError(f"{filePath} is not a file!")
+    Explicit paths, including paths beginning with ``./`` or ``.\\``, are
+    resolved strictly. For a bare filename, lookup preserves the historical
+    order: ``./examples/<name>``, then ``./<name>``, then the defaults bundled
+    in ``deism.examples``. The package-resource fallback is limited to the four
+    default DEISM configuration names.
 
-    # Load yaml normally and return
-    with open(filePath, "r") as stream:
-        configs = yaml.safe_load(stream)
+    Parameters
+    ----------
+    filePath : str or os.PathLike
+        YAML path or bare configuration filename.
+
+    Returns
+    -------
+    dict
+        The parsed YAML structure.
+    """
+    raw_path = os.fspath(filePath)
+    requested_path = Path(raw_path)
+    current_directory_prefixes = tuple(
+        f".{separator}"
+        for separator in (os.sep, os.altsep)
+        if separator is not None
+    )
+    has_explicit_current_directory = raw_path.startswith(
+        current_directory_prefixes
+    )
+
+    # Paths with an explicit directory component are strict: a missing custom
+    # path must not silently fall back to a bundled default with the same name.
+    if (
+        requested_path.is_absolute()
+        or requested_path.parent != Path(".")
+        or has_explicit_current_directory
+    ):
+        if not requested_path.exists():
+            raise FileNotFoundError(f"{requested_path} doesn't exist!")
+        if not requested_path.is_file():
+            raise FileNotFoundError(f"{requested_path} is not a file!")
+        config_text = requested_path.read_text(encoding="utf-8")
+    else:
+        # Preserve the historical precedence for bare names: a repository's
+        # ./examples copy wins over a same-named file in the current directory.
+        example_path = Path("examples") / requested_path.name
+        if example_path.is_file():
+            config_text = example_path.read_text(encoding="utf-8")
+        elif requested_path.is_file():
+            config_text = requested_path.read_text(encoding="utf-8")
+        elif requested_path.name in _DEFAULT_CONFIG_NAMES:
+            try:
+                resource_root = resources.files("deism.examples")
+            except ImportError as exc:
+                raise FileNotFoundError(
+                    f"{requested_path} doesn't exist! Bundled defaults are "
+                    "unavailable because deism.examples is not importable; "
+                    "reinstall the package."
+                ) from exc
+            resource = resource_root.joinpath(requested_path.name)
+            if not resource.is_file():
+                raise FileNotFoundError(f"{requested_path} doesn't exist!")
+            config_text = resource.read_text(encoding="utf-8")
+        else:
+            raise FileNotFoundError(f"{requested_path} doesn't exist!")
+
+    configs = yaml.safe_load(config_text)
     # The arrays read directly from yaml are in list format, so they are converted to numpy format
     # Convert the arrays in it to numpy arrays
     for key, value in configs.items():
