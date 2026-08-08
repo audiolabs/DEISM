@@ -74,13 +74,20 @@ test-requires = ["pytest"]
 test-sources = [
   "deism/tests/test_deism_arg.py",
   "deism/tests/test_native_components.py",
+  # readYaml() resolves default configs against ./examples, so the wheel test
+  # directory needs the config the convex-room test loads. Copy the file, not
+  # the directory -- examples/data is ~186 MB.
+  "examples/configSingleParam_ARG_RIR.yml",
 ]
 test-command = "python -m pytest deism/tests/test_deism_arg.py deism/tests/test_native_components.py"
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
 manylinux-x86_64-image = "manylinux_2_28"
-before-all = "dnf install -y mesa-libGLU libglvnd-glx"
+# The full DT_NEEDED set of the bundled libgmsh.so, minus the glibc/libstdc++
+# runtime the image already provides. The manylinux image is far leaner than a
+# GitHub Ubuntu runner, so every X11 library has to be named explicitly.
+before-all = "dnf install -y mesa-libGLU libglvnd-glx libX11 libXext libXrender libXfixes libXcursor libXinerama libXft fontconfig"
 
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]
