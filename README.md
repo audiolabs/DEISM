@@ -22,7 +22,9 @@ In DEISM-ARG, we can model the room transfer function between transducers mounte
 
 # Installation
 
-DEISM supports Python 3.10, 3.11, and 3.12 on Windows, macOS, and Linux.
+DEISM supports Python 3.10, 3.11, and 3.12 on Windows, Linux, and Apple
+Silicon macOS. Intel macOS is not supported, because the `numba` dependency no
+longer builds there.
 The current documentation is organized around the class-based workflow
 implemented by `deism.core_deism.DEISM`.
 

@@ -21,9 +21,9 @@ jobs:
           - os: windows-latest
             platform: Windows AMD64
             artifact: windows-amd64
-          - os: macos-15-intel
-            platform: macOS x86_64
-            artifact: macos-x86_64
+          # No Intel macOS target: numba's llvmlite dependency no longer
+          # publishes macOS x86_64 wheels, and building it from source needs
+          # an LLVM toolchain the runner does not carry.
           - os: macos-latest
             platform: macOS arm64
             artifact: macos-arm64

@@ -1,15 +1,21 @@
 Installation
 ============
 
-DEISM supports Python 3.10, 3.11, and 3.12 on Windows, macOS, and Linux. This
-page uses the same installation guidance as the repository ``README.md``.
+DEISM supports Python 3.10, 3.11, and 3.12 on Windows, Linux, and Apple
+Silicon macOS. This page uses the same installation guidance as the repository
+``README.md``.
 
 Supported environments
 ----------------------
 
 The project metadata requires Python 3.10 or newer. Per-commit CI tests Python
 3.12 on Windows, macOS, and Linux. Release CI additionally builds and tests
-Python 3.10 and 3.11 wheels on all supported platforms.
+Python 3.10 and 3.11 wheels for Linux x86_64, Windows AMD64, and Apple Silicon
+macOS.
+
+Intel macOS is not supported. DEISM depends on ``numba``, whose ``llvmlite``
+dependency no longer ships macOS x86_64 wheels, so neither a binary wheel nor
+a source install can be produced for that platform.
 
 Check Python version
 --------------------

@@ -39,8 +39,8 @@ changelog; update it when cutting a release.
   again; the compact-vs-legacy comparison moved to the new
   ``examples/deism_arg_compact_compare.py``.
 - Python 3.10 is now the minimum supported version. Release wheels are built
-  and tested for Python 3.10, 3.11, and 3.12 on Linux, Windows, Intel macOS,
-  and Apple Silicon macOS.
+  and tested for Python 3.10, 3.11, and 3.12 on Linux, Windows, and Apple
+  Silicon macOS.
 - The shoebox reflection counter is now a regular pybind11 extension built by
   the platform-native toolchain and verified alongside ``libroom_deism``.
 - CI now runs the critical suite on Python 3.12 across all three operating
