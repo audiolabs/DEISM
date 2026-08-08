@@ -71,7 +71,7 @@ jobs:
           /tmp/deism-sdist-smoke/bin/python -m pip install --upgrade pip
           /tmp/deism-sdist-smoke/bin/python -m pip install dist/*.tar.gz
           cd /tmp
-          /tmp/deism-sdist-smoke/bin/python -c "from deism import libroom_deism; from deism.count_reflections_wrapper import CPP_COUNTING_AVAILABLE, count_reflections_cpp; assert libroom_deism is not None; assert CPP_COUNTING_AVAILABLE; assert count_reflections_cpp(0, (3, 4, 5), 343, 1) == 1"
+          /tmp/deism-sdist-smoke/bin/python -c "from deism import DEISM, libroom_deism; from deism.count_reflections_wrapper import CPP_COUNTING_AVAILABLE, count_reflections_cpp; assert libroom_deism is not None; assert CPP_COUNTING_AVAILABLE; assert count_reflections_cpp(0, (3, 4, 5), 343, 1) == 1; assert DEISM('RIR', 'convex', silent=True) is not None"
 
       - name: Upload source distribution
         uses: actions/upload-artifact@v4

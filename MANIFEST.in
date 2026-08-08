@@ -22,6 +22,10 @@ prune benchmarks
 prune development
 prune docs
 prune examples
+# Restore the internal deism.examples package after pruning the large example
+# tree. examples/data and other non-package assets remain excluded.
+include examples/*.py
+include examples/configSingleParam*.yml
 prune playground
 prune tests
 prune tools
