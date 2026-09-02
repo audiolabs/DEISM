@@ -8,4 +8,4 @@ pybind11>=2.2
 ray
 numba
 sound-field-analysis
-gmsh
+meshio

@@ -5,8 +5,7 @@ import json
 import logging
 import traceback
 
-# from Diffusion.acousticDE.FiniteVolumeMethod.FVMfunctions import create_vgroups_names
-import gmsh
+import meshio
 from deism.core_deism import *
 from deism.data_loader import *
 from deism.room_check import sync_room_geometry
@@ -39,49 +38,27 @@ def create_example_tmp_input(
 
 def create_vgroups_names(file_path):
     """
-    Create a list of the material names assigned in SketchUp
+    Create a list of named physical surface groups from a ``.msh`` file.
 
     Parameters
     ----------
         file_path : str
-            Full path to the mesh file
+            Full path to the ``.msh`` file
 
     Returns
     -------
         vGroupsNames : list
-            Names of the materials in the msh file (the material name are the same as the one assigned in the SketchUp file)
+            Surface dimensions, physical tags, and material names.
     """
-    gmsh.initialize()  # Initialize msh file
-    mesh = gmsh.open(file_path)  # open the file
-    dim = (
-        -1
-    )  # dimensions of the entities, 0 for points, 1 for curves/edge/lines, 2 for surfaces, 3 for volumes, -1 for all the entities
-    tag = -1  # all the nodes of the room
-    vGroups = gmsh.model.getPhysicalGroups(
-        -1
-    )  # these are the entity tag and physical groups in the msh file.
-    vGroupsNames = (
-        []
-    )  # these are the entity tag and physical groups in the msh file + their names
-    for iGroup in vGroups:
-        dimGroup = iGroup[
-            0
-        ]  # entity tag: 1 lines, 2 surfaces, 3 volumes (1D, 2D or 3D)
-        tagGroup = iGroup[
-            1
-        ]  # physical tag group (depending on material properties defined in SketchUp)
-        namGroup = gmsh.model.getPhysicalName(
-            dimGroup, tagGroup
-        )  # names of the physical groups defined in SketchUp
-        alist = [
-            dimGroup,
-            tagGroup,
-            namGroup,
-        ]  # creates a list of the entity tag, physical tag group and name
-        # print(alist)
-        vGroupsNames.append(alist)
-
-    return vGroupsNames
+    # Call the Gmsh reader directly: meshio.read() answers an unparsable file
+    # with sys.exit(1) instead of raising.
+    mesh = meshio.gmsh.read(file_path)
+    surface_groups = [
+        [2, int(tag_dim[0]), name]
+        for name, tag_dim in mesh.field_data.items()
+        if len(tag_dim) > 1 and int(tag_dim[1]) == 2
+    ]
+    return sorted(surface_groups, key=lambda group: group[1])
 
 
 def parse_value(val):
@@ -97,7 +74,7 @@ def parse_value(val):
 
 
 def get_deism_surface_order(vgroups_names):
-    """Map Gmsh physical surfaces to DEISM's expected wall order."""
+    """Map physical surfaces to DEISM's expected wall order."""
     surface_names_by_tag = {
         int(tag): name for dim, tag, name in vgroups_names if int(dim) == 2
     }
@@ -133,18 +110,18 @@ def deism_method(json_file_path=None):
     os.chdir(script_dir)
 
     try:
-        # Step 1: read JSON to get geo_path
+        # Step 1: read JSON to get the pre-generated mesh path
         with open(json_file_path, "r", encoding="utf-8") as json_file:
             result_container = json.load(json_file)
-            geo_path = result_container["geo_path"]
+            msh_path = result_container["msh_path"]
 
         # Step 2: update areas, wall centers, vertices, and volume in one pass
-        _, room = sync_room_geometry(json_file_path, geo_path)
+        _, room = sync_room_geometry(json_file_path, msh_path)
 
         with open(json_file_path, "r", encoding="utf-8") as json_file:
             result_container = json.load(json_file)
 
-        vGroupsNames = create_vgroups_names(result_container["geo_path"])
+        vGroupsNames = create_vgroups_names(result_container["msh_path"])
         print("vGroupsNames", vGroupsNames)
 
         # Checking whether the 'should_cancel' flag has been set to True by the user

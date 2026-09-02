@@ -33,12 +33,6 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install OpenGL libraries for gmsh
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libglu1-mesa libgl1
-
       - name: Install package and test dependencies
         run: |
           python -m pip install --upgrade pip

@@ -21,8 +21,15 @@ examples/benchmarks/*.json
 # Sphinx build output
 docs/_build/
 
-# Example datasets (see MANIFEST.in: prune examples/data)
-examples/data/
+# Example datasets (see MANIFEST.in: prune examples/data). Keep the compact
+# convex-room mesh used by the source-checkout example and geometry tests.
+examples/data/*
+!examples/data/geometry/
+examples/data/geometry/*
+!examples/data/geometry/MeasurementRoom.msh
+
+# Temporary input/result JSON written by examples/DeismInterface.py
+examples/output/
 
 # Directivity / BRAS run outputs
 examples/BRAS_results/

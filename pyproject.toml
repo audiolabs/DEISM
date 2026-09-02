@@ -55,7 +55,7 @@ dependencies = [
     "ray",
     "numba",
     "sound-field-analysis",
-    "gmsh",
+    "meshio",
 ]
 [project.optional-dependencies]
 # Only needed by examples/deism_arg_pra_compare.py, which cross-checks the
@@ -80,10 +80,6 @@ test-command = "python -m pytest deism/tests/test_deism_arg.py deism/tests/test_
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
 manylinux-x86_64-image = "manylinux_2_28"
-# The full DT_NEEDED set of the bundled libgmsh.so, minus the glibc/libstdc++
-# runtime the image already provides. The manylinux image is far leaner than a
-# GitHub Ubuntu runner, so every X11 library has to be named explicitly.
-before-all = "dnf install -y mesa-libGLU libglvnd-glx libX11 libXext libXrender libXfixes libXcursor libXinerama libXft fontconfig"
 
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]

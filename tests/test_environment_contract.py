@@ -16,7 +16,9 @@ Run with:  pytest tests/test_environment_contract.py -v
 """
 
 import os
+import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -72,9 +74,33 @@ def test_compiled_extension_matches_sources():
         assert stale == [], f"{cls_name} still exposes {stale} (stale build)"
 
 
-@pytest.mark.parametrize("module", ["gmsh", "scipy", "numba", "ray"])
+@pytest.mark.parametrize("module", ["meshio", "scipy", "numba", "ray"])
 def test_declared_dependencies_importable(module):
     # Each is listed in [project].dependencies, so a correctly provisioned
-    # environment must be able to import all of them; gmsh in particular is
+    # environment must be able to import all of them; meshio in particular is
     # imported unconditionally by deism/__init__.py via room_check.
     __import__(module)
+
+
+def test_geometry_dependency_metadata_is_meshio_only():
+    pyproject = (Path(project_root) / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"meshio"' in pyproject
+    assert '"gmsh"' not in pyproject
+
+
+def test_package_import_does_not_pull_in_gmsh():
+    # The Gmsh Python bindings were replaced by meshio. A stray import would
+    # only be caught on machines that still have gmsh installed, so check the
+    # module table of a fresh interpreter instead.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys, deism; sys.exit(1 if 'gmsh' in sys.modules else 0)",
+        ],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
