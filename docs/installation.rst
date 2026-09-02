@@ -116,9 +116,18 @@ On Windows, install Visual Studio Build Tools with the C++ workload.
 Optional tools
 --------------
 
-- ``gmsh`` for geometry-related helper utilities
 - a LaTeX installation for plots that rely on ``matplotlib`` with
   ``text.usetex = True``
+
+Geometry input
+--------------
+
+DEISM reads pre-generated convex-room ``.msh`` files through ``meshio``.
+Geometry scripts such as ``.geo`` must be meshed before they are passed to
+DEISM. The room must be convex, and every wall must carry exactly one named
+``Physical Surface`` whose name matches its material key. The reader rejects
+non-convex rooms, untagged or unnamed walls, and surfaces that cover only
+part of a wall.
 
 Verify the installation
 -----------------------

@@ -106,6 +106,13 @@ python -m pip install -r requirements.txt
 python -m pip install -e .
 ```
 
+DEISM reads pre-generated convex-room `.msh` files through meshio. Geometry
+scripts such as `.geo` must be meshed before they are passed to DEISM. The
+room must be convex, and every wall must carry exactly one named
+`Physical Surface` whose name matches its material key; the reader rejects
+non-convex rooms, untagged or unnamed walls, and surfaces that cover only
+part of a wall.
+
 ## Installation method 2: Conda environment
 
 ### End users

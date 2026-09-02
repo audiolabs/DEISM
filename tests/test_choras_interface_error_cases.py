@@ -77,7 +77,7 @@ FORMERLY_NONPASSIVE = {"rockwool_ceiling", "acoustic_plaster"}
 SAMPLE_RATE = 44100
 NYQUIST = SAMPLE_RATE / 2
 
-# CHORAS MeasurementRoom (common/MeasurementRoom.geo): convex, 6 surfaces.
+# CHORAS MeasurementRoom: convex, 6 surfaces.
 # Total surface area split equally across walls reproduces the T60/grid
 # values recorded in major_issues.md.
 ROOM_VOLUME = 88.68915

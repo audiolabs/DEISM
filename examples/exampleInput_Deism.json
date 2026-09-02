@@ -8,7 +8,6 @@
         "wall4": "0.6, 0.69, 0.71, 0.7, 0.63"
     },
     "msh_path": "data/geometry/MeasurementRoom.msh",
-    "geo_path": "data/geometry/MeasurementRoom.geo",
     "geometry": [
         {
             "vertices": [
