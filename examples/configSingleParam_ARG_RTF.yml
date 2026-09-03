@@ -6,6 +6,9 @@ SilentMode: 0 # 1 means no output in the console, 0 means output in the console
 Environment:
   soundSpeed: 343 # speed of sound
   airDensity: 1.2 # constant of air
+  drift: 0 # fractional delay bias per unit travel time (dimensionless)
+  volatility: 0 # std of the delay random walk, in s^(1/2); 0 disables path fluctuations
+  fluctuationSeed: null # non-negative int for reproducible fluctuation draws, null for a fresh draw
 
 # 2. 3D size of the room
 # (unit: meter)

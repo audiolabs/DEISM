@@ -120,3 +120,27 @@ def test_explicit_directory_is_not_a_file(tmp_path):
 
     with pytest.raises(FileNotFoundError, match="is not a file"):
         readYaml(directory)
+
+
+def test_config_without_fluctuation_keys_loads_with_defaults():
+    # Configs written before drift / volatility / fluctuationSeed existed must
+    # keep loading, with the feature switched off.
+    import sys
+
+    from deism.data_loader import loadSingleParam, parseCmdArgs
+
+    configs = readYaml("configSingleParam_RIR.yml")
+    for key in ("drift", "volatility", "fluctuationSeed"):
+        configs["Environment"].pop(key, None)
+    saved = sys.argv
+    sys.argv = ["pytest"]
+    try:
+        args = parseCmdArgs("RIR")
+    finally:
+        sys.argv = saved
+
+    params = loadSingleParam(configs, args, "RIR", "shoebox")
+
+    assert params["drift"] == 0.0
+    assert params["volatility"] == 0.0
+    assert params["fluctuationSeed"] is None

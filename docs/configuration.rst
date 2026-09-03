@@ -100,6 +100,15 @@ important mappings are:
    * - ``Environment.airDensity``
      - ``airDensity``
      - Used in receiver normalization and acoustics calculations
+   * - ``Environment.drift``
+     - ``drift``
+     - Fractional delay bias of the optional path-length fluctuations (dimensionless); both room types, default 0 leaves results unchanged
+   * - ``Environment.volatility``
+     - ``volatility``
+     - Standard deviation of the delay random walk in s^(1/2); applied by ``update_fluctuations()``, default 0 disables it
+   * - ``Environment.fluctuationSeed``
+     - ``fluctuationSeed``
+     - Non-negative integer seed for reproducible fluctuation draws; ``null`` draws afresh on every call
    * - ``Reflections.impedance``
      - ``impedance``
      - Material input can also be derived from absorption or reverberation time

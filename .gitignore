@@ -47,3 +47,6 @@ examples/**/*.csv
 ~$*
 **/~$*
 .venv/
+
+# Untracked prototype of the path-fluctuation feature (integrated into deism/)
+volatility/
