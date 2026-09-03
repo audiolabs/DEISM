@@ -31,6 +31,8 @@ EXAMPLES_DIR = os.path.join(project_root, "examples")
 # (script, extra module it needs at import time or None)
 FAST_EXAMPLES = [
     ("deism_singleparam_example.py", None),
+    ("deism_volatility_example.py", None),
+    ("deism_arg_volatility_example.py", None),
     ("deism_arg_singleparam_example.py", None),
     ("deism_arg_compact_compare.py", None),
     ("shoebox_images_cal_compare.py", None),

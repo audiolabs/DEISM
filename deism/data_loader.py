@@ -489,6 +489,24 @@ def parseCmdArgs(mode="RTF"):
         "-c", metavar="c0", help="speed of sound(m/s:typical 343)", type=float
     )
     parse.add_argument("-rho", metavar="rho0", help="constant of air", type=float)
+    parse.add_argument(
+        "-drift",
+        metavar="drift",
+        help="fractional delay bias per unit travel time (dimensionless)",
+        type=float,
+    )
+    parse.add_argument(
+        "-volatility",
+        metavar="volatility",
+        help="std of the path delay random walk in s^(1/2); 0 disables fluctuations",
+        type=float,
+    )
+    parse.add_argument(
+        "-fluctuationSeed",
+        metavar="seed",
+        help="non-negative RNG seed for path fluctuations (omit for a fresh draw)",
+        type=int,
+    )
     # Room parameters
     parse.add_argument(
         "-room",
@@ -682,6 +700,24 @@ def parseCmdArgs_ARG(mode="RTF"):
         "-c", metavar="c0", help="speed of sound(m/s:typical 343)", type=float
     )
     parse.add_argument("-rho", metavar="rho0", help="constant of air", type=float)
+    parse.add_argument(
+        "-drift",
+        metavar="drift",
+        help="fractional delay bias per unit travel time (dimensionless)",
+        type=float,
+    )
+    parse.add_argument(
+        "-volatility",
+        metavar="volatility",
+        help="std of the path delay random walk in s^(1/2); 0 disables fluctuations",
+        type=float,
+    )
+    parse.add_argument(
+        "-fluctuationSeed",
+        metavar="seed",
+        help="non-negative RNG seed for path fluctuations (omit for a fresh draw)",
+        type=int,
+    )
     # Room parameters
     # Reflections
     parse.add_argument(
@@ -861,6 +897,28 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
     # Environment parameters, make sure the values are all float
     params["soundSpeed"] = args.c or float(configs["Environment"]["soundSpeed"])
     params["airDensity"] = args.rho or float(configs["Environment"]["airDensity"])
+    # Atmospheric path-length fluctuations (optional; absent keys mean "off").
+    # Read with .get / getattr so configs and Namespaces written before these
+    # keys existed keep loading.
+    env = configs["Environment"]
+    drift = getattr(args, "drift", None)
+    params["drift"] = drift if drift is not None else float(env.get("drift", 0.0))
+    volatility = getattr(args, "volatility", None)
+    params["volatility"] = (
+        volatility if volatility is not None else float(env.get("volatility", 0.0))
+    )
+    seed = getattr(args, "fluctuationSeed", None)
+    if seed is None:
+        seed = env.get("fluctuationSeed")
+    # numpy.random.default_rng() needs a non-negative integer; reject anything
+    # else here instead of failing later in update_fluctuations().
+    if seed is not None and (
+        isinstance(seed, bool) or not isinstance(seed, int) or seed < 0
+    ):
+        raise ValueError(
+            f"fluctuationSeed must be a non-negative integer or null, got {seed!r}"
+        )
+    params["fluctuationSeed"] = seed
     # ------------------------------------------------------------
     # Room geometry parameters
     # Shoebox room: roomSize

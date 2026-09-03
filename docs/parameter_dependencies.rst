@@ -43,6 +43,10 @@ Method dependency summary
      - active geometry and frequency-ready room state
      - source/receiver positions, images, and convex ``reflection_matrix``
      - rerun before execution whenever positions or geometry-dependent path state changes
+   * - ``update_fluctuations()`` (optional)
+     - images from ``update_source_receiver()`` and ``drift`` / ``volatility`` / ``fluctuationSeed``
+     - image path lengths (re-sampled on every call; the stored draw is discarded when images are regenerated)
+     - rerun after every ``update_source_receiver()`` when fluctuations are wanted
    * - ``update_directivities()``
      - active frequency grid and directivity settings
      - directivity coefficients, vectorized LC state, and Wigner terms
@@ -93,6 +97,8 @@ other.
        C --> E["update_source_receiver()"]
        D --> F["run_DEISM()"]
        E --> F
+       E -.-> G["update_fluctuations() (optional)"]
+       G -.-> F
        D -. "either order" .- E
 
 Convex rooms
@@ -113,6 +119,8 @@ Convex rooms have a stricter chain:
        E --> F["images / reflection_matrix ready"]
        F --> G["update_directivities()"]
        G --> H["run_DEISM()"]
+       F -.-> I["update_fluctuations() (optional)"]
+       I -.-> H
 
 Change-impact guide
 -------------------

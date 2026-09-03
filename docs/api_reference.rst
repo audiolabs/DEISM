@@ -19,13 +19,15 @@ Typical usage pattern:
 4. Call ``update_freqs()``.
 5. Call ``update_source_receiver()`` and ``update_directivities()`` in the
    roomtype-appropriate order.
-6. Call ``run_DEISM()``.
+6. Optionally call ``update_fluctuations()`` to perturb the image path
+   lengths with atmospheric fluctuations (``drift`` / ``volatility``).
+7. Call ``run_DEISM()``.
 
 .. currentmodule:: deism.core_deism
 
 .. autoclass:: DEISM
    :member-order: bysource
-   :members: update_room, update_wall_materials, update_freqs, update_source_receiver, update_directivities, run_DEISM, run_DEISM_ray
+   :members: update_room, update_wall_materials, update_freqs, update_source_receiver, update_directivities, update_fluctuations, run_DEISM, run_DEISM_ray
 
 Supporting helpers
 ------------------

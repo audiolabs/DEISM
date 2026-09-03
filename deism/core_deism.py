@@ -44,6 +44,11 @@ except ImportError:
 # About new features
 # -------------------------------
 # Create a class of DEISM for running every thing
+# params keys holding the stored path-length fluctuation draws (see
+# _add_fluctuations); removed together with the images they were drawn on.
+FLUCTUATION_KEYS = ("fluctuations", "fluctuations_early", "fluctuations_late")
+
+
 class DEISM:
     """User-facing workflow class for shoebox and convex DEISM simulations."""
 
@@ -182,6 +187,38 @@ class DEISM:
         if self.roomtype == "shoebox" and self.params["DEISM_method"] in ("ORG", "LC"):
             self.params["images"] = merge_images(self.params["images"])
         # -----------------------------------------------------------
+        # The images were replaced successfully: any path-length fluctuations
+        # drawn on the previous images belong to that geometry, so drop them.
+        # (Done last so a failed regeneration keeps the old images and their
+        # stored draw consistent.)
+        for key in FLUCTUATION_KEYS:
+            self.params.pop(key, None)
+        # -----------------------------------------------------------
+
+    def update_fluctuations(self):
+        """Add Gaussians to each acoustic path to stochastically model atmospheric fluctuations.
+
+        Uses params["drift"], params["volatility"] and params["fluctuationSeed"]
+        (all optional, defaults 0 / 0 / None leave the images unchanged).
+        Call after update_source_receiver() and before run_DEISM(). Each call
+        re-samples on the current images; update_source_receiver() discards
+        the stored draw together with the images. A fixed seed repeats the
+        same draw on every call; change the seed per call for independent
+        but reproducible draws.
+        """
+        if "images" not in self.params:
+            raise RuntimeError(
+                "Call update_source_receiver() before update_fluctuations()"
+            )
+        if self.roomtype == "convex":
+            self.params["images"] = _add_fluctuations(
+                self.params, mix=False, convex=True
+            )
+        elif self.params["DEISM_method"] in ("ORG", "LC"):
+            self.params["images"] = _add_fluctuations(self.params, mix=False)
+        else:
+            self.params["images"] = _add_fluctuations(self.params, mix=True)
+        self._update_where_tracking("images", "update_fluctuations")
 
     def recompute_arg_attenuation(self):
         """Rebuild convex compact attenuation without recomputing geometry."""
@@ -670,7 +707,8 @@ class DEISM:
         Run DEISM using the Numba backend (default).
 
         Args:
-            if_clean_up: If True, delete large image arrays after computation.
+            if_clean_up: If True, delete large image arrays (and any stored
+                         path-length fluctuation draws) after computation.
             if_shutdown_ray: Ignored (kept for backward compatibility).
                              Only used by run_DEISM_ray().
         """
@@ -683,8 +721,8 @@ class DEISM:
             self.params["RTF"] = _run_DEISM_ARG(self.params)
         # Clean up large matrices in self.params, e.g., params["images"]
         if if_clean_up:
-            if "images" in self.params:
-                del self.params["images"]
+            for key in ("images", *FLUCTUATION_KEYS):
+                self.params.pop(key, None)
             gc.collect()
 
     def run_DEISM_ray(self, if_clean_up: bool = True, if_shutdown_ray: bool = True):
@@ -707,8 +745,8 @@ class DEISM:
         if if_shutdown_ray:
             ray.shutdown()
         if if_clean_up:
-            if "images" in self.params:
-                del self.params["images"]
+            for key in ("images", *FLUCTUATION_KEYS):
+                self.params.pop(key, None)
             gc.collect()
         # -------------------------------------------------------
         # # Save the results to local directory with .npz format
@@ -4230,6 +4268,82 @@ def pre_calc_images_src_rec_optimized(params):
     if not params["silentMode"]:
         minutes, seconds = divmod(end - start, 60)
         print(f"Done! [{minutes} minutes, {seconds:.1f} seconds]", end="\n\n")
+
+    return images
+
+
+def _radius(images, key, convex):
+    """View of the path-length entries of one image array.
+
+    Shoebox arrays are (n_images, 3) with [phi, theta, r] rows; convex arrays
+    are (3, n_images) with [phi, theta, r] columns.
+    """
+    return images[key][2, :] if convex else images[key][:, 2]
+
+
+def _add_fluctuations(params, mix, convex=False):
+    """Add Gaussians to each acoustic path to stochastically model atmospheric fluctuations.
+
+    For a path of length r the travel time is t = r / c and the perturbation
+    is c * N(t * drift, sqrt(t) * volatility): "drift" is a dimensionless
+    fractional delay bias and "volatility" the standard deviation of the delay
+    random walk in s^(1/2). Only path lengths change; angles and wall
+    attenuation are untouched.
+
+    Args:
+        params: DEISM parameter dict holding "images", "soundSpeed", and the
+                optional "drift", "volatility", "fluctuationSeed".
+        mix:    True for early/late split images (shoebox MIX), False for the
+                merged layout.
+        convex: True for convex rooms, whose single R_sI_r_all array is
+                (3, n_images); shoebox rooms carry three (n_images, 3) arrays
+                describing the same path, which all receive the same draw.
+
+    The generator is created from params["fluctuationSeed"] on every call
+    (None draws from fresh entropy).
+
+    The previous draw stored in params["fluctuations<appendix>"] is removed
+    before a new one is drawn, so repeated calls re-sample on the same images
+    instead of accumulating.
+
+    Raises ValueError for non-finite parameters, drift <= -1, negative
+    volatility, or a draw that would make a path length non-positive. In that
+    case the images are left at their nominal lengths with no stored draw.
+    """
+    c = params["soundSpeed"]
+    drift = float(params.get("drift", 0.0))
+    volatility = float(params.get("volatility", 0.0))
+    if not np.isfinite(drift) or drift <= -1:
+        raise ValueError(f"drift must be finite and > -1, got {drift}")
+    if not np.isfinite(volatility) or volatility < 0:
+        raise ValueError(f"volatility must be finite and >= 0, got {volatility}")
+    rng = np.random.default_rng(params.get("fluctuationSeed"))
+    images = params["images"]
+    early_late = ("_early", "_late") if mix else ("",)
+    arrays = ("R_sI_r_all",) if convex else ("R_sI_r_all", "R_s_rI_all", "R_r_sI_all")
+
+    for appendix in early_late:
+        # Remove any previously added fluctuations from all acoustic paths.
+        # The stored draw is popped first so that a validation error below
+        # leaves nominal images with no stored draw.
+        previous = params.pop("fluctuations" + appendix, None)
+        if previous is not None:
+            for key in arrays:
+                _radius(images, key + appendix, convex)[...] -= previous
+        # Compute stochastic fluctuations from the (restored) path lengths
+        r = _radius(images, "R_sI_r_all" + appendix, convex)
+        t = r / c
+        fluctuations = c * rng.normal(t * drift, np.sqrt(t) * volatility)
+        if np.any(r + fluctuations <= 0):
+            raise ValueError(
+                "path fluctuations would make a path length non-positive; "
+                "reduce volatility or drift"
+            )
+        # Add fluctuations to each acoustic path
+        for key in arrays:
+            _radius(images, key + appendix, convex)[...] += fluctuations
+        # Save fluctuations separately so the next call can remove them
+        params["fluctuations" + appendix] = fluctuations
 
     return images
 

@@ -4,6 +4,28 @@ Changelog
 Release history for the ``deism`` package. This page is the canonical
 changelog; update it when cutting a release.
 
+Unreleased
+----------
+
+- New optional atmospheric path-length fluctuations for both room types and
+  all DEISM methods. ``DEISM.update_fluctuations()``, called after
+  ``update_source_receiver()`` and before ``run_DEISM()``, perturbs the length
+  ``r`` of every image path by ``c * N(t * drift, sqrt(t) * volatility)`` with
+  ``t = r / c``; angles and wall attenuation are unchanged. The parameters are
+  ``Environment.drift`` (dimensionless fractional delay bias),
+  ``Environment.volatility`` (delay random-walk standard deviation in
+  s^(1/2)) and ``Environment.fluctuationSeed`` (non-negative integer for
+  reproducible draws, ``null`` for a fresh draw), with matching ``-drift``, ``-volatility``
+  and ``-fluctuationSeed`` command-line flags. Configs without the keys keep
+  loading with the feature off, and the defaults leave results unchanged.
+  Each call re-samples on the current images (the previous draw is removed
+  first), so a sweep over volatilities can reuse one image set with
+  ``run_DEISM(if_clean_up=False)``; regenerating the images or the default
+  ``run_DEISM()`` cleanup discards the stored draw. Non-finite parameters,
+  ``drift <= -1`` or a draw that would make a path length non-positive raise
+  ``ValueError``. See ``examples/deism_volatility_example.py`` (shoebox) and
+  ``examples/deism_arg_volatility_example.py`` (convex).
+
 2.2.1.15
 --------
 

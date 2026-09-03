@@ -98,3 +98,13 @@ def test_reflection_order_is_a_valid_integer(params_by_case):
         order = params_by_case[case]["maxReflOrder"]
         assert isinstance(order, int) and not isinstance(order, bool)
         assert order >= 0
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda c: f"{c[0]}-{c[1]}")
+def test_path_fluctuation_defaults_are_off(case, params_by_case):
+    # update_fluctuations() reads these keys; the defaults must leave the
+    # images untouched so the feature is opt-in.
+    params = params_by_case[case]
+    assert params["drift"] == 0.0
+    assert params["volatility"] == 0.0
+    assert params["fluctuationSeed"] is None
