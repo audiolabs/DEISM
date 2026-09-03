@@ -50,3 +50,6 @@ examples/**/*.csv
 
 # Untracked prototype of the path-fluctuation feature (integrated into deism/)
 volatility/
+
+# Local planning notes and design studies, not part of the repository
+development/
