@@ -22,7 +22,7 @@ exec(
 
 project = "DEISM"
 copyright = "2026, Audiolabs Erlangen, Germany"
-author = "Zeyu Xu, Songjiang Tan, E. A. P. Habets"
+author = "Zeyu Xu, E. A. P. Habets"
 release = _version_ns["__version__"]
 
 

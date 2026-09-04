@@ -304,6 +304,7 @@ For more information about directivity definition used in DEISM and DEISM-ARG, p
 - Dr. Albert Prinn
 - Prof. Dr. ir. Emanuël Habets
 - Anjana Rajasekhar
+- M. Sc. Jeremy Lawrence
 
  
 
