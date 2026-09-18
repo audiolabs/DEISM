@@ -47,9 +47,19 @@ examples/**/*.csv
 ~$*
 **/~$*
 .venv/
+playground/data_demo/
 
 # Untracked prototype of the path-fluctuation feature (integrated into deism/)
 volatility/
 
 # Local planning notes and design studies, not part of the repository
 development/
+
+# Machine-local raw test-run evidence.
+.development-runs/
+
+# Saved playground simulations
+playground/results/
+
+# Disposable browser copies regenerated from MAT files at launch
+playground/data/

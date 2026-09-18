@@ -81,6 +81,14 @@ struct ImageSource
 	std::vector<int> wall_seq;
 	std::vector<float> inc_cos;
 
+	// Beam-pruning state (Room_deism::beam_pruning): a convex polygon on the
+	// generating wall, in world coordinates, that contains every point of that
+	// wall from which this image can be seen through its parent chain.  Empty
+	// for the real source (no restriction).  When the polygon is provably
+	// empty no point in space can see this image, hence no descendant of it
+	// is visible either and the whole subtree is skipped by the DFS.
+	std::vector<Eigen::Matrix<double,D,1>> beam_poly;
+
 	ImageSource(size_t n_bands)
 		: order(0), gen_wall(-1), parent(NULL)
 	{
@@ -119,7 +127,8 @@ struct ImageSource
 			order_xyz(other.order_xyz),
 			reflection_matrix(other.reflection_matrix),
 			wall_seq(other.wall_seq),
-			inc_cos(other.inc_cos)
+			inc_cos(other.inc_cos),
+			beam_poly(other.beam_poly)
 	{
 
 	}
@@ -189,9 +198,26 @@ public:
 	// cost. Requires exactly one microphone.
 	bool compact_mode = false;
 
+	// Beam pruning of the image-source tree (3D general rooms only, ignored
+	// for 2D and shoebox rooms).  For every candidate image the DFS tracks the
+	// region of its generating wall through which any path to the image must
+	// pass (ImageSource::beam_poly); when that region is empty by more than
+	// beam_margin metres (plus 1e-4 per metre of image distance), neither the
+	// image nor any of its descendants can be visible, so the subtree is not
+	// explored.  Every explored image still goes through the unchanged
+	// is_visible_dfs check.  Regression tests verify identical image sets,
+	// ordering and descriptors on the tested convex rooms; the heuristic
+	// margin does not guarantee equivalence for every floating-point input.
+	bool beam_pruning = true;
+	bool beam_pruning_active = false;  // effective setting of the last run
+	double beam_margin = 1e-2;
+	// Diagnostics of the last image_source_model() run.
+	long long dfs_nodes_visited = 0;
+	long long dfs_subtrees_pruned = 0;
 
 
-	// area for new parameters 
+
+	// area for new parameters
 	/*20240705*/
 	/**************************************************************************/
 	/*                                                                        */
@@ -398,9 +424,18 @@ public:
 	void image_sources_dfs(ImageSource<D> &is, int max_order);
 	void store_compact_path(ImageSource<D> &is,
 							const std::vector<Vectorf<D>> &list_intercep_p_to_is);
-	std::pair<bool,std::vector<Vectorf<D>>> is_visible_dfs(const Vectorf<D> &p, 
+	std::pair<bool,std::vector<Vectorf<D>>> is_visible_dfs(const Vectorf<D> &p,
 											ImageSource<D> &is);
+	// Allocation-free core of is_visible_dfs: appends the receiver-side
+	// segments (image minus intersection point, receiver level first) to
+	// `segs` and returns the visibility flag.
+	bool is_visible_dfs_impl(const Vectorf<D> &p, ImageSource<D> &is,
+							std::vector<Vectorf<D>> &segs, int previous_wall = -1);
 	bool is_obstructed_dfs(const Vectorf<D> &p, ImageSource<D> &is);
+	// Fill child.beam_poly for the image of `parent` across walls[wall_idx];
+	// returns false when the beam is provably empty (subtree can be skipped).
+	bool compute_child_beam(const ImageSource<D> &parent, int wall_idx,
+							ImageSource<D> &child);
 	int fill_sources();
 
 };

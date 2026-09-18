@@ -36,8 +36,10 @@ Hard prerequisites shared by both room types
 - ``update_room()`` should precede ``update_wall_materials()`` when material
   conversion depends on room volume and room areas.
 - ``update_wall_materials()`` should precede ``update_freqs()`` because
-  frequency updates interpolate materials and, in RIR mode, use
-  ``reverberationTime``.
+  frequency updates interpolate materials and, in RIR mode, derive the grid
+  from ``reverberationTime`` and ``RIRLength`` (the shorter of the two, plus
+  the guard interval of the zero-phase RIR window; see
+  :doc:`configuration`).
 - ``update_freqs()`` should precede ``update_directivities()`` because loaded
   directivity data is checked against ``params["freqs"]``, and receiver
   normalization depends on frequency-derived terms.

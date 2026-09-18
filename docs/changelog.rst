@@ -1,11 +1,148 @@
 Changelog
 =========
-
 Release history for the ``deism`` package. This page is the canonical
 changelog; update it when cutting a release.
 
-Unreleased
-----------
+2.3.0
+-----
+
+- **Packaging (datasets):** the sampled-directivity MAT datasets (186 MB)
+  are no longer part of the wheels or the sdist. They stay in the
+  repository under Git LFS and are attached to the GitHub release;
+  ``deism-playground`` downloads the supported datasets on first use into
+  ``~/.cache/deism/sampled_directivity`` (SHA-256 verified against
+  ``playground/catalog.json``) and reports the directory it uses. Lookup
+  order: ``--data-dir`` / ``DEISM_DATA_DIR``, a checkout in the working
+  directory (or an editable install), then the cache; ``--no-download`` and
+  ``--clear-cache`` control the copy. Missing datasets are listed as "not
+  downloaded" in the selector instead of aborting the launcher, and the
+  Python loaders fall back to ``DEISM_DATA_DIR`` and the cache after the
+  local and packaged example trees (``deism/playground_datasets.py``).
+- **Behaviour change: RIR synthesis (wrap-around and pre-ringing fixed).**
+  Every impulse response changes: the bandpass window is applied with
+  minimum phase by default and the grid resolves min(T60, RIRLength).
+  ``get_results``
+  previously synthesised the impulse response on a frequency grid whose
+  inverse FFT is periodic over exactly T60 and shaped it with a zero-phase
+  bandpass window. The window's pre-ringing (about 20 ms for the 45 Hz
+  low-frequency transition) lay at negative times and folded onto the end
+  of the period, and energy before the direct sound appeared at about
+  -36 dB below the peak in the shoebox RIR example. Now:
+
+  - ``params["rirWindowPhase"]`` (YAML ``Signal.RIRWindowPhase``) selects
+    how the bandpass window is applied. ``"minimum"`` (new default) applies
+    it with minimum phase, computed by the real-cepstrum method: the
+    response is causal, so nothing precedes an arrival and nothing folds
+    across the period, at no extra cost. ``"zero"`` keeps the symmetric
+    pulses of the previous behaviour on a grid extended by a guard interval
+    (``rir_guard_interval``: the lag after which the window's impulse
+    response stays 100 dB below its peak, 46 ms at 44.1/48 kHz), which is
+    discarded after the inverse FFT. ``"none"`` (also the legacy
+    ``bandpass_window=False``) skips the window and now zeroes the Nyquist
+    bin, which used to leave an alternating floor at about -50 dB.
+  - The RIR grid and the image set resolve ``rirPeriod`` =
+    min(T60, ``RIRLength``): a shorter RIRLength costs fewer bins and
+    images (``image_time_limit``; convex rooms now drop the images whose
+    path exceeds ``c * rirPeriod`` after the libroom search, as the shoebox
+    search already did, since a later arrival would fold into the
+    period); a longer one is zero-padded beyond T60
+    and reported (console, playground warning). ``params["rirPeriod"]``
+    and ``params["rirGuard"]`` record the synthesis span and guard.
+  - ``get_results`` leaves ``params["RTF"]`` untouched (it used to window
+    it in place, so a second call windowed twice); the unused
+    ``params["nSamples"]`` is gone; the window constants are in
+    ``DEFAULT_RIR_WINDOW`` (``params["rirWindow"]`` overrides them) and the
+    window takes the true Nyquist frequency.
+  - The playground mirrors all of this (engine ``2.3.0-js``): an RIR
+    window selector next to the RIR length, the synthesis span and guard in
+    the run details, and golden fixtures for the three phases
+    (``python tools/playground_fixtures.py --rir-only``).
+
+- **Playground and dataset reliability:** sampled-directivity loaders detect
+  Git LFS pointers with an actionable error. Lightweight test checkouts skip
+  original-data tests, while the LFS-enabled playground job requires all
+  supported datasets and runs both original-data and preset/example solve
+  checks.
+- Generated previews and saved results fall back to a user cache when the
+  installed playground assets are read-only. HTTP tests use isolated preview
+  fixtures and do not depend on generated files or original MAT datasets.
+- Preset regression tests compare geometry/materials at full settings and
+  RTF/RIR solves at reduced reflection order against the example workflows.
+  The shoebox RIR presets already carry the examples' explicit T60 of 1 s;
+  their numerical settings are unchanged. Unavailable solve data is reported
+  as a skip; unexpected loader errors fail the tests.
+- **Performance (convex rooms / DEISM-ARG):** the whole convex pipeline is
+  faster while producing bit-identical images, coefficients and RTFs
+  (verified on 16 reference cases: orders 5-15, SH 3/5/7, ORG/LC/MIX,
+  monopole, rotated room, three geometries):
+
+  - *Image finding:* the libroom image-source DFS prunes subtrees whose
+    generating-wall beam is empty (beam tracing with a conservative margin;
+    every surviving candidate still passes the unchanged visibility test),
+    and no longer copies a vector per visibility recursion level or inserts
+    reflection matrices at the front of a vector. ``engine.beam_pruning``
+    (default ``True``), ``engine.beam_margin`` and the counters
+    ``dfs_nodes_visited`` / ``dfs_subtrees_pruned`` are exposed on the C++
+    room engine. Rebuild the extension (``python setup.py build_ext
+    --inplace``).
+  - *Source directivity refit* (``cal_C_nm_s_arg``, fast path): batched
+    spherical-harmonic evaluation and LAPACK solves, Hankel division inside
+    the batch, direct complex64 output (new ``out_dtype`` argument, default
+    unchanged), and one fit per distinct reflection matrix (bit-exact
+    grouping; ``params["directivityRefitReuseIdentical"]``,
+    ``params["directivityRefitBatchImages"]``,
+    ``params["directivityRefitUniqueBudgetMiB"]``). No full-size complex128
+    intermediate remains.
+  - *Wigner 3j tables:* exact-rational Racah evaluation with a small
+    process cache instead of one ``sympy`` call per coefficient
+    (``params["wignerMethod"] = "sympy"`` keeps the reference path); tables
+    are bit-identical after the complex64 cast.
+  - *Vectorization* of the LC/MIX coefficient arrays is a single gather.
+  - *LC solver kernel:* image-major coefficient batches
+    (``params["numbaArgLcBatchImages"]``, default 512) instead of strided
+    reads across all images; the summation order is unchanged.
+
+  Measured on the IWAENC Fig. 5 room at reflection order 15 (MIX, SH 5/5,
+  491 frequencies, 4 cores): image finding 29.4 s → 0.23 s,
+  directivity update 39.1 s → 1.4 s, solve 16.2 s → 3.8 s,
+  whole run 84.8 s → 5.5 s, peak RSS 4.9 GB → 2.1 GB.
+  ``benchmarks/bench_convex_directivity_images.py`` times each stage and
+  compares two checkouts.
+- **Fix (convex rooms with directional transducers):**
+  ``init_source_directivities_ARG`` and ``init_receiver_directivities_ARG``
+  passed ``orientSource`` / ``orientReceiver`` in degrees straight into the
+  Z-X-Z rotation matrix, whereas the shoebox path converts to radians first.
+  Convex-room results with a non-zero orientation therefore used a wrong
+  facing direction (for example the default receiver orientation of 180
+  degrees was applied as 180 radians). Both functions now convert to
+  radians, matching the documented degree convention and the shoebox path.
+- New browser playground (``playground/``): a single offline ``demo.html``
+  running a JavaScript port of the solver with a live reduced-setting
+  preview and an exact accurate tier in a Web Worker. The port is validated
+  against the Python package by golden tests
+  (``tools/playground_fixtures.py``, ``playground/engine/test``).
+- Playground update: the result panel shows one room transfer function
+  and, in RIR mode, one impulse response, animated from the live preview
+  into the accurate result (and back when the result goes stale) instead of
+  overlaying both tiers and a difference plot. Convex rooms gain add/remove
+  vertex controls with a convexity check. The parameter panel scrolls on its
+  own next to the simulation panels. An Examples card loads the parameters
+  of the example scripts (shoebox and convex base cases, JASA 2024 Fig. 8,
+  IWAENC 2024 Fig. 5/6, the fluctuation examples); the small spherical
+  loudspeaker datasets ship with the page for them. The JavaScript engine
+  gains ``updateFluctuations`` and evaluates wall attenuation per image on
+  demand so 24 kHz RIR grids fit in browser memory.
+  ``benchmarks/playground_presets_bench.{mjs,py}`` run the presets through
+  both the JavaScript engine and the Python package and record the
+  comparison (agreement to 5e-5 with identical image sets, timings per
+  preset). Engine fixes found by
+  that comparison: the shoebox image set is bounded by reflection order and c·T60 only,
+  like the default ``v2-numba`` backend (the port truncated at n1..n3 like
+  the legacy backend); a given T60 is kept exactly so the 1/T60 RIR grid
+  matches; the convex visibility test carries the libroom tolerance; the
+  ORG kernel evaluates each spherical harmonic once per image (2.6× faster).
+2.2.1.16
+--------
 
 - New optional atmospheric path-length fluctuations for both room types and
   all DEISM methods. ``DEISM.update_fluctuations()``, called after

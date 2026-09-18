@@ -100,8 +100,7 @@ def compute_deism_arg_response(compact):
     deism.update_directivities()
     deism.run_DEISM(if_clean_up=True)
 
-    # Preserve the unwindowed RTF because get_results() applies the configured
-    # RIR bandpass window to params["RTF"] before the inverse transform.
+    # get_results() leaves params["RTF"] untouched; keep a copy for the comparison.
     rtf = deism.params["RTF"].copy()
     rir = deism.get_results()
     deism.params["RTF"] = rtf.copy()

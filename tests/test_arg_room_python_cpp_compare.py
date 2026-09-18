@@ -1,7 +1,7 @@
 """Compare the C++ and synced-Python DEISM-ARG convex room engines.
 
 Run from the repo root with:
-    /Users/xuzeyu/.venv/deism_test/bin/python tests/test_arg_room_python_cpp_compare.py
+    python tests/test_arg_room_python_cpp_compare.py
 
 The file is also pytest-compatible when pytest is installed.
 """

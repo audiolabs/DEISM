@@ -389,15 +389,22 @@ if NUMBA_AVAILABLE:
         m_all_arr,
         v_all_arr,
         u_all_arr,
-        C_nm_s_ARG_vec,
+        C_nm_s_ARG_img,
         C_vu_r_vec,
         R_sI_r_all,
         atten_all,
         k,
+        result,
     ):
         """
-        ARG LC matrix method: all convex-room images in parallel.
-        Handles per-image C_nm_s_ARG_vec (K, N_coeff, n_images).
+        ARG LC matrix method: all convex-room images of one batch in parallel.
+
+        C_nm_s_ARG_img holds the per-image source coefficients in image-major
+        layout (n_images, K, N_coeff), so the inner frequency/mode loops read
+        contiguous memory; the historical (K, N_coeff, n_images) layout made
+        every coefficient read a strided cache miss.  The batch contribution
+        is accumulated into `result` image by image (in order), so batching
+        the images in the caller reproduces the single-call summation order.
         """
         K = k.shape[0]
         n_images = R_sI_r_all.shape[1]
@@ -431,7 +438,7 @@ if NUMBA_AVAILABLE:
             for ki in range(K):
                 src_val = complex(0.0, 0.0)
                 for j in range(N_coeff_s):
-                    src_val += phase_s[j] * C_nm_s_ARG_vec[ki, j, img] * Y_s[j]
+                    src_val += phase_s[j] * C_nm_s_ARG_img[img, ki, j] * Y_s[j]
 
                 rec_val = complex(0.0, 0.0)
                 for j in range(V_coeff_r):
@@ -449,7 +456,6 @@ if NUMBA_AVAILABLE:
                 )
                 P_all[img, ki] = factor * src_val * rec_val
 
-        result = np.zeros(K, dtype=complex128)
         for img in range(n_images):
             for ki in range(K):
                 result[ki] += P_all[img, ki]
@@ -466,6 +472,7 @@ if NUMBA_AVAILABLE:
         W_1_all,
         W_2_all,
         k,
+        result=None,
     ):
         """
         ARG ORG method: all convex-room images in parallel using prange.
@@ -544,7 +551,8 @@ if NUMBA_AVAILABLE:
             P_all[img, :] = P_img
 
         # Sum over all images
-        result = np.zeros(K, dtype=complex128)
+        if result is None:
+            result = np.zeros(K, dtype=complex128)
         for img in range(n_images):
             for ki in range(K):
                 result[ki] += P_all[img, ki]
@@ -575,6 +583,9 @@ def _resolve_numba_batch_size(
     if requested is None:
         requested = n_images
     requested = max(1, min(int(requested), int(n_images)))
+    if params.get("_on_progress") is not None:
+        # Bound progress latency without changing the default non-UI batching.
+        requested = min(requested, 64)
 
     target_mb = params.get(temp_target_key, default_target_mb)
     target_bytes = max(1, int(target_mb)) * 1024 * 1024
@@ -768,6 +779,8 @@ def _run_numba_org_in_batches(params, A_all, R_sI_r_all, atten_all, Wigner):
             W_2,
             k_c,
         )
+        if params.get("_on_progress") is not None:
+            params["_on_progress"](end_idx - start_idx, "ORG")
     return P
 
 
@@ -831,6 +844,8 @@ def _run_numba_lc_matrix_in_batches(
             atten_batch,
             k_c,
         )
+        if params.get("_on_progress") is not None:
+            params["_on_progress"](end_idx - start_idx, "LC")
     return P
 
 
@@ -963,6 +978,40 @@ def _numba_run_DEISM_MIX(params, images, Wigner):
 # ============================================================================
 
 
+def _arg_org_coefficients(params, indices):
+    """Unpack only an ORG image block; LC/MIX retain no rectangular tensor."""
+    if "C_nm_s_ARG" in params:
+        return params["C_nm_s_ARG"][:, :, :, indices]
+    packed = params["C_nm_s_ARG_vec"][indices]
+    N = params["sourceOrder"]
+    out = np.zeros((packed.shape[1], N + 1, 2 * N + 1, len(packed)), dtype=packed.dtype)
+    for j, (n, m) in enumerate(zip(params["n_all"], params["m_all"])):
+        out[:, n, m, :] = packed[:, :, j].T
+    return out
+
+
+def _run_numba_arg_org_in_batches(params, images, Wigner, image_indices=None):
+    k = np.ascontiguousarray(params["waveNumbers"], dtype=np.float64)
+    count = images["R_sI_r_all"].shape[1] if image_indices is None else len(image_indices)
+    result = np.zeros(k.size, dtype=np.complex128)
+    receiver = np.ascontiguousarray(params["C_vu_r"], dtype=np.complex128)
+    w1 = np.ascontiguousarray(Wigner["W_1_all"], dtype=np.complex128)
+    w2 = np.ascontiguousarray(Wigner["W_2_all"], dtype=np.complex128)
+    batch = max(1, int(params.get("numbaArgOrgBatchImages", 512)))
+    for start in range(0, count, batch):
+        idx = (slice(start, min(start + batch, count)) if image_indices is None
+               else image_indices[start:start + batch])
+        _numba_ARG_ORG_batch(
+            params["sourceOrder"], params["receiverOrder"],
+            np.ascontiguousarray(_arg_org_coefficients(params, idx), dtype=np.complex128),
+            receiver,
+            np.ascontiguousarray(images["atten_all"][:, idx], dtype=np.complex128),
+            np.ascontiguousarray(images["R_sI_r_all"][:, idx], dtype=np.float64),
+            w1, w2, k, result,
+        )
+    return result
+
+
 def _numba_run_DEISM_ARG_ORG(params, images, Wigner):
     """ARG ORG dispatcher using Numba."""
     if not NUMBA_AVAILABLE:
@@ -971,30 +1020,53 @@ def _numba_run_DEISM_ARG_ORG(params, images, Wigner):
     if not params["silentMode"]:
         print("[Numba] DEISM-ARG Original ... ", end="")
 
-    k = params["waveNumbers"]
     R_sI_r_all = images["R_sI_r_all"]
-    atten_all = images["atten_all"]
     n_images = R_sI_r_all.shape[1]
 
     if not params["silentMode"]:
         print(f"{n_images} images, ", end="")
 
-    P = _numba_ARG_ORG_batch(
-        params["sourceOrder"],
-        params["receiverOrder"],
-        np.ascontiguousarray(params["C_nm_s_ARG"].astype(np.complex128)),
-        np.ascontiguousarray(params["C_vu_r"].astype(np.complex128)),
-        np.ascontiguousarray(atten_all.astype(np.complex128)),
-        np.ascontiguousarray(R_sI_r_all.astype(np.float64)),
-        np.ascontiguousarray(Wigner["W_1_all"].astype(np.complex128)),
-        np.ascontiguousarray(Wigner["W_2_all"].astype(np.complex128)),
-        np.ascontiguousarray(k.astype(np.float64)),
-    )
+    P = _run_numba_arg_org_in_batches(params, images, Wigner)
 
     if not params["silentMode"]:
         m, s = divmod(time.time() - start, 60)
         print(f"Done! [{int(m)} min, {s:.1f}s]")
     return P
+
+
+def _run_numba_arg_lc_in_batches(params, R_sI_r_all, atten_all, image_indices=None):
+    """Cast contiguous packed blocks; preserve the global image sum order."""
+    k = np.ascontiguousarray(np.asarray(params["waveNumbers"], dtype=np.float64))
+    C_vec = params["C_nm_s_ARG_vec"]
+    n_images = C_vec.shape[0] if image_indices is None else len(image_indices)
+    result = np.zeros(k.shape[0], dtype=np.complex128)
+    if n_images == 0:
+        return result
+    n_all = np.ascontiguousarray(params["n_all"].astype(np.int64))
+    m_all = np.ascontiguousarray(params["m_all"].astype(np.int64))
+    v_all = np.ascontiguousarray(params["v_all"].astype(np.int64))
+    u_all = np.ascontiguousarray(params["u_all"].astype(np.int64))
+    C_vu_r_vec = np.ascontiguousarray(params["C_vu_r_vec"].astype(np.complex128))
+    batch_size = max(1, int(params.get("numbaArgLcBatchImages", 512)))
+    for start_idx in range(0, n_images, batch_size):
+        idx = (slice(start_idx, min(start_idx + batch_size, n_images))
+               if image_indices is None else image_indices[start_idx:start_idx + batch_size])
+        C_img = np.ascontiguousarray(
+            C_vec[idx], dtype=np.complex128
+        )
+        _numba_ARG_LC_batch(
+            n_all,
+            m_all,
+            v_all,
+            u_all,
+            C_img,
+            C_vu_r_vec,
+            np.ascontiguousarray(R_sI_r_all[:, idx].astype(np.float64)),
+            np.ascontiguousarray(atten_all[:, idx].astype(np.complex128)),
+            k,
+            result,
+        )
+    return result
 
 
 def _numba_run_DEISM_ARG_LC_matrix(params, images):
@@ -1005,7 +1077,6 @@ def _numba_run_DEISM_ARG_LC_matrix(params, images):
     if not params["silentMode"]:
         print("[Numba] DEISM-ARG LC vectorized ... ", end="")
 
-    k = params["waveNumbers"]
     R_sI_r_all = images["R_sI_r_all"]
     atten_all = images["atten_all"]
     n_images = R_sI_r_all.shape[1]
@@ -1013,17 +1084,7 @@ def _numba_run_DEISM_ARG_LC_matrix(params, images):
     if not params["silentMode"]:
         print(f"{n_images} images, ", end="")
 
-    P = _numba_ARG_LC_batch(
-        np.ascontiguousarray(params["n_all"].astype(np.int64)),
-        np.ascontiguousarray(params["m_all"].astype(np.int64)),
-        np.ascontiguousarray(params["v_all"].astype(np.int64)),
-        np.ascontiguousarray(params["u_all"].astype(np.int64)),
-        np.ascontiguousarray(params["C_nm_s_ARG_vec"].astype(np.complex128)),
-        np.ascontiguousarray(params["C_vu_r_vec"].astype(np.complex128)),
-        np.ascontiguousarray(R_sI_r_all.astype(np.float64)),
-        np.ascontiguousarray(atten_all.astype(np.complex128)),
-        np.ascontiguousarray(k.astype(np.float64)),
-    )
+    P = _run_numba_arg_lc_in_batches(params, R_sI_r_all, atten_all)
 
     if not params["silentMode"]:
         m, s = divmod(time.time() - start, 60)
@@ -1048,41 +1109,14 @@ def _numba_run_DEISM_ARG_MIX(params, images, Wigner):
 
     P = np.zeros(k.size, dtype="complex")
 
-    # Early: Numba ARG-ORG
+    # ORG retains its own image-order sum before adding the late LC sum.
     if len(early_indices) > 0:
-        R_sI_r_all_early = images["R_sI_r_all"][:, early_indices]
-        atten_all_early = images["atten_all"][:, early_indices]
-        C_nm_s_ARG_early = params["C_nm_s_ARG"][:, :, :, early_indices]
+        P += _run_numba_arg_org_in_batches(params, images, Wigner, early_indices)
 
-        P += _numba_ARG_ORG_batch(
-            params["sourceOrder"],
-            params["receiverOrder"],
-            np.ascontiguousarray(C_nm_s_ARG_early.astype(np.complex128)),
-            np.ascontiguousarray(params["C_vu_r"].astype(np.complex128)),
-            np.ascontiguousarray(atten_all_early.astype(np.complex128)),
-            np.ascontiguousarray(R_sI_r_all_early.astype(np.float64)),
-            np.ascontiguousarray(Wigner["W_1_all"].astype(np.complex128)),
-            np.ascontiguousarray(Wigner["W_2_all"].astype(np.complex128)),
-            np.ascontiguousarray(k.astype(np.float64)),
-        )
-
-    # Late: Numba ARG-LC
+    # Late: Numba ARG-LC (image batches, image-major coefficient layout)
     if len(late_indices) > 0:
-        R_sI_r_all_late = images["R_sI_r_all"][:, late_indices]
-        atten_all_late = images["atten_all"][:, late_indices]
-
-        P += _numba_ARG_LC_batch(
-            np.ascontiguousarray(params["n_all"].astype(np.int64)),
-            np.ascontiguousarray(params["m_all"].astype(np.int64)),
-            np.ascontiguousarray(params["v_all"].astype(np.int64)),
-            np.ascontiguousarray(params["u_all"].astype(np.int64)),
-            np.ascontiguousarray(
-                params["C_nm_s_ARG_vec"][:, :, late_indices].astype(np.complex128)
-            ),
-            np.ascontiguousarray(params["C_vu_r_vec"].astype(np.complex128)),
-            np.ascontiguousarray(R_sI_r_all_late.astype(np.float64)),
-            np.ascontiguousarray(atten_all_late.astype(np.complex128)),
-            np.ascontiguousarray(k.astype(np.float64)),
+        P += _run_numba_arg_lc_in_batches(
+            params, images["R_sI_r_all"], images["atten_all"], late_indices
         )
 
     if not params["silentMode"]:
@@ -1711,7 +1745,7 @@ def _ray_run_DEISM_ARG_LC_matrix(params, images):
                 m_all_id,
                 v_all_id,
                 u_all_id,
-                C_nm_s_ARG_vec[:, :, i],
+                C_nm_s_ARG_vec[i],
                 C_vu_r_vec_id,
                 R_sI_r_all[:, i],
                 atten_all[:, i],
@@ -1743,7 +1777,6 @@ def _ray_run_DEISM_ARG_MIX(params, images, Wigner):
     V_rec_dir = params["receiverOrder"]
     W_1_all = Wigner["W_1_all"]
     W_2_all = Wigner["W_2_all"]
-    C_nm_s_ARG = params["C_nm_s_ARG"]
     C_vu_r = params["C_vu_r"]
     early_indices = images["early_indices"]
     late_indices = images["late_indices"]
@@ -1781,7 +1814,7 @@ def _ray_run_DEISM_ARG_MIX(params, images, Wigner):
         _ray_calc_ARG_ORG_single.remote(
             N_src_dir_id,
             V_rec_dir_id,
-            C_nm_s_ARG[:, :, :, idx],
+            _arg_org_coefficients(params, slice(idx, idx + 1))[..., 0],
             C_vu_r_id,
             atten_all[:, idx],
             R_sI_r_all[:, idx],
@@ -1807,7 +1840,7 @@ def _ray_run_DEISM_ARG_MIX(params, images, Wigner):
                 m_all_id,
                 v_all_id,
                 u_all_id,
-                C_nm_s_ARG_vec[:, :, late_indices[i]],
+                C_nm_s_ARG_vec[late_indices[i]],
                 C_vu_r_vec_id,
                 R_sI_r_all[:, late_indices[i]],
                 atten_all[:, late_indices[i]],

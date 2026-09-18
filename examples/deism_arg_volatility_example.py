@@ -81,7 +81,7 @@ def main():
         deism.params["volatility"] = volatility
         deism.update_fluctuations()
         deism.run_DEISM(if_clean_up=False)
-        # get_results() windows params["RTF"] in place, so copy the RTF first.
+        # get_results() leaves params["RTF"] untouched; keep a copy for saving.
         P_DEISM = deism.params["RTF"].copy()
         rir = deism.get_results()
         rirs.append(rir)

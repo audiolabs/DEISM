@@ -1,0 +1,61 @@
+name: Playground engine tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  playground:
+    name: Playground engine golden tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          lfs: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install OpenGL libraries for gmsh
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglu1-mesa libgl1
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install --editable . pytest
+
+      - name: Regenerate fixtures and datasets from the Python solver
+        run: |
+          python tools/playground_fixtures.py
+          python tools/playground_directivity.py
+          git diff --stat -- playground/fixtures
+
+      - name: Run Python tests that need original MAT datasets
+        run: python -m pytest -o addopts= -m directivity_data --require-directivity-data
+
+      - name: Verify preset geometry and solves against the example scripts
+        run: python -m pytest tests/test_playground_presets_examples.py -q --require-directivity-data
+
+      - name: Run the JavaScript golden tests
+        run: cd playground && npm test
+
+      - name: Build the demo page
+        run: |
+          python tools/playground_build.py --out /tmp/demo.html

@@ -35,6 +35,26 @@ Useful entry points:
 - [Parameter dependencies](docs/parameter_dependencies.rst)
 - [Configuration](docs/configuration.rst)
 
+## Local HTML playground
+
+After installing this version of DEISM, run `deism-playground` from any directory.
+It serves the packaged UI on localhost, starts one persistent Python simulation
+process, and opens your browser. No Node.js or manual HTML build is needed.
+Ctrl+C stops both processes. Use `deism-playground --no-browser --port 8765` to
+choose a port and open the page yourself.
+
+The sampled-directivity MAT datasets (186 MB) are not included in the wheels.
+On the first run the launcher downloads them from the GitHub release into
+`~/.cache/deism/sampled_directivity`; a checkout in the working directory
+(`examples/data/sampled_directivity`, after `git lfs pull`) or the `--data-dir`
+option is used instead when present, `--no-download` skips the download, and
+`--clear-cache` removes the copy. Monopole transducers work without them.
+
+The live preview uses JavaScript with reduced settings; **Run Python DEISM**
+uses the installed Python workflow and the original MAT datasets. See
+[playground usage and validation](playground/README.md) for supported settings,
+performance measurements, and offline-demo limitations.
+
 ## Check Python version
 
 On macOS or Linux:
@@ -329,6 +349,65 @@ The current default configuration files are:
 
 See [docs/configuration.rst](docs/configuration.rst) for the configuration
 groups and runtime parameter mappings.
+
+# Speed of the convex pipeline
+
+The convex (DEISM-ARG) workflow has three costly stages: finding the image
+sources, refitting the source directivity for every image, and the solver. All
+three were accelerated (September 2026): images, coefficients and RTFs matched
+the previous implementation bit-for-bit in the tested configurations. The
+defaults select the fast paths; the switches below exist for validation and
+for bounding temporary memory.
+
+- **Image finding** (`deism/libroom_src/room.cpp`): the image-source DFS
+  tracks, for each candidate image, the region of its generating wall through
+  which a path to it must pass, and skips the subtree when that region is
+  empty (beam tracing with a conservative margin; every remaining candidate
+  still runs the original visibility test).
+  `deism.room_convex.room_engine.beam_pruning = False` restores the
+  exhaustive search; `dfs_nodes_visited` and `dfs_subtrees_pruned` report the
+  counts. `beam_margin` must be finite and nonnegative. Both pruning settings
+  are preserved when the wrapper rebuilds its engine after parameter changes.
+  Rebuild the extension after updating the sources.
+- **Source refit** (`cal_C_nm_s_arg`, fast path): images are fitted in
+  batches (one spherical-harmonic evaluation and one LAPACK solve per batch),
+  each distinct reflection matrix is fitted once (`directivityRefitReuseIdentical`,
+  default `1`; exact byte equality, no rounding), and the coefficients are
+  written straight into the complex64 tensor. `directivityRefitBatchImages`
+  (default `256`) and `directivityRefitUniqueBudgetMiB` (default `256`) bound
+  the temporaries. `cal_C_nm_s_arg(..., out_dtype=np.complex64)` requests the
+  compact output directly; the default return type is unchanged.
+- **Wigner 3j tables** (`pre_calc_Wigner`): exact-rational evaluation with a
+  process cache; `params["wignerMethod"] = "sympy"` selects the original
+  sympy loop.
+- **LC solver kernel**: image-major coefficient batches
+  (`numbaArgLcBatchImages`, default `512`).
+
+`python benchmarks/bench_convex_directivity_images.py` times every stage of a
+checkout; `--root` measures another checkout and `--compare` prints the
+before/after table. Measured on the IWAENC Fig. 5 room (MIX, SH 5/5, 491
+frequencies, warmed, 4 cores) the stages changed as follows (seconds, old
+-> new):
+
+| Case | Images | Freqs | Image DFS | Source refit | Vectorize | Wigner | Solve | Total |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| order5 | 234 | 491 | 0.00 → 0.00 (0.7×) | 0.53 → 0.10 (5.4×) | 0.05 → 0.01 (5.9×) | 2.16 → 0.00 (14693×) | 0.98 → 0.25 (3.9×) | 3.74 → 0.38 (9.8×) |
+| order8 | 837 | 491 | 0.01 → 0.01 (1.6×) | 2.96 → 0.25 (12×) | 0.27 → 0.04 (7.4×) | 2.16 → 0.00 (13501×) | 2.95 → 0.44 (6.7×) | 8.39 → 0.77 (11×) |
+| order10 | 1577 | 491 | 0.13 → 0.03 (4.3×) | 5.23 → 0.49 (11×) | 0.37 → 0.10 (3.7×) | 2.16 → 0.00 (10704×) | 5.43 → 1.73 (3.1×) | 13.36 → 2.40 (5.6×) |
+| order12 | 2656 | 491 | 1.07 → 0.07 (16×) | 11.66 → 0.67 (17×) | 2.12 → 0.11 (19×) | 2.15 → 0.00 (14482×) | 9.40 → 1.20 (7.8×) | 26.48 → 2.11 (13×) |
+| order15 | 5029 | 491 | 29.37 → 0.23 (127×) | 35.72 → 1.16 (31×) | 0.98 → 0.21 (4.7×) | 2.32 → 0.00 (14645×) | 16.16 → 3.83 (4.2×) | 84.75 → 5.52 (15×) |
+| fig6_order15 | 4973 | 491 | 29.61 → 0.22 (133×) | 34.72 → 1.42 (24×) | 0.94 → 1.11 (0.8×) | 2.26 → 0.00 (14784×) | 15.32 → 3.49 (4.4×) | 83.00 → 6.34 (13×) |
+| prism7_order12 | 2777 | 491 | 7.41 → 0.11 (69×) | 14.06 → 1.19 (12×) | 1.89 → 0.16 (12×) | 2.29 → 0.00 (15956×) | 10.68 → 2.02 (5.3×) | 36.50 → 3.54 (10×) |
+| sh3 | 837 | 491 | 0.01 → 0.01 (1.6×) | 1.19 → 0.09 (13×) | 0.36 → 0.02 (23×) | 0.16 → 0.00 (4129×) | 0.37 → 0.23 (1.6×) | 2.10 → 0.37 (5.7×) |
+| sh7 | 837 | 491 | 0.01 → 0.01 (1.6×) | 5.29 → 0.66 (8.0×) | 0.78 → 0.07 (12×) | 16.19 → 0.00 (26919×) | 5.72 → 1.51 (3.8×) | 28.04 → 2.30 (12×) |
+| org_order6 | 380 | 491 | 0.00 → 0.00 (0.9×) | 1.25 → 0.15 (8.4×) | – | 2.26 → 0.00 (14761×) | 2.63 → 1.44 (1.8×) | 6.22 → 1.62 (3.8×) |
+| lc_order8 | 837 | 491 | 0.01 → 0.01 (1.6×) | 3.08 → 0.26 (12×) | 0.41 → 0.04 (11×) | – | 1.66 → 0.54 (3.1×) | 5.22 → 0.88 (5.9×) |
+| mono_order12_981f | 2656 | 981 | 1.11 → 0.07 (17×) | 0.09 → 0.00 (19×) | 0.13 → 0.00 (67×) | – | 1.11 → 0.19 (6.0×) | 2.52 → 0.31 (8.2×) |
+
+Warm medians of three repetitions in one process; the old numbers come from the
+pre-optimization commit measured by the same script. Peak process RSS for the
+order-15 case fell from 4.9 GB to 2.1 GB. The full table and the isolated effect of each switch are produced by
+`benchmarks/bench_convex_directivity_images.py`.
 
 # Compact image storage
 
