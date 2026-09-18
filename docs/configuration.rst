@@ -161,6 +161,29 @@ RIR mode uses the ``Signal`` section:
 - ``samplingRate`` -> ``sampleRate``
 - ``RIRLength`` -> ``RIRLength``
 - ``overSamplingFactor`` -> ``overSamplingFactor``
+- ``RIRWindowPhase`` -> ``rirWindowPhase`` (optional, default ``minimum``)
+
+The frequency grid of RIR mode runs from one step to ``sampleRate / 2`` with
+a step of at most ``1 / rirPeriod``, where ``rirPeriod = min(T60, RIRLength)``;
+the shoebox image set is bounded by the path length ``c * rirPeriod`` as well.
+``get_results`` shapes the RTF with a raised-cosine bandpass window (150 Hz
+high-pass with a 45 Hz transition, low-pass at 70 % of Nyquist with a 15 %
+transition; ``params["rirWindow"]`` overrides ``lowCut``, ``lowWidth``,
+``highCutRatio`` and ``highWidthRatio``) before the inverse FFT, and pads or
+truncates the result to ``RIRLength``. ``RIRWindowPhase`` selects how the
+window is applied:
+
+- ``minimum`` (default): minimum-phase window. The impulse response is causal:
+  nothing precedes an arrival and nothing folds across the end of the FFT
+  period. Low frequencies below about 200 Hz arrive a few milliseconds later
+  than the high frequencies; the energy decay curve is unaffected.
+- ``zero``: zero-phase window, i.e. symmetric pulses with a few milliseconds
+  of pre-ringing. The grid is extended by a guard interval (the lag after which
+  the window's impulse response stays 100 dB below its peak, 46 ms at 44.1 or
+  48 kHz, stored in ``params["rirGuard"]``) that absorbs the folded ringing and
+  is discarded after the inverse FFT. This costs ``rirGuard / rirPeriod`` more
+  frequency bins.
+- ``none``: no window, for diagnostics. The hard band edges ring and fold.
 
 Material input rules
 --------------------

@@ -8,6 +8,7 @@ reproduce into ``playground/fixtures/*.json``. The JavaScript test suite
 Run from the repository root::
 
     python tools/playground_fixtures.py
+    python tools/playground_fixtures.py --rir-only   # RIR fixtures only
 
 The fixtures are test data, not user-facing results: the demo itself computes
 everything on the fly.
@@ -24,10 +25,12 @@ import numpy as np
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 os.chdir(REPO_ROOT)
 sys.path.insert(0, REPO_ROOT)
+ARGS = sys.argv[1:]  # --rir-only: regenerate the RIR fixtures alone
 sys.argv = [sys.argv[0]]  # DEISM() parses the command line
 
 from deism.core_deism import (  # noqa: E402
     DEISM,
+    rir_guard_interval,
     pre_calc_Wigner,
     convert_abs_to_imp,
     convert_t60_to_imp,
@@ -532,10 +535,13 @@ def main():
         },
     )
 
-    # 11. RIR mode, shoebox monopoles: pins update_freqs and get_results
-    d = make(
-        "RIR",
-        "shoebox",
+    rir_fixtures()
+
+
+def rir_fixtures():
+    """11. RIR mode, shoebox monopoles: pins update_freqs and get_results for
+    the three window phases (the zero-phase grid carries the guard interval)."""
+    scene = dict(
         roomSize=np.array([4.0, 3.0, 2.5]),
         posSource=np.array([1.1, 1.1, 1.3]),
         posReceiver=np.array([2.9, 1.9, 1.3]),
@@ -545,19 +551,34 @@ def main():
         sampleRate=4000,
         RIRLength=0.5,
     )
-    d = run_case("shoebox_rir", d, np.array([18.0] * 6), "impedance")
+    d = run_case("shoebox_rir", make("RIR", "shoebox", **scene), np.array([18.0] * 6), "impedance")
+    result = {
+        "name": "shoebox_rir_result",
+        "sampleRate": d.params["sampleRate"],
+        "rirPeriod": float(d.params["rirPeriod"]),
+        "guard": {str(fs): rir_guard_interval(fs) for fs in (4000, 8000, 48000)},
+        "nFreqs": {},
+        "rir": {},
+    }
+    for phase in ("minimum", "none"):
+        d.params["rirWindowPhase"] = phase
+        with contextlib.redirect_stdout(io.StringIO()):
+            rir = d.get_results()
+        result["nFreqs"][phase], result["rir"][phase] = len(d.params["freqs"]), enc(rir)
+    d = make("RIR", "shoebox", rirWindowPhase="zero", **scene)
+    p = d.params
     with contextlib.redirect_stdout(io.StringIO()):
+        d.update_wall_materials(datain=np.full((6, 1), 18.0), datatype="impedance")
+        d.update_freqs()
+        d.update_directivities()
+        d.update_source_receiver()
+        d.run_DEISM(if_clean_up=False)
         rir = d.get_results()
-    dump(
-        "shoebox_rir_result",
-        {
-            "name": "shoebox_rir_result",
-            "sampleRate": d.params["sampleRate"],
-            "nSamples": int(len(rir)),
-            "rir": enc(np.asarray(rir)),
-        },
-    )
+    result["rirGuard"] = float(p["rirGuard"])
+    result["nFreqs"]["zero"], result["rir"]["zero"] = len(p["freqs"]), enc(rir)
+    result["nSamples"] = int(len(rir))
+    dump("shoebox_rir_result", result)
 
 
 if __name__ == "__main__":
-    main()
+    rir_fixtures() if "--rir-only" in ARGS else main()

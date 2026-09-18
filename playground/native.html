@@ -293,7 +293,7 @@ input:invalid { border-color: var(--red); }
     </section>
 
     <section class="card">
-      <div class="card-heading"><h2>Simulation mode</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>RTF computes the room transfer function on an explicit frequency grid. RIR adds the impulse response (inverse FFT of the transfer function on a grid derived from T60 and the sample rate) and its energy decay curve.</div></div></details></div>
+      <div class="card-heading"><h2>Simulation mode</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>RTF computes the room transfer function on an explicit frequency grid. RIR adds the impulse response (inverse FFT of the transfer function on a grid that resolves the shorter of T60 and the RIR length) and its energy decay curve. The RIR window shapes the band before the inverse FFT: minimum phase keeps the response causal (nothing before an arrival, nothing folded across the end); zero phase gives symmetric pulses with a few milliseconds of pre-ringing on a grid extended by a guard interval; none is the raw inverse FFT for diagnostics.</div></div></details></div>
       <label class="row"><span>Output</span>
         <select data-p="mode">
           <option value="RTF">Transfer function (RTF)</option>
@@ -417,6 +417,11 @@ input:invalid { border-color: var(--red); }
       <div id="freq-rir" hidden>
         <label class="row"><span>Sample rate [Hz]</span><input type="number" required min="1000" max="48000" step="100" data-p="sampleRate"></label>
         <label class="row"><span>RIR length [s]</span><input type="number" required min="0.1" max="2" step="0.05" data-p="RIRLength"></label>
+        <label class="row"><span>RIR window</span><select data-p="rirWindowPhase">
+          <option value="minimum">Bandpass, minimum phase (causal)</option>
+          <option value="zero">Bandpass, zero phase (guarded grid)</option>
+          <option value="none">None (raw inverse FFT)</option>
+        </select></label>
 
       </div>
       <div class="stat" id="freq-stat"></div>
@@ -1480,11 +1485,12 @@ function updateN1N2N3(c, t60, L) {
  * Returns {A, RsIr, RsrI, RrsI} where each image row of A is
  * [q_x, q_y, q_z, p_x, p_y, p_z] and the R arrays hold [phi, theta, r].
  * Images are split into early (order <= mixEarlyOrder) and late lists.
+ * `timeLimit` bounds the path length (core_deism.image_time_limit).
  */
-function shoeboxImages({ L, xs, xr, c, t60, maxOrder, mixEarlyOrder, removeDirect }) {
+function shoeboxImages({ L, xs, xr, c, t60, timeLimit = t60, maxOrder, mixEarlyOrder, removeDirect }) {
   const [n1, n2, n3] = updateN1N2N3(c, t60, L);
   const NoOrg = Math.min(mixEarlyOrder, maxOrder);
-  const maxDist2 = (c * t60) ** 2;
+  const maxDist2 = (c * timeLimit) ** 2; // c*T60, or c*min(T60, RIRLength) in RIR mode
   const early = { A: [], RsIr: [], RsrI: [], RrsI: [] };
   const late = { A: [], RsIr: [], RsrI: [], RrsI: [] };
   // Like the package's default v2-numba backend, the set is bounded by the
@@ -2638,7 +2644,7 @@ function lcARG({ N, V, CsARG, Cr, RsIr, atten, k, imageIndices, onProgress }) {
 
 
 /** Version of the Python package this engine was ported from and validated against. */
-const ENGINE_VERSION = "2.2.1.15-js";
+const ENGINE_VERSION = "2.2.1.16-js";
 
 const DEFAULT_PARAMS = {
   mode: "RTF",
@@ -2662,6 +2668,11 @@ const DEFAULT_PARAMS = {
   freqStep: 100,
   sampleRate: 8000,
   RIRLength: 0.5,
+  // RIR bandpass window (DEISM.get_results): entries of DEFAULT_RIR_WINDOW to
+  // override, and how the window is applied: "minimum" (causal, default),
+  // "zero" (symmetric pulses on a guarded grid) or "none" (no window).
+  rirWindow: null,
+  rirWindowPhase: "minimum",
   sourceType: "monopole",
   receiverType: "monopole",
   sourceOrder: 0,
@@ -2680,6 +2691,83 @@ const DEFAULT_PARAMS = {
   directivityFreqPolicy: "interpolate",
   datasets: {}, // name -> dataset object
 };
+
+// ---------------------------------------------------------------------------
+// RIR synthesis (core_deism.DEFAULT_RIR_WINDOW, minimum_phase_spectrum,
+// rir_guard_interval): the RTF is windowed by a raised-cosine bandpass before
+// the inverse FFT. Applied with minimum phase the response is causal, so
+// nothing precedes an arrival or folds across the FFT period; with zero
+// phase it pre-rings, and the grid is extended by a guard interval that
+// absorbs the folded ringing.
+const DEFAULT_RIR_WINDOW = { lowCut: 150, lowWidth: 45, highCutRatio: 0.7, highWidthRatio: 0.15 };
+const RIR_WINDOW_PHASES = ["minimum", "zero", "none"];
+const RIR_WINDOW_FLOOR_DB = -100;
+
+/** Bandpass window as in core_deism.create_bandpass_window. */
+function bandpassWindow(freqs, fLow, fHigh, twLow = null, twHigh = null, fNyq = null) {
+  const fNyquist = fNyq ?? freqs[freqs.length - 1] + (freqs[1] - freqs[0]);
+  if (twLow == null) twLow = Math.max(10, 0.1 * fLow);
+  if (twHigh == null) twHigh = Math.max(100, 0.05 * (fNyquist - fHigh));
+  const lowStart = Math.max(0, fLow - twLow);
+  const highEnd = Math.min(fNyquist, fHigh + twHigh);
+  return freqs.map((f) => {
+    if (f < lowStart) return 0;
+    if (f < fLow) return fLow > lowStart ? 0.5 * (1 - Math.cos((Math.PI * (f - lowStart)) / (fLow - lowStart))) : 1;
+    if (f > highEnd) return 0;
+    if (f > fHigh) return highEnd > fHigh ? 0.5 * (1 + Math.cos((Math.PI * (f - fHigh)) / (highEnd - fHigh))) : 1;
+    return 1;
+  });
+}
+
+/** The RIR bandpass window of getResults on `freqs` for sample rate `fs` (core_deism.rir_bandpass_window). */
+function rirBandpassWindow(freqs, fs, settings = null) {
+  const s = { ...DEFAULT_RIR_WINDOW, ...(settings || {}) };
+  const fHigh = (s.highCutRatio * fs) / 2;
+  return bandpassWindow(freqs, s.lowCut, fHigh, s.lowWidth, s.highWidthRatio * fHigh, fs / 2);
+}
+
+/** Minimum-phase spectrum {re, im} on bins 0..n/2 (even n) with the given magnitude (real-cepstrum method). */
+function minimumPhaseSpectrum(magnitude, n, floorDb = RIR_WINDOW_FLOOR_DB) {
+  const half = n / 2;
+  let max = 0;
+  for (const v of magnitude) max = Math.max(max, v);
+  const floor = 10 ** (floorDb / 20) * max;
+  const logMag = new Float64Array(half + 1);
+  for (let k = 0; k <= half; k++) logMag[k] = Math.log(Math.max(magnitude[k], floor));
+  const cepstrum = irfft(logMag, new Float64Array(half + 1), n);
+  const folded = new Float64Array(n);
+  folded[0] = cepstrum[0];
+  folded[half] = cepstrum[half];
+  for (let i = 1; i < half; i++) folded[i] = 2 * cepstrum[i];
+  const [lr, li] = dft(folded, new Float64Array(n), false);
+  const re = new Float64Array(half + 1);
+  const im = new Float64Array(half + 1);
+  for (let k = 0; k <= half; k++) {
+    const m = Math.exp(lr[k]);
+    re[k] = m * Math.cos(li[k]);
+    im[k] = m * Math.sin(li[k]);
+  }
+  return { re, im };
+}
+
+/** Guard interval (s, whole ms) of the zero-phase window: the lag after which its impulse response stays floorDb below its peak. */
+function rirGuardInterval(fs, settings = null, floorDb = RIR_WINDOW_FLOOR_DB, span = 4) {
+  const n = Math.round((fs / 2) * span);
+  const freqs = Array.from({ length: n }, (_, i) => (i + 1) / span);
+  const re = new Float64Array(n + 1);
+  re.set(rirBandpassWindow(freqs, fs, settings), 1);
+  const h = irfft(re, new Float64Array(n + 1), 2 * n);
+  const envelope = new Float64Array(n); // running maximum of |h| over lags >= t
+  let m = 0;
+  for (let i = n - 1; i >= 0; i--) {
+    m = Math.max(m, Math.abs(h[i]));
+    envelope[i] = m;
+  }
+  const threshold = envelope[0] * 10 ** (floorDb / 20);
+  let lag = n;
+  for (let i = 0; i < n; i++) if (envelope[i] < threshold) { lag = i; break; }
+  return Math.ceil((lag / fs) * 1000) / 1000;
+}
 
 class Deism {
   constructor(params = {}, onStage = null) {
@@ -2754,13 +2842,18 @@ class Deism {
     const p = this.p;
     let freqs;
     if (p.mode === "RIR") {
-      const minStep = 1 / this.state.reverberationTime;
-      const nyq = p.sampleRate / 2;
-      const nSteps = Math.ceil(nyq / minStep);
+      const fs = p.sampleRate;
+      // As DEISM.update_freqs: the inverse FFT is periodic over 1/step, so
+      // the grid resolves min(T60, RIRLength) plus, for the zero-phase
+      // window, the guard interval that absorbs its folded ringing.
+      const period = Math.min(this.state.reverberationTime, p.RIRLength);
+      const guard = p.rirWindowPhase === "zero" ? rirGuardInterval(fs, p.rirWindow) : 0;
+      const nSteps = Math.ceil((fs / 2) * (period + guard));
       if (nSteps > 200000) throw new Error("RIR grid exceeds 200,000 frequency bins; reduce sample rate or T60.");
-      const step = nyq / nSteps;
-      const nExpected = Math.ceil(nyq / step);
-      freqs = Array.from({ length: nExpected }, (_, i) => step * (i + 1));
+      const step = fs / 2 / nSteps;
+      freqs = Array.from({ length: nSteps }, (_, i) => step * (i + 1));
+      this.state.rirPeriod = period;
+      this.state.rirGuard = guard;
     } else {
       const n = Math.ceil((p.endFreq + p.freqStep - p.startFreq) / p.freqStep);
       freqs = Array.from({ length: n }, (_, i) => p.startFreq + i * p.freqStep);
@@ -2800,6 +2893,7 @@ class Deism {
         xr: p.posReceiver,
         c: p.soundSpeed,
         t60: this.state.reverberationTime,
+        timeLimit: p.mode === "RIR" ? Math.min(this.state.reverberationTime, p.RIRLength) : this.state.reverberationTime,
         maxOrder: p.maxReflOrder,
         mixEarlyOrder: p.mixEarlyOrder,
         removeDirect: p.ifRemoveDirectPath,
@@ -3029,65 +3123,48 @@ class Deism {
   }
 
   // -------------------------------------------------------------------
-  /** Bandpass window as in DEISM.create_bandpass_window. */
-  static bandpassWindow(freqs, fLow, fHigh, twLow, twHigh) {
-    const fNyq = freqs[freqs.length - 1] + (freqs[1] - freqs[0]);
-    if (twLow == null) twLow = Math.max(10, 0.1 * fLow);
-    if (twHigh == null) twHigh = Math.max(100, 0.05 * (fNyq - fHigh));
-    const lowStart = Math.max(0, fLow - twLow);
-    const highEnd = Math.min(fNyq, fHigh + twHigh);
-    return freqs.map((f) => {
-      if (f < lowStart) return 0;
-      if (f >= lowStart && f < fLow) {
-        const r = fLow - lowStart;
-        return r > 0 ? 0.5 * (1 - Math.cos((Math.PI * (f - lowStart)) / r)) : 1;
-      }
-      if (f > fHigh && f <= highEnd) {
-        const r = highEnd - fHigh;
-        return r > 0 ? 0.5 * (1 + Math.cos((Math.PI * (f - fHigh)) / r)) : 1;
-      }
-      if (f > highEnd) return 0;
-      return 1;
-    });
+  static bandpassWindow(freqs, fLow, fHigh, twLow, twHigh, fNyq = null) {
+    return bandpassWindow(freqs, fLow, fHigh, twLow, twHigh, fNyq);
   }
 
-  /** RTF -> RIR exactly as DEISM.get_results (bandpass window on by default). */
-  getResults({ bandpassWindow = true } = {}) {
+  /**
+   * RTF -> RIR as DEISM.get_results: inverse FFT with zero DC and Nyquist
+   * bins, shaped by the bandpass window as params.rirWindowPhase says
+   * ("minimum": causal; "zero": symmetric, guard interval discarded; "none":
+   * no window, also `bandpassWindow: false`). The RTF is left untouched. The
+   * result holds the first min(T60, RIRLength) seconds, padded or truncated
+   * to RIRLength.
+   */
+  getResults({ bandpassWindow = null } = {}) {
     const p = this.p;
     if (p.mode !== "RIR") return this.state.RTF;
     if (this.state.previewRirUnavailable) return null;
     const freqs = this.state.freqs;
     const fs = p.sampleRate;
-    let nSamples;
-    if (freqs.length > 1) {
-      const fStep = freqs[1] - freqs[0];
-      const nPeriod = Math.round((1 / fStep) * fs);
-      const nRt = Math.round(this.state.reverberationTime * fs);
-      nSamples = nRt <= nPeriod ? nPeriod : Math.ceil(nRt / nPeriod) * nPeriod;
-    } else {
-      nSamples = Math.round(this.state.reverberationTime * fs) + 1;
-    }
-    const fLow = 150;
-    const fHigh = Math.trunc((fs / 2) * 0.7);
-    const twLow = Math.trunc(fLow * 0.3);
-    const twHigh = Math.trunc(fHigh * 0.15);
-    let re = Float64Array.from(this.state.RTF.re);
-    let im = Float64Array.from(this.state.RTF.im);
-    if (bandpassWindow) {
-      const w = Deism.bandpassWindow(freqs, fLow, fHigh, twLow, twHigh);
-      for (let i = 0; i < re.length; i++) {
-        re[i] *= w[i];
-        im[i] *= w[i];
+    const nF = freqs.length;
+    const n = 2 * nF; // the grid ends exactly at fs/2
+    const phase = bandpassWindow === false ? "none" : p.rirWindowPhase;
+    const re = new Float64Array(nF + 1);
+    const im = new Float64Array(nF + 1);
+    re.set(this.state.RTF.re, 1); // DC = 0
+    im.set(this.state.RTF.im, 1);
+    re[nF] = 0; // the Nyquist bin of a real signal
+    im[nF] = 0;
+    if (phase !== "none") {
+      const magnitude = new Float64Array(nF + 1);
+      magnitude.set(rirBandpassWindow(freqs, fs, p.rirWindow), 1);
+      const w = phase === "minimum" ? minimumPhaseSpectrum(magnitude, n) : { re: magnitude, im: new Float64Array(nF + 1) };
+      for (let i = 0; i <= nF; i++) {
+        const a = re[i], b = im[i];
+        re[i] = a * w.re[i] - b * w.im[i];
+        im[i] = a * w.im[i] + b * w.re[i];
       }
     }
-    // prepend DC = 0
-    const fullRe = new Float64Array(re.length + 1);
-    const fullIm = new Float64Array(im.length + 1);
-    fullRe.set(re, 1);
-    fullIm.set(im, 1);
-    let rir = irfft(fullRe, fullIm, nSamples);
+    const period = this.state.rirPeriod;
+    let rir = irfft(re, im, n).slice(0, Math.round(period * fs));
     const nOut = Math.trunc(p.RIRLength * fs);
     if (rir.length < nOut) {
+      this.warn(`RIR length ${p.RIRLength} s exceeds T60 ${period.toFixed(3)} s; the impulse response is zero-padded beyond ${period.toFixed(3)} s.`);
       const padded = new Float64Array(nOut);
       padded.set(rir);
       rir = padded;
@@ -3180,6 +3257,7 @@ function validateParams(p) {
   if (p.mode === "RTF" && (!positive(p.startFreq) || !positive(p.freqStep) || !Number.isFinite(p.endFreq) || p.endFreq < p.startFreq)) throw new Error("Use positive start/step and end ≥ start frequency");
   if (p.mode === "RTF" && (p.endFreq - p.startFreq) / p.freqStep > 200000) throw new Error("RTF grid exceeds 200,000 frequency bins");
   if (p.mode === "RIR" && (!positive(p.sampleRate) || !positive(p.RIRLength) || p.sampleRate * p.RIRLength > 1000000)) throw new Error("Use positive sample rate and length (maximum 1,000,000 output samples)");
+  if (!RIR_WINDOW_PHASES.includes(p.rirWindowPhase)) throw new Error("rirWindowPhase must be minimum, zero or none");
   if (!Number.isFinite(p.drift) || p.drift <= -1 || !Number.isFinite(p.volatility) || p.volatility < 0) throw new Error("Drift must be finite and > -1; volatility must be finite and ≥ 0");
   const m = p.material;
   if (m.type === "reverberationTime") {
@@ -3239,7 +3317,7 @@ function decodeDataset(json) {
   return { name: json.name, kind: json.kind, r0: json.r0, freqs: json.freqs, dirs: json.dirs, psh: { re, im } };
 }
 
-return { ConvexRoom, DEFAULT_PARAMS, Deism, DirectivityError, ENGINE_VERSION, LIBROOM_EPS, Wall, add3, argAttenuation, assertFiniteResult, cart2sph, cmat, coefIndex, convertAbsToImpScalar, convertImpToAbs, convertImpToT60, convertMaterials, convertT60ToImpScalar, convexHullFaces, convexRoomVolumeAndAreas, cross3, datasetCoefs, datasetCoefsARG, decodeDataset, dft, directivityRotation, dirsToCart, dot3, emptyCoefs, factorial, findWallCenters, hermitianTimes, identity3, idxM, impAbsError, impT60Error, interpolateDataset, interpolateImpedance, ipow, irfft, isInside2dPolygon, lcARG, lcShoebox, lstsq, mat3mul, mat3vec, matchFrequencies, matmul, mergeImages, modeList, monopoleCoefs, monopoleCoefsARG, norm3, normalGenerator, normalize3, orgARG, orgShoebox, pchip, pchipSlopes, pinvTall, pointSourceStrength, preCalcWigner, rotateCart, rotateDirections, rotationMatrixZXZ, scale3, shBasis, shBasisFromCart, shoeboxAttenuation, shoeboxImages, solve, sph2cart, sphHarm, sphankel2, sub3, toKernelSph, updateN1N2N3, validateParams, wigner3j };
+return { ConvexRoom, DEFAULT_PARAMS, DEFAULT_RIR_WINDOW, Deism, DirectivityError, ENGINE_VERSION, LIBROOM_EPS, RIR_WINDOW_FLOOR_DB, RIR_WINDOW_PHASES, Wall, add3, argAttenuation, assertFiniteResult, bandpassWindow, cart2sph, cmat, coefIndex, convertAbsToImpScalar, convertImpToAbs, convertImpToT60, convertMaterials, convertT60ToImpScalar, convexHullFaces, convexRoomVolumeAndAreas, cross3, datasetCoefs, datasetCoefsARG, decodeDataset, dft, directivityRotation, dirsToCart, dot3, emptyCoefs, factorial, findWallCenters, hermitianTimes, identity3, idxM, impAbsError, impT60Error, interpolateDataset, interpolateImpedance, ipow, irfft, isInside2dPolygon, lcARG, lcShoebox, lstsq, mat3mul, mat3vec, matchFrequencies, matmul, mergeImages, minimumPhaseSpectrum, modeList, monopoleCoefs, monopoleCoefsARG, norm3, normalGenerator, normalize3, orgARG, orgShoebox, pchip, pchipSlopes, pinvTall, pointSourceStrength, preCalcWigner, rirBandpassWindow, rirGuardInterval, rotateCart, rotateDirections, rotationMatrixZXZ, scale3, shBasis, shBasisFromCart, shoeboxAttenuation, shoeboxImages, solve, sph2cart, sphHarm, sphankel2, sub3, toKernelSph, updateN1N2N3, validateParams, wigner3j };
 })();
 
 // ---- src/worker.js ----
@@ -3333,6 +3411,8 @@ self.onmessage = (ev) => {
       substituted: d.state.substitutedFreqs || [],
       images: d.state.imageCount,
       t60: d.state.reverberationTime,
+      rirPeriod: d.state.rirPeriod ?? null,
+      rirGuard: d.state.rirGuard ?? null,
       sourceOrder: d.params.sourceOrder,
       receiverOrder: d.params.receiverOrder,
       fluctuations: d.state.fluctuations ? { drift: params.drift, volatility: params.volatility, seed: params.fluctuationSeed } : null,
@@ -4384,11 +4464,12 @@ function updateN1N2N3(c, t60, L) {
  * Returns {A, RsIr, RsrI, RrsI} where each image row of A is
  * [q_x, q_y, q_z, p_x, p_y, p_z] and the R arrays hold [phi, theta, r].
  * Images are split into early (order <= mixEarlyOrder) and late lists.
+ * `timeLimit` bounds the path length (core_deism.image_time_limit).
  */
-function shoeboxImages({ L, xs, xr, c, t60, maxOrder, mixEarlyOrder, removeDirect }) {
+function shoeboxImages({ L, xs, xr, c, t60, timeLimit = t60, maxOrder, mixEarlyOrder, removeDirect }) {
   const [n1, n2, n3] = updateN1N2N3(c, t60, L);
   const NoOrg = Math.min(mixEarlyOrder, maxOrder);
-  const maxDist2 = (c * t60) ** 2;
+  const maxDist2 = (c * timeLimit) ** 2; // c*T60, or c*min(T60, RIRLength) in RIR mode
   const early = { A: [], RsIr: [], RsrI: [], RrsI: [] };
   const late = { A: [], RsIr: [], RsrI: [], RrsI: [] };
   // Like the package's default v2-numba backend, the set is bounded by the
@@ -5542,7 +5623,7 @@ function lcARG({ N, V, CsARG, Cr, RsIr, atten, k, imageIndices, onProgress }) {
 
 
 /** Version of the Python package this engine was ported from and validated against. */
-const ENGINE_VERSION = "2.2.1.15-js";
+const ENGINE_VERSION = "2.2.1.16-js";
 
 const DEFAULT_PARAMS = {
   mode: "RTF",
@@ -5566,6 +5647,11 @@ const DEFAULT_PARAMS = {
   freqStep: 100,
   sampleRate: 8000,
   RIRLength: 0.5,
+  // RIR bandpass window (DEISM.get_results): entries of DEFAULT_RIR_WINDOW to
+  // override, and how the window is applied: "minimum" (causal, default),
+  // "zero" (symmetric pulses on a guarded grid) or "none" (no window).
+  rirWindow: null,
+  rirWindowPhase: "minimum",
   sourceType: "monopole",
   receiverType: "monopole",
   sourceOrder: 0,
@@ -5584,6 +5670,83 @@ const DEFAULT_PARAMS = {
   directivityFreqPolicy: "interpolate",
   datasets: {}, // name -> dataset object
 };
+
+// ---------------------------------------------------------------------------
+// RIR synthesis (core_deism.DEFAULT_RIR_WINDOW, minimum_phase_spectrum,
+// rir_guard_interval): the RTF is windowed by a raised-cosine bandpass before
+// the inverse FFT. Applied with minimum phase the response is causal, so
+// nothing precedes an arrival or folds across the FFT period; with zero
+// phase it pre-rings, and the grid is extended by a guard interval that
+// absorbs the folded ringing.
+const DEFAULT_RIR_WINDOW = { lowCut: 150, lowWidth: 45, highCutRatio: 0.7, highWidthRatio: 0.15 };
+const RIR_WINDOW_PHASES = ["minimum", "zero", "none"];
+const RIR_WINDOW_FLOOR_DB = -100;
+
+/** Bandpass window as in core_deism.create_bandpass_window. */
+function bandpassWindow(freqs, fLow, fHigh, twLow = null, twHigh = null, fNyq = null) {
+  const fNyquist = fNyq ?? freqs[freqs.length - 1] + (freqs[1] - freqs[0]);
+  if (twLow == null) twLow = Math.max(10, 0.1 * fLow);
+  if (twHigh == null) twHigh = Math.max(100, 0.05 * (fNyquist - fHigh));
+  const lowStart = Math.max(0, fLow - twLow);
+  const highEnd = Math.min(fNyquist, fHigh + twHigh);
+  return freqs.map((f) => {
+    if (f < lowStart) return 0;
+    if (f < fLow) return fLow > lowStart ? 0.5 * (1 - Math.cos((Math.PI * (f - lowStart)) / (fLow - lowStart))) : 1;
+    if (f > highEnd) return 0;
+    if (f > fHigh) return highEnd > fHigh ? 0.5 * (1 + Math.cos((Math.PI * (f - fHigh)) / (highEnd - fHigh))) : 1;
+    return 1;
+  });
+}
+
+/** The RIR bandpass window of getResults on `freqs` for sample rate `fs` (core_deism.rir_bandpass_window). */
+function rirBandpassWindow(freqs, fs, settings = null) {
+  const s = { ...DEFAULT_RIR_WINDOW, ...(settings || {}) };
+  const fHigh = (s.highCutRatio * fs) / 2;
+  return bandpassWindow(freqs, s.lowCut, fHigh, s.lowWidth, s.highWidthRatio * fHigh, fs / 2);
+}
+
+/** Minimum-phase spectrum {re, im} on bins 0..n/2 (even n) with the given magnitude (real-cepstrum method). */
+function minimumPhaseSpectrum(magnitude, n, floorDb = RIR_WINDOW_FLOOR_DB) {
+  const half = n / 2;
+  let max = 0;
+  for (const v of magnitude) max = Math.max(max, v);
+  const floor = 10 ** (floorDb / 20) * max;
+  const logMag = new Float64Array(half + 1);
+  for (let k = 0; k <= half; k++) logMag[k] = Math.log(Math.max(magnitude[k], floor));
+  const cepstrum = irfft(logMag, new Float64Array(half + 1), n);
+  const folded = new Float64Array(n);
+  folded[0] = cepstrum[0];
+  folded[half] = cepstrum[half];
+  for (let i = 1; i < half; i++) folded[i] = 2 * cepstrum[i];
+  const [lr, li] = dft(folded, new Float64Array(n), false);
+  const re = new Float64Array(half + 1);
+  const im = new Float64Array(half + 1);
+  for (let k = 0; k <= half; k++) {
+    const m = Math.exp(lr[k]);
+    re[k] = m * Math.cos(li[k]);
+    im[k] = m * Math.sin(li[k]);
+  }
+  return { re, im };
+}
+
+/** Guard interval (s, whole ms) of the zero-phase window: the lag after which its impulse response stays floorDb below its peak. */
+function rirGuardInterval(fs, settings = null, floorDb = RIR_WINDOW_FLOOR_DB, span = 4) {
+  const n = Math.round((fs / 2) * span);
+  const freqs = Array.from({ length: n }, (_, i) => (i + 1) / span);
+  const re = new Float64Array(n + 1);
+  re.set(rirBandpassWindow(freqs, fs, settings), 1);
+  const h = irfft(re, new Float64Array(n + 1), 2 * n);
+  const envelope = new Float64Array(n); // running maximum of |h| over lags >= t
+  let m = 0;
+  for (let i = n - 1; i >= 0; i--) {
+    m = Math.max(m, Math.abs(h[i]));
+    envelope[i] = m;
+  }
+  const threshold = envelope[0] * 10 ** (floorDb / 20);
+  let lag = n;
+  for (let i = 0; i < n; i++) if (envelope[i] < threshold) { lag = i; break; }
+  return Math.ceil((lag / fs) * 1000) / 1000;
+}
 
 class Deism {
   constructor(params = {}, onStage = null) {
@@ -5658,13 +5821,18 @@ class Deism {
     const p = this.p;
     let freqs;
     if (p.mode === "RIR") {
-      const minStep = 1 / this.state.reverberationTime;
-      const nyq = p.sampleRate / 2;
-      const nSteps = Math.ceil(nyq / minStep);
+      const fs = p.sampleRate;
+      // As DEISM.update_freqs: the inverse FFT is periodic over 1/step, so
+      // the grid resolves min(T60, RIRLength) plus, for the zero-phase
+      // window, the guard interval that absorbs its folded ringing.
+      const period = Math.min(this.state.reverberationTime, p.RIRLength);
+      const guard = p.rirWindowPhase === "zero" ? rirGuardInterval(fs, p.rirWindow) : 0;
+      const nSteps = Math.ceil((fs / 2) * (period + guard));
       if (nSteps > 200000) throw new Error("RIR grid exceeds 200,000 frequency bins; reduce sample rate or T60.");
-      const step = nyq / nSteps;
-      const nExpected = Math.ceil(nyq / step);
-      freqs = Array.from({ length: nExpected }, (_, i) => step * (i + 1));
+      const step = fs / 2 / nSteps;
+      freqs = Array.from({ length: nSteps }, (_, i) => step * (i + 1));
+      this.state.rirPeriod = period;
+      this.state.rirGuard = guard;
     } else {
       const n = Math.ceil((p.endFreq + p.freqStep - p.startFreq) / p.freqStep);
       freqs = Array.from({ length: n }, (_, i) => p.startFreq + i * p.freqStep);
@@ -5704,6 +5872,7 @@ class Deism {
         xr: p.posReceiver,
         c: p.soundSpeed,
         t60: this.state.reverberationTime,
+        timeLimit: p.mode === "RIR" ? Math.min(this.state.reverberationTime, p.RIRLength) : this.state.reverberationTime,
         maxOrder: p.maxReflOrder,
         mixEarlyOrder: p.mixEarlyOrder,
         removeDirect: p.ifRemoveDirectPath,
@@ -5933,65 +6102,48 @@ class Deism {
   }
 
   // -------------------------------------------------------------------
-  /** Bandpass window as in DEISM.create_bandpass_window. */
-  static bandpassWindow(freqs, fLow, fHigh, twLow, twHigh) {
-    const fNyq = freqs[freqs.length - 1] + (freqs[1] - freqs[0]);
-    if (twLow == null) twLow = Math.max(10, 0.1 * fLow);
-    if (twHigh == null) twHigh = Math.max(100, 0.05 * (fNyq - fHigh));
-    const lowStart = Math.max(0, fLow - twLow);
-    const highEnd = Math.min(fNyq, fHigh + twHigh);
-    return freqs.map((f) => {
-      if (f < lowStart) return 0;
-      if (f >= lowStart && f < fLow) {
-        const r = fLow - lowStart;
-        return r > 0 ? 0.5 * (1 - Math.cos((Math.PI * (f - lowStart)) / r)) : 1;
-      }
-      if (f > fHigh && f <= highEnd) {
-        const r = highEnd - fHigh;
-        return r > 0 ? 0.5 * (1 + Math.cos((Math.PI * (f - fHigh)) / r)) : 1;
-      }
-      if (f > highEnd) return 0;
-      return 1;
-    });
+  static bandpassWindow(freqs, fLow, fHigh, twLow, twHigh, fNyq = null) {
+    return bandpassWindow(freqs, fLow, fHigh, twLow, twHigh, fNyq);
   }
 
-  /** RTF -> RIR exactly as DEISM.get_results (bandpass window on by default). */
-  getResults({ bandpassWindow = true } = {}) {
+  /**
+   * RTF -> RIR as DEISM.get_results: inverse FFT with zero DC and Nyquist
+   * bins, shaped by the bandpass window as params.rirWindowPhase says
+   * ("minimum": causal; "zero": symmetric, guard interval discarded; "none":
+   * no window, also `bandpassWindow: false`). The RTF is left untouched. The
+   * result holds the first min(T60, RIRLength) seconds, padded or truncated
+   * to RIRLength.
+   */
+  getResults({ bandpassWindow = null } = {}) {
     const p = this.p;
     if (p.mode !== "RIR") return this.state.RTF;
     if (this.state.previewRirUnavailable) return null;
     const freqs = this.state.freqs;
     const fs = p.sampleRate;
-    let nSamples;
-    if (freqs.length > 1) {
-      const fStep = freqs[1] - freqs[0];
-      const nPeriod = Math.round((1 / fStep) * fs);
-      const nRt = Math.round(this.state.reverberationTime * fs);
-      nSamples = nRt <= nPeriod ? nPeriod : Math.ceil(nRt / nPeriod) * nPeriod;
-    } else {
-      nSamples = Math.round(this.state.reverberationTime * fs) + 1;
-    }
-    const fLow = 150;
-    const fHigh = Math.trunc((fs / 2) * 0.7);
-    const twLow = Math.trunc(fLow * 0.3);
-    const twHigh = Math.trunc(fHigh * 0.15);
-    let re = Float64Array.from(this.state.RTF.re);
-    let im = Float64Array.from(this.state.RTF.im);
-    if (bandpassWindow) {
-      const w = Deism.bandpassWindow(freqs, fLow, fHigh, twLow, twHigh);
-      for (let i = 0; i < re.length; i++) {
-        re[i] *= w[i];
-        im[i] *= w[i];
+    const nF = freqs.length;
+    const n = 2 * nF; // the grid ends exactly at fs/2
+    const phase = bandpassWindow === false ? "none" : p.rirWindowPhase;
+    const re = new Float64Array(nF + 1);
+    const im = new Float64Array(nF + 1);
+    re.set(this.state.RTF.re, 1); // DC = 0
+    im.set(this.state.RTF.im, 1);
+    re[nF] = 0; // the Nyquist bin of a real signal
+    im[nF] = 0;
+    if (phase !== "none") {
+      const magnitude = new Float64Array(nF + 1);
+      magnitude.set(rirBandpassWindow(freqs, fs, p.rirWindow), 1);
+      const w = phase === "minimum" ? minimumPhaseSpectrum(magnitude, n) : { re: magnitude, im: new Float64Array(nF + 1) };
+      for (let i = 0; i <= nF; i++) {
+        const a = re[i], b = im[i];
+        re[i] = a * w.re[i] - b * w.im[i];
+        im[i] = a * w.im[i] + b * w.re[i];
       }
     }
-    // prepend DC = 0
-    const fullRe = new Float64Array(re.length + 1);
-    const fullIm = new Float64Array(im.length + 1);
-    fullRe.set(re, 1);
-    fullIm.set(im, 1);
-    let rir = irfft(fullRe, fullIm, nSamples);
+    const period = this.state.rirPeriod;
+    let rir = irfft(re, im, n).slice(0, Math.round(period * fs));
     const nOut = Math.trunc(p.RIRLength * fs);
     if (rir.length < nOut) {
+      this.warn(`RIR length ${p.RIRLength} s exceeds T60 ${period.toFixed(3)} s; the impulse response is zero-padded beyond ${period.toFixed(3)} s.`);
       const padded = new Float64Array(nOut);
       padded.set(rir);
       rir = padded;
@@ -6084,6 +6236,7 @@ function validateParams(p) {
   if (p.mode === "RTF" && (!positive(p.startFreq) || !positive(p.freqStep) || !Number.isFinite(p.endFreq) || p.endFreq < p.startFreq)) throw new Error("Use positive start/step and end ≥ start frequency");
   if (p.mode === "RTF" && (p.endFreq - p.startFreq) / p.freqStep > 200000) throw new Error("RTF grid exceeds 200,000 frequency bins");
   if (p.mode === "RIR" && (!positive(p.sampleRate) || !positive(p.RIRLength) || p.sampleRate * p.RIRLength > 1000000)) throw new Error("Use positive sample rate and length (maximum 1,000,000 output samples)");
+  if (!RIR_WINDOW_PHASES.includes(p.rirWindowPhase)) throw new Error("rirWindowPhase must be minimum, zero or none");
   if (!Number.isFinite(p.drift) || p.drift <= -1 || !Number.isFinite(p.volatility) || p.volatility < 0) throw new Error("Drift must be finite and > -1; volatility must be finite and ≥ 0");
   const m = p.material;
   if (m.type === "reverberationTime") {
@@ -6143,7 +6296,7 @@ function decodeDataset(json) {
   return { name: json.name, kind: json.kind, r0: json.r0, freqs: json.freqs, dirs: json.dirs, psh: { re, im } };
 }
 
-return { ConvexRoom, DEFAULT_PARAMS, Deism, DirectivityError, ENGINE_VERSION, LIBROOM_EPS, Wall, add3, argAttenuation, assertFiniteResult, cart2sph, cmat, coefIndex, convertAbsToImpScalar, convertImpToAbs, convertImpToT60, convertMaterials, convertT60ToImpScalar, convexHullFaces, convexRoomVolumeAndAreas, cross3, datasetCoefs, datasetCoefsARG, decodeDataset, dft, directivityRotation, dirsToCart, dot3, emptyCoefs, factorial, findWallCenters, hermitianTimes, identity3, idxM, impAbsError, impT60Error, interpolateDataset, interpolateImpedance, ipow, irfft, isInside2dPolygon, lcARG, lcShoebox, lstsq, mat3mul, mat3vec, matchFrequencies, matmul, mergeImages, modeList, monopoleCoefs, monopoleCoefsARG, norm3, normalGenerator, normalize3, orgARG, orgShoebox, pchip, pchipSlopes, pinvTall, pointSourceStrength, preCalcWigner, rotateCart, rotateDirections, rotationMatrixZXZ, scale3, shBasis, shBasisFromCart, shoeboxAttenuation, shoeboxImages, solve, sph2cart, sphHarm, sphankel2, sub3, toKernelSph, updateN1N2N3, validateParams, wigner3j };
+return { ConvexRoom, DEFAULT_PARAMS, DEFAULT_RIR_WINDOW, Deism, DirectivityError, ENGINE_VERSION, LIBROOM_EPS, RIR_WINDOW_FLOOR_DB, RIR_WINDOW_PHASES, Wall, add3, argAttenuation, assertFiniteResult, bandpassWindow, cart2sph, cmat, coefIndex, convertAbsToImpScalar, convertImpToAbs, convertImpToT60, convertMaterials, convertT60ToImpScalar, convexHullFaces, convexRoomVolumeAndAreas, cross3, datasetCoefs, datasetCoefsARG, decodeDataset, dft, directivityRotation, dirsToCart, dot3, emptyCoefs, factorial, findWallCenters, hermitianTimes, identity3, idxM, impAbsError, impT60Error, interpolateDataset, interpolateImpedance, ipow, irfft, isInside2dPolygon, lcARG, lcShoebox, lstsq, mat3mul, mat3vec, matchFrequencies, matmul, mergeImages, minimumPhaseSpectrum, modeList, monopoleCoefs, monopoleCoefsARG, norm3, normalGenerator, normalize3, orgARG, orgShoebox, pchip, pchipSlopes, pinvTall, pointSourceStrength, preCalcWigner, rirBandpassWindow, rirGuardInterval, rotateCart, rotateDirections, rotationMatrixZXZ, scale3, shBasis, shBasisFromCart, shoeboxAttenuation, shoeboxImages, solve, sph2cart, sphHarm, sphankel2, sub3, toKernelSph, updateN1N2N3, validateParams, wigner3j };
 })();
 
 (() => {
@@ -7205,6 +7358,7 @@ function defaultState() {
     freqStep: 2,
     sampleRate: 8000,
     RIRLength: 0.5,
+    rirWindowPhase: "minimum",
     drift: 0,
     volatility: 0,
     fluctuationSeed: 0,
@@ -7519,6 +7673,7 @@ function stateToParams(state, radiusOf = (name) => DATASET_INFO[name]?.r0 ?? 0.5
     freqStep: state.freqStep,
     sampleRate: state.sampleRate,
     RIRLength: state.RIRLength,
+    rirWindowPhase: state.rirWindowPhase,
     sourceType: state.dir.src.type,
     receiverType: state.dir.rec.type,
     sourceOrder: state.dir.src.type === "monopole" ? 0 : state.dir.src.order,
@@ -8173,6 +8328,9 @@ function onWorkerMessage(ev) {
         stageTimes: m.stageTimes,
         fluctuations: m.fluctuations,
         mode: p.mode,
+        rirWindow: p.rirWindowPhase,
+        rirPeriod: m.rirPeriod,
+        rirGuard: m.rirGuard,
         preset: currentRun.preset,
         when: new Date().toISOString(),
       },
@@ -8402,6 +8560,14 @@ function renderPlots() {
 }
 
 /** Human label of a result's tier: the engine that produced it. */
+/** RIR synthesis settings of an accurate run, for the run details. */
+function rirNote(p) {
+  if (p.mode !== "RIR") return "";
+  const guard = p.rirGuard ? ` on a grid guarded by ${Math.round(p.rirGuard * 1000)} ms` : "";
+  const span = p.rirPeriod != null ? `, ${p.rirPeriod.toFixed(3)} s synthesised` : "";
+  return ` · RIR window ${p.rirWindow || "minimum"} phase${guard}${span}`;
+}
+
 function tierLabel(result) {
   if (result !== accurate) return "Preview";
   return result.provenance.backend ? "Python DEISM" : "Offline JavaScript";
@@ -8441,7 +8607,7 @@ function renderProvenance() {
     const st = Object.entries(p.stageTimes || {}).map(([k, v]) => `${k.replace("update_", "")} ${v.toFixed(0)} ms`).join(", ");
     const fl = p.fluctuations ? ` · fluctuations drift ${p.fluctuations.drift} volatility ${p.fluctuations.volatility} seed ${p.fluctuations.seed ?? "fresh"}` : "";
     if (p.backend) lines.push(`Python: ${p.backend.package} · native: ${p.backend.native} · startup ${p.startup_ms.toFixed(0)} ms · result IPC ${p.transfer_ms.toFixed(2)} ms · UI ${(p.uiElapsed / 1000).toFixed(2)} s`);
-    lines.push(`<b>Accurate${accurate.stale ? " (stale; not displayed)" : ""}</b>${p.preset ? ` · ${p.preset}` : ""} · ${p.backend ? `Python DEISM ${p.backend.version} · ${p.backend.solver} · ${p.backend.threads} threads` : `DEISM JS engine ${ENGINE_VERSION} (offline; high-order parity unvalidated)`} · ${p.room} · ${p.method}${p.method === "MIX" ? ` (ORG up to reflection order ${p.mixEarlyOrder})` : ""} · reflection order ${p.order} · SH order ${p.sh.join("/")} (source/receiver) · source ${DATASET_INFO[p.src]?.filename || p.src} → receiver ${DATASET_INFO[p.rec]?.filename || p.rec} · ${p.nFreqs} frequency bins · ${p.images} image sources · T60 ${p.t60.toFixed(2)} s${fl} · ${(p.elapsed / 1000).toFixed(2)} s (${st}) · ${p.when}`);
+    lines.push(`<b>Accurate${accurate.stale ? " (stale; not displayed)" : ""}</b>${p.preset ? ` · ${p.preset}` : ""} · ${p.backend ? `Python DEISM ${p.backend.version} · ${p.backend.solver} · ${p.backend.threads} threads` : `DEISM JS engine ${ENGINE_VERSION} (offline; high-order parity unvalidated)`} · ${p.room} · ${p.method}${p.method === "MIX" ? ` (ORG up to reflection order ${p.mixEarlyOrder})` : ""} · reflection order ${p.order} · SH order ${p.sh.join("/")} (source/receiver) · source ${DATASET_INFO[p.src]?.filename || p.src} → receiver ${DATASET_INFO[p.rec]?.filename || p.rec} · ${p.nFreqs} frequency bins · ${p.images} image sources · T60 ${p.t60.toFixed(2)} s${fl}${rirNote(p)} · ${(p.elapsed / 1000).toFixed(2)} s (${st}) · ${p.when}`);
   } else {
     lines.push("<b>Accurate</b> · not run yet");
   }
@@ -8759,8 +8925,8 @@ function syncVisibility() {
   $("#mat-t60").hidden = state.materialType !== "reverberationTime";
   $("#freq-rtf").hidden = state.mode !== "RTF";
   $("#freq-rir").hidden = state.mode !== "RIR";
-  $$("#freq-rtf input").forEach((el) => el.disabled = state.mode !== "RTF");
-  $$("#freq-rir input").forEach((el) => el.disabled = state.mode !== "RIR");
+  $$("#freq-rtf input, #freq-rtf select").forEach((el) => el.disabled = state.mode !== "RTF");
+  $$("#freq-rir input, #freq-rir select").forEach((el) => el.disabled = state.mode !== "RIR");
   $("#rir-card").hidden = state.mode !== "RIR";
   $("#seed-row").hidden = !state.fixedSeed;
   const t60opt = $('select[data-p="materialType"] option[value="reverberationTime"]');

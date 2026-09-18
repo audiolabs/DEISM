@@ -573,6 +573,9 @@ function onWorkerMessage(ev) {
         stageTimes: m.stageTimes,
         fluctuations: m.fluctuations,
         mode: p.mode,
+        rirWindow: p.rirWindowPhase,
+        rirPeriod: m.rirPeriod,
+        rirGuard: m.rirGuard,
         preset: currentRun.preset,
         when: new Date().toISOString(),
       },
@@ -802,6 +805,14 @@ function renderPlots() {
 }
 
 /** Human label of a result's tier: the engine that produced it. */
+/** RIR synthesis settings of an accurate run, for the run details. */
+function rirNote(p) {
+  if (p.mode !== "RIR") return "";
+  const guard = p.rirGuard ? ` on a grid guarded by ${Math.round(p.rirGuard * 1000)} ms` : "";
+  const span = p.rirPeriod != null ? `, ${p.rirPeriod.toFixed(3)} s synthesised` : "";
+  return ` · RIR window ${p.rirWindow || "minimum"} phase${guard}${span}`;
+}
+
 function tierLabel(result) {
   if (result !== accurate) return "Preview";
   return result.provenance.backend ? "Python DEISM" : "Offline JavaScript";
@@ -841,7 +852,7 @@ function renderProvenance() {
     const st = Object.entries(p.stageTimes || {}).map(([k, v]) => `${k.replace("update_", "")} ${v.toFixed(0)} ms`).join(", ");
     const fl = p.fluctuations ? ` · fluctuations drift ${p.fluctuations.drift} volatility ${p.fluctuations.volatility} seed ${p.fluctuations.seed ?? "fresh"}` : "";
     if (p.backend) lines.push(`Python: ${p.backend.package} · native: ${p.backend.native} · startup ${p.startup_ms.toFixed(0)} ms · result IPC ${p.transfer_ms.toFixed(2)} ms · UI ${(p.uiElapsed / 1000).toFixed(2)} s`);
-    lines.push(`<b>Accurate${accurate.stale ? " (stale; not displayed)" : ""}</b>${p.preset ? ` · ${p.preset}` : ""} · ${p.backend ? `Python DEISM ${p.backend.version} · ${p.backend.solver} · ${p.backend.threads} threads` : `DEISM JS engine ${ENGINE_VERSION} (offline; high-order parity unvalidated)`} · ${p.room} · ${p.method}${p.method === "MIX" ? ` (ORG up to reflection order ${p.mixEarlyOrder})` : ""} · reflection order ${p.order} · SH order ${p.sh.join("/")} (source/receiver) · source ${DATASET_INFO[p.src]?.filename || p.src} → receiver ${DATASET_INFO[p.rec]?.filename || p.rec} · ${p.nFreqs} frequency bins · ${p.images} image sources · T60 ${p.t60.toFixed(2)} s${fl} · ${(p.elapsed / 1000).toFixed(2)} s (${st}) · ${p.when}`);
+    lines.push(`<b>Accurate${accurate.stale ? " (stale; not displayed)" : ""}</b>${p.preset ? ` · ${p.preset}` : ""} · ${p.backend ? `Python DEISM ${p.backend.version} · ${p.backend.solver} · ${p.backend.threads} threads` : `DEISM JS engine ${ENGINE_VERSION} (offline; high-order parity unvalidated)`} · ${p.room} · ${p.method}${p.method === "MIX" ? ` (ORG up to reflection order ${p.mixEarlyOrder})` : ""} · reflection order ${p.order} · SH order ${p.sh.join("/")} (source/receiver) · source ${DATASET_INFO[p.src]?.filename || p.src} → receiver ${DATASET_INFO[p.rec]?.filename || p.rec} · ${p.nFreqs} frequency bins · ${p.images} image sources · T60 ${p.t60.toFixed(2)} s${fl}${rirNote(p)} · ${(p.elapsed / 1000).toFixed(2)} s (${st}) · ${p.when}`);
   } else {
     lines.push("<b>Accurate</b> · not run yet");
   }
@@ -1159,8 +1170,8 @@ function syncVisibility() {
   $("#mat-t60").hidden = state.materialType !== "reverberationTime";
   $("#freq-rtf").hidden = state.mode !== "RTF";
   $("#freq-rir").hidden = state.mode !== "RIR";
-  $$("#freq-rtf input").forEach((el) => el.disabled = state.mode !== "RTF");
-  $$("#freq-rir input").forEach((el) => el.disabled = state.mode !== "RIR");
+  $$("#freq-rtf input, #freq-rtf select").forEach((el) => el.disabled = state.mode !== "RTF");
+  $$("#freq-rir input, #freq-rir select").forEach((el) => el.disabled = state.mode !== "RIR");
   $("#rir-card").hidden = state.mode !== "RIR";
   $("#seed-row").hidden = !state.fixedSeed;
   const t60opt = $('select[data-p="materialType"] option[value="reverberationTime"]');

@@ -252,7 +252,8 @@ def solver_view(d):
         view[key] = np.asarray(p[key], dtype=float)
     if p["mode"] == "RIR":
         view["sampleRate"] = p["sampleRate"]
-        view["nSamples"] = p["nSamples"]
+        view["rirPeriod"] = p["rirPeriod"]
+        view["rirGuard"] = p["rirGuard"]
     images = p["images"]
     if p["roomType"] == "shoebox":
         view["roomSize"] = np.asarray(p["roomSize"], dtype=float)
@@ -313,10 +314,8 @@ def assert_same_view(a, b):
 def solve(d):
     with quiet():
         d.run_DEISM(if_clean_up=False)
-        rtf = d.params["RTF"].copy()
         if d.params["mode"] == "RIR":
-            d.params["RIR"] = d.get_results()  # windows params["RTF"] in place
-        d.params["RTF"] = rtf
+            d.params["RIR"] = d.get_results()
 
 
 @pytest.mark.parametrize("pid", sorted(REPLICAS))

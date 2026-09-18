@@ -24,7 +24,7 @@ from deism.version import __version__
 
 ASSETS = resources.files("deism.playground_assets")
 DATA = resources.files("deism.examples") / "data" / "sampled_directivity"
-FIELDS = set("mode roomType roomRotation roomSize vertices wallCenters posSource posReceiver orientSource orientReceiver maxReflOrder mixEarlyOrder DEISM_method angDepFlag material startFreq endFreq freqStep sampleRate RIRLength sourceType receiverType sourceOrder receiverOrder radiusSource radiusReceiver ifReceiverNormalize qFlowStrength ifRemoveDirectPath drift volatility fluctuationSeed directivityFreqPolicy".split())
+FIELDS = set("mode roomType roomRotation roomSize vertices wallCenters posSource posReceiver orientSource orientReceiver maxReflOrder mixEarlyOrder DEISM_method angDepFlag material startFreq endFreq freqStep sampleRate RIRLength sourceType receiverType sourceOrder receiverOrder radiusSource radiusReceiver ifReceiverNormalize qFlowStrength ifRemoveDirectPath drift volatility fluctuationSeed directivityFreqPolicy rirWindowPhase".split())
 
 
 def provenance():
@@ -89,6 +89,8 @@ def validate(q):
             raise ValueError("Invalid RTF frequency grid")
     elif q["sampleRate"] <= 0 or q["RIRLength"] <= 0:
         raise ValueError("Invalid RIR sampling rate or length")
+    if q.get("rirWindowPhase", "minimum") not in core.RIR_WINDOW_PHASES:
+        raise ValueError("rirWindowPhase must be 'minimum', 'zero' or 'none'")
     if q["roomType"] == "shoebox":
         size = np.asarray(q["roomSize"], dtype=float)
         if size.shape != (3,) or not np.isfinite(size).all() or np.any(size <= 0):
@@ -268,6 +270,9 @@ def simulate(q, emit=lambda event: None):
     stage("run_DEISM", lambda: d.run_DEISM(on_progress=solve_progress))
     rtf = np.asarray(p["RTF"]).copy()
     rir = stage("get_results", d.get_results) if q["mode"] == "RIR" else None
+    if rir is not None and p["rirPeriod"] < q["RIRLength"]:
+        warnings.append(f"RIR length {q['RIRLength']:g} s exceeds T60 {p['rirPeriod']:.3f} s; "
+                        f"the impulse response is zero-padded beyond {p['rirPeriod']:.3f} s.")
     for value in (p["freqs"], rtf, rir):
         if value is not None and not np.isfinite(value).all():
             raise ValueError("DEISM returned non-finite results")
@@ -276,6 +281,7 @@ def simulate(q, emit=lambda event: None):
                 rir=None if rir is None else np.asarray(rir).tolist(),
                 images=count, geometry=geometry, backend=backend,
                 sampleRate=p.get("sampleRate"), sourceOrder=p["sourceOrder"], receiverOrder=p["receiverOrder"],
+                rirPeriod=p.get("rirPeriod"), rirGuard=p.get("rirGuard"),
                 t60=float(np.asarray(p["reverberationTime"]).mean()),
                 fluctuations=dict(drift=q.get("drift", 0), volatility=q.get("volatility", 0), seed=q.get("fluctuationSeed")) if q.get("drift") or q.get("volatility") else None,
                 warnings=warnings, stageTimes=timings, elapsed=(time.perf_counter() - t0) * 1000)

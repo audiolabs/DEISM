@@ -12,6 +12,7 @@ import { convertAbsToImpScalar, convertT60ToImpScalar, convertImpToT60, convertI
 import { irfft } from "../fft.js";
 import { convexHullFaces, findWallCenters, convexRoomVolumeAndAreas } from "../geometry.js";
 import { interpolateDataset, matchFrequencies, DirectivityError } from "../directivity.js";
+import { Deism, rirGuardInterval, minimumPhaseSpectrum, rirBandpassWindow } from "../deism.js";
 import { loadFixture } from "./helpers.js";
 
 const U = loadFixture("unit");
@@ -240,4 +241,47 @@ test("a given reverberation time is kept exactly and sets the RIR grid", async (
   d.updateFreqs();
   assert.equal(d.state.freqs.length, 24000);
   assert.ok(Math.abs(d.state.freqs[0] - 1) < 1e-12 && Math.abs(d.state.freqs[23999] - 24000) < 1e-9);
+});
+
+test("RIR guard interval matches the Python solver", () => {
+  const R = loadFixture("shoebox_rir_result");
+  for (const [fs, guard] of Object.entries(R.guard)) assert.equal(rirGuardInterval(Number(fs)), guard, `fs ${fs}`);
+});
+
+test("minimum-phase window keeps the magnitude and is causal", () => {
+  const fs = 8000, n = 32768, half = n / 2; // 4 s: the causal tail must not wrap into the negative lags
+  const freqs = Array.from({ length: half }, (_, i) => ((i + 1) * fs) / n);
+  const magnitude = new Float64Array(half + 1);
+  magnitude.set(rirBandpassWindow(freqs, fs), 1);
+  const w = minimumPhaseSpectrum(magnitude, n);
+  for (let k = 0; k <= half; k++) {
+    if (magnitude[k] > 1e-3) assert.ok(Math.abs(Math.hypot(w.re[k], w.im[k]) - magnitude[k]) < 1e-6 * magnitude[k], `bin ${k}`);
+  }
+  const h = irfft(w.re, w.im, n);
+  let positive = 0, negative = 0;
+  for (let i = 0; i < half; i++) positive += h[i] * h[i];
+  for (let i = half; i < n; i++) negative += h[i] * h[i]; // negative lags
+  // the -100 dB log floor of the cepstral method leaves a residual well below -60 dB
+  assert.ok(negative / positive < 1e-6, `energy at negative lags ${negative / positive}`);
+});
+
+test("RIR synthesis leaves the RTF untouched and follows min(T60, RIRLength)", () => {
+  const base = { mode: "RIR", sampleRate: 4000, maxReflOrder: 6, DEISM_method: "LC", material: { type: "reverberationTime", value: 0.2 } };
+  const d = new Deism({ ...base, RIRLength: 0.5 });
+  d.runAll();
+  const re = Array.from(d.state.RTF.re), im = Array.from(d.state.RTF.im);
+  const rir = d.getResults();
+  assert.deepEqual(Array.from(d.state.RTF.re), re);
+  assert.deepEqual(Array.from(d.state.RTF.im), im);
+  assert.equal(rir.length, 2000);
+  assert.equal(d.state.rirPeriod, 0.2);
+  assert.ok(rir.slice(Math.round(0.2 * 4000)).every((v) => v === 0), "zero-padded beyond T60");
+  assert.ok(d.warnings.some((w) => w.includes("zero-padded")));
+  const s = new Deism({ ...base, RIRLength: 0.05 });
+  s.runAll();
+  assert.equal(s.state.rirPeriod, 0.05);
+  assert.equal(s.state.freqs.length, Math.ceil(2000 * 0.05));
+  assert.equal(s.getResults().length, 200);
+  assert.ok(s.state.imageCount < d.state.imageCount, "images bounded by c*RIRLength");
+  assert.throws(() => new Deism({ ...base, RIRLength: 0.5, rirWindowPhase: "linear" }), /rirWindowPhase/);
 });

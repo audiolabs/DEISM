@@ -27,15 +27,19 @@ JavaScript with reduced settings.
 The selector before **01 · Room** controls both custom settings and presets:
 
 - **RTF:** frequency start/end/step inputs and the RTF plot.
-- **RIR:** sampling rate and output length inputs, with both RTF and RIR plots.
-  The solver derives its frequency spacing from T60; output length controls
-  padding/truncation after the inverse FFT, not frequency resolution.
+- **RIR:** sampling rate, output length and RIR window inputs, with both RTF
+  and RIR plots. The solver derives its frequency spacing from the shorter of
+  T60 and the output length (plus a guard interval for the zero-phase window);
+  a longer output is zero-padded beyond T60 and reported in the pipeline
+  warnings. The RIR window is applied with minimum phase by default (causal
+  response, no pre-ringing, no wrap-around), with zero phase on the guarded
+  grid, or not at all.
 
 Accurate runs always execute the full workflow. Shoebox directivities precede
 image generation; convex image paths precede the source-directivity refit.
 Optional path fluctuations follow image generation. RIR synthesis uses the
-Python solver's zero-DC convention and bandpass window. The displayed RTF is
-retained before that window is applied.
+Python solver's zero-DC and zero-Nyquist convention and its bandpass window in
+the selected phase; the RTF is never windowed in place.
 
 Every run captures its parameters and preset identity before loading data.
 Editing during a run leaves the completed result stale. Invalid inputs,
@@ -165,8 +169,8 @@ alias for a duplicate filename resolves within the receiver directory.
 Responses are newline-delimited `progress`, `stage`, `error`, and `result`
 objects with the dispatch ID. Results contain full frequencies, split real and
 imaginary RTF arrays, optional RIR, counts, geometry/material fingerprints,
-per-stage milliseconds and backend provenance. RTF is captured before the
-Python RIR bandpass window. The UI retains dispatch snapshots and marks results
+per-stage milliseconds, the RIR synthesis span and guard, and backend
+provenance. The UI retains dispatch snapshots and marks results
 stale after control edits. POST `/cancel` takes the dispatch ID. Writes require
 a per-launch token and matching localhost origin; no remote binding is offered.
 

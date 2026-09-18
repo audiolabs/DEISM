@@ -64,6 +64,8 @@ Signal:
   samplingRate: 48000
   overSamplingFactor: 1 # 1 means no over sampling, 2 means 2x over sampling, etc.
   RIRLength: 1 # in seconds
+  # RIR bandpass window: "minimum" (causal, default), "zero" (symmetric pulses on a guarded frequency grid) or "none" (no window)
+  RIRWindowPhase: minimum
 
 # Directivity parameters #
 # 7. maximal spherical harmonic directivity order

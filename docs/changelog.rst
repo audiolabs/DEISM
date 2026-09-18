@@ -6,6 +6,40 @@ changelog; update it when cutting a release.
 Unreleased
 ----------
 
+- **RIR synthesis (wrap-around and pre-ringing fixed):** ``get_results``
+  previously synthesised the impulse response on a frequency grid whose
+  inverse FFT is periodic over exactly T60 and shaped it with a zero-phase
+  bandpass window. The window's pre-ringing (about 20 ms for the 45 Hz
+  low-frequency transition) lay at negative times and folded onto the end
+  of the period, and energy before the direct sound appeared at about
+  -36 dB below the peak in the shoebox RIR example. Now:
+
+  - ``params["rirWindowPhase"]`` (YAML ``Signal.RIRWindowPhase``) selects
+    how the bandpass window is applied. ``"minimum"`` (new default) applies
+    it with minimum phase, computed by the real-cepstrum method: the
+    response is causal, so nothing precedes an arrival and nothing folds
+    across the period, at no extra cost. ``"zero"`` keeps the symmetric
+    pulses of the previous behaviour on a grid extended by a guard interval
+    (``rir_guard_interval``: the lag after which the window's impulse
+    response stays 100 dB below its peak, 46 ms at 44.1/48 kHz), which is
+    discarded after the inverse FFT. ``"none"`` (also the legacy
+    ``bandpass_window=False``) skips the window and now zeroes the Nyquist
+    bin, which used to leave an alternating floor at about -50 dB.
+  - The RIR grid and the shoebox image set resolve ``rirPeriod`` =
+    min(T60, ``RIRLength``): a shorter RIRLength costs fewer bins and
+    images (``image_time_limit``); a longer one is zero-padded beyond T60
+    and reported (console, playground warning). ``params["rirPeriod"]``
+    and ``params["rirGuard"]`` record the synthesis span and guard.
+  - ``get_results`` leaves ``params["RTF"]`` untouched (it used to window
+    it in place, so a second call windowed twice); the unused
+    ``params["nSamples"]`` is gone; the window constants are in
+    ``DEFAULT_RIR_WINDOW`` (``params["rirWindow"]`` overrides them) and the
+    window takes the true Nyquist frequency.
+  - The playground mirrors all of this (engine ``2.2.1.16-js``): an RIR
+    window selector next to the RIR length, the synthesis span and guard in
+    the run details, and golden fixtures for the three phases
+    (``python tools/playground_fixtures.py --rir-only``).
+
 - **Playground and dataset reliability:** sampled-directivity loaders detect
   Git LFS pointers with an actionable error. Lightweight test checkouts skip
   original-data tests, while the LFS-enabled playground job requires all

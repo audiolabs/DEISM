@@ -50,6 +50,141 @@ except ImportError:
 FLUCTUATION_KEYS = ("fluctuations", "fluctuations_early", "fluctuations_late")
 
 
+# ---------------------------------------------------------------------------
+# RIR synthesis (see DEISM.update_freqs and DEISM.get_results)
+# ---------------------------------------------------------------------------
+# Bandpass window applied to the RTF before the inverse FFT: a raised-cosine
+# high-pass edge ending at lowCut Hz (transition lowWidth Hz wide below it)
+# and a low-pass edge starting at highCutRatio * fs/2 (transition
+# highWidthRatio times that cut wide above it). params["rirWindow"] may
+# override any entry.
+DEFAULT_RIR_WINDOW = {
+    "lowCut": 150.0,
+    "lowWidth": 45.0,
+    "highCutRatio": 0.7,
+    "highWidthRatio": 0.15,
+}
+# params["rirWindowPhase"]: how the window is applied.
+#   "minimum": minimum-phase window (default). The response is causal, so no
+#              energy precedes an arrival and nothing folds across the end
+#              of the FFT period.
+#   "zero":    zero-phase window: symmetric pulses with a few milliseconds of
+#              pre-ringing. The frequency grid is extended by a guard interval
+#              that absorbs the ringing folded across the period; the guard
+#              is discarded after the inverse FFT.
+#   "none":    no window (diagnostic; the hard band edges ring and fold).
+RIR_WINDOW_PHASES = ("minimum", "zero", "none")
+# Level below the window's peak that its impulse response must reach before
+# the guard interval ends (zero phase), and the log floor of the
+# minimum-phase conversion.
+RIR_WINDOW_FLOOR_DB = -100.0
+
+
+def rir_window_settings(params):
+    return {**DEFAULT_RIR_WINDOW, **(params.get("rirWindow") or {})}
+
+
+def rir_window_phase(params):
+    phase = params.get("rirWindowPhase", "minimum")
+    if phase not in RIR_WINDOW_PHASES:
+        raise ValueError(
+            f"rirWindowPhase must be one of {RIR_WINDOW_PHASES}, got {phase!r}"
+        )
+    return phase
+
+
+def rir_period(params):
+    """Time span the RIR synthesis covers: min(T60, RIRLength) in seconds.
+
+    The frequency grid resolves this span and the shoebox image set is bounded
+    by the matching path length, so a shorter RIRLength costs fewer bins and
+    images; a longer one is zero-padded beyond T60 by get_results.
+    """
+    t60 = float(np.max(params["reverberationTime"]))
+    return min(t60, float(params["RIRLength"]))
+
+
+def image_time_limit(params):
+    """Travel-time bound of the shoebox image set (path length / c): T60, or
+    min(T60, RIRLength) in RIR mode."""
+    if params.get("mode") == "RIR":
+        return rir_period(params)
+    return float(np.max(params["reverberationTime"]))
+
+
+def create_bandpass_window(
+    freqs,
+    f_low,
+    f_high,
+    transition_width_low=None,
+    transition_width_high=None,
+    f_nyquist=None,
+):
+    """Real bandpass window (0 to 1) on ``freqs`` with raised-cosine
+    transitions: from 0 at ``f_low - transition_width_low`` to 1 at ``f_low``
+    and from 1 at ``f_high`` to 0 at ``f_high + transition_width_high``
+    (clipped to ``f_nyquist``, by default one bin above the last frequency).
+    Default transition widths: max(10 Hz, 10 % of f_low) and
+    max(100 Hz, 5 % of the band above f_high)."""
+    freqs = np.asarray(freqs, dtype=np.float64)
+    if f_nyquist is None:
+        f_nyquist = freqs[-1] + (freqs[1] - freqs[0])
+    if transition_width_low is None:
+        transition_width_low = max(10.0, 0.1 * f_low)
+    if transition_width_high is None:
+        transition_width_high = max(100.0, 0.05 * (f_nyquist - f_high))
+    window = np.ones_like(freqs)
+    low_start = max(0.0, f_low - transition_width_low)
+    high_end = min(f_nyquist, f_high + transition_width_high)
+    low = (freqs >= low_start) & (freqs < f_low)
+    if f_low > low_start:
+        window[low] = 0.5 * (1 - np.cos(np.pi * (freqs[low] - low_start) / (f_low - low_start)))
+    window[freqs < low_start] = 0.0
+    high = (freqs > f_high) & (freqs <= high_end)
+    if high_end > f_high:
+        window[high] = 0.5 * (1 + np.cos(np.pi * (freqs[high] - f_high) / (high_end - f_high)))
+    window[freqs > high_end] = 0.0
+    return window
+
+
+def rir_bandpass_window(freqs, fs, settings=None):
+    """The RIR bandpass window of get_results on ``freqs`` for sample rate ``fs``."""
+    s = {**DEFAULT_RIR_WINDOW, **(settings or {})}
+    f_high = s["highCutRatio"] * fs / 2
+    return create_bandpass_window(
+        freqs, s["lowCut"], f_high, s["lowWidth"], s["highWidthRatio"] * f_high, f_nyquist=fs / 2
+    )
+
+
+def minimum_phase_spectrum(magnitude, n, floor_db=RIR_WINDOW_FLOOR_DB):
+    """Minimum-phase spectrum on bins 0..n/2 (even ``n``) with the given
+    magnitude, by the real-cepstrum method; zeros are floored at ``floor_db``
+    below the maximum."""
+    magnitude = np.asarray(magnitude, dtype=np.float64)
+    assert n % 2 == 0 and len(magnitude) == n // 2 + 1
+    floor = 10 ** (floor_db / 20) * magnitude.max()
+    cepstrum = np.fft.irfft(np.log(np.maximum(magnitude, floor)), n=n)
+    folded = np.zeros(n)
+    folded[0] = cepstrum[0]
+    folded[1 : n // 2] = 2 * cepstrum[1 : n // 2]
+    folded[n // 2] = cepstrum[n // 2]
+    return np.exp(np.fft.rfft(folded, n=n))
+
+
+def rir_guard_interval(fs, settings=None, floor_db=RIR_WINDOW_FLOOR_DB, span=4.0):
+    """Guard interval (s, whole milliseconds) of the zero-phase window: the
+    lag after which its impulse response stays ``floor_db`` below its peak.
+    The window is evaluated on a ``span``-second grid so its own periodic
+    image is negligible."""
+    n = int(round(fs / 2 * span))
+    freqs = np.arange(1, n + 1) / span
+    h = np.fft.irfft(np.concatenate([[0.0], rir_bandpass_window(freqs, fs, settings)]), n=2 * n)
+    envelope = np.maximum.accumulate(np.abs(h[:n])[::-1])[::-1]
+    below = 20 * np.log10(envelope / envelope[0]) < floor_db
+    lag = int(np.argmax(below)) if below.any() else n
+    return math.ceil(lag / fs * 1000) / 1000
+
+
 class DEISM:
     """User-facing workflow class for shoebox and convex DEISM simulations."""
 
@@ -486,17 +621,23 @@ class DEISM:
     def update_freqs(self):
         # General information:
         # With higher RT, the frequency spacing should be smaller
-        if self.params["mode"] == "RIR":  # Add 1/T60 as spacing later !!!
-            self.params["nSamples"] = int(
-                self.params["sampleRate"] * self.params["RIRLength"]
-            )
-            # Resolve at least T60, with an integer number of positive bins.
-            min_f_step = 1 / self.params["reverberationTime"]
-            # Choose a step <= 1/T60 that divides fs/2 evenly.
-            n_steps = np.ceil((self.params["sampleRate"] / 2) / min_f_step)
-            f_step = (self.params["sampleRate"] / 2) / n_steps
-            # The linear frequencies starts from f_step and ends at fs/2
-            self.params["freqs"] = np.arange(1, int(n_steps) + 1) * f_step
+        if self.params["mode"] == "RIR":
+            fs = self.params["sampleRate"]
+            # The inverse FFT of an RTF sampled every f_step Hz is periodic
+            # with period 1/f_step, so the grid must resolve the whole span
+            # the RIR covers (min(T60, RIRLength)) plus, for the zero-phase
+            # window, the guard interval that absorbs its folded ringing.
+            period = rir_period(self.params)
+            guard = 0.0
+            if rir_window_phase(self.params) == "zero":
+                guard = rir_guard_interval(fs, rir_window_settings(self.params))
+            # Bins spaced at most 1/(period + guard), dividing fs/2 evenly;
+            # the grid starts at f_step and ends exactly at fs/2.
+            n_steps = int(np.ceil(fs / 2 * (period + guard)))
+            f_step = fs / 2 / n_steps
+            self.params["freqs"] = np.arange(1, n_steps + 1) * f_step
+            self.params["rirPeriod"] = period
+            self.params["rirGuard"] = guard
         elif self.params["mode"] == "RTF":
             self.params["freqs"] = np.arange(
                 self.params["startFreq"],
@@ -633,72 +774,10 @@ class DEISM:
     def create_bandpass_window(
         self, freqs, f_low, f_high, transition_width_low=None, transition_width_high=None
     ):
-        """
-        Create a smooth bandpass window for frequency-domain filtering.
-
-        The window smoothly tapers to zero at both low and high frequencies,
-        minimizing phase distortion and providing smooth attenuation.
-
-        Parameters:
-        -----------
-        freqs : np.ndarray
-            Frequency array in Hz
-        f_low : float
-            Low-frequency cutoff (high-pass). Frequencies below this are attenuated.
-        f_high : float
-            High-frequency cutoff (low-pass). Frequencies above this are attenuated.
-        transition_width_low : float, optional
-            Transition width for low-frequency taper in Hz. Default: 10% of f_low
-        transition_width_high : float, optional
-            Transition width for high-frequency taper in Hz. Default: 5% of (f_nyquist - f_high)
-
-        Returns:
-        --------
-        window : np.ndarray
-            Window function (0 to 1) with smooth transitions
-            Note: Real-valued window ensures real-valued impulse response when using irfft
-        """
-        f_nyquist = freqs[-1] + (freqs[1] - freqs[0])  # Approximate Nyquist frequency
-
-        # Default transition widths
-        if transition_width_low is None:
-            transition_width_low = max(10.0, 0.1 * f_low)
-        if transition_width_high is None:
-            transition_width_high = max(100.0, 0.05 * (f_nyquist - f_high))
-
-        # Initialize window to 1.0 in passband
-        window = np.ones_like(freqs, dtype=np.float64)
-
-        # Low-frequency taper (high-pass transition)
-        # Smooth cosine taper from 0 to 1 between (f_low - transition_width_low) and f_low
-        low_taper_start = max(0, f_low - transition_width_low)
-        low_taper_mask = (freqs >= low_taper_start) & (freqs < f_low)
-        if np.any(low_taper_mask):
-            taper_range = f_low - low_taper_start
-            if taper_range > 0:
-                normalized = (freqs[low_taper_mask] - low_taper_start) / taper_range
-                # Cosine taper: 0 at low_taper_start, 1 at f_low
-                window[low_taper_mask] = 0.5 * (1 - np.cos(np.pi * normalized))
-
-        # Set frequencies below taper to zero
-        window[freqs < low_taper_start] = 0.0
-
-        # High-frequency taper (low-pass transition)
-        high_taper_start = f_high
-
-        high_taper_end = min(f_nyquist, f_high + transition_width_high)
-        high_taper_mask = (freqs > high_taper_start) & (freqs <= high_taper_end)
-        if np.any(high_taper_mask):
-            taper_range = high_taper_end - high_taper_start
-            if taper_range > 0:
-                # Cosine taper: 1 at high_taper_start, 0 at high_taper_end
-                normalized = (freqs[high_taper_mask] - high_taper_start) / taper_range
-                window[high_taper_mask] = 0.5 * (1 + np.cos(np.pi * normalized))
-
-        # Set frequencies above taper to zero
-        window[freqs > high_taper_end] = 0.0
-
-        return window
+        """Module-level create_bandpass_window (kept as a method for callers)."""
+        return create_bandpass_window(
+            freqs, f_low, f_high, transition_width_low, transition_width_high
+        )
 
     def run_DEISM(self, if_clean_up: bool = True, if_shutdown_ray: bool = True, on_progress=None):
         """
@@ -774,99 +853,51 @@ class DEISM:
 
     def get_results(
         self,
+        bandpass_window=None,
         highpass_filter: bool = False,
-        bandpass_window: bool = True,
         cut_freq: float = 30.0,
         zero_phase: bool = True,
     ):
+        """Return the RTF (RTF mode) or synthesise the RIR from it (RIR mode).
+
+        The RIR is the inverse FFT of the RTF with zero DC and Nyquist bins,
+        shaped by the bandpass window as selected by
+        ``params["rirWindowPhase"]``: ``"minimum"`` (default) applies it with
+        minimum phase, so the response is causal; ``"zero"`` applies it with
+        zero phase on the grid extended by the guard interval, which is
+        discarded here; ``"none"`` skips it (``bandpass_window=False`` means
+        the same). ``params["RTF"]`` is left untouched. The result holds the
+        first ``rirPeriod`` = min(T60, RIRLength) seconds and is zero-padded
+        or truncated to ``RIRLength``; ``highpass_filter`` optionally applies
+        the time-domain high-pass of ``apply_highpass_filter`` afterwards.
         """
-        Convert RTF to RIR
-        """
-        # For the highpass filter or bandpass, only one of them can be True
-        if highpass_filter and bandpass_window:
-            raise ValueError(
-                "Only one of highpass_filter or bandpass_window can be True"
-            )
-        if self.mode == "RIR":
-            dt = 1 / self.params["sampleRate"]
-            # Align time array with frequency spacing to avoid periodicity artifacts
-            # The frequency spacing f_step determines the period T_period = 1/f_step
-            # The time array length must be an integer multiple of this period
-            if len(self.params["freqs"]) > 1:
-                # Get the actual frequency spacing used in update_freqs
-                f_step = self.params["freqs"][1] - self.params["freqs"][0]
-                T_period = 1 / f_step  # Period determined by frequency spacing
-
-                # Calculate number of samples for one period
-                N_period = int(np.round(T_period * self.params["sampleRate"]))
-
-                # Calculate samples needed for RT60
-                N_rt60 = int(
-                    np.round(
-                        self.params["reverberationTime"] * self.params["sampleRate"]
-                    )
+        if self.mode == "RTF":
+            return self.params["RTF"]
+        p = self.params
+        fs = p["sampleRate"]
+        freqs = np.asarray(p["freqs"], dtype=np.float64)
+        n = 2 * len(freqs)  # update_freqs ends the grid exactly at fs/2
+        phase = "none" if bandpass_window is False else rir_window_phase(p)
+        spectrum = np.concatenate([[0.0], np.asarray(p["RTF"])])  # copy, DC = 0
+        spectrum[-1] = 0.0  # the Nyquist bin of a real signal
+        if phase != "none":
+            window = np.concatenate([[0.0], rir_bandpass_window(freqs, fs, rir_window_settings(p))])
+            if phase == "minimum":
+                window = minimum_phase_spectrum(window, n)
+            spectrum = spectrum * window
+        period = p["rirPeriod"] if "rirPeriod" in p else rir_period(p)
+        rir = np.fft.irfft(spectrum, n=n)[: int(round(period * fs))]
+        if highpass_filter:
+            rir = self.apply_highpass_filter(rir, fs, cut_freq, zero_phase)
+        n_out = int(p["RIRLength"] * fs)
+        if len(rir) < n_out:
+            if not p["silentMode"]:
+                print(
+                    f"RIRLength {p['RIRLength']} s exceeds T60 {period:.3f} s: "
+                    f"the RIR is zero-padded beyond {period:.3f} s"
                 )
-
-                # Use an integer multiple of the period, ensuring we capture at least RT60
-                # If RT60 is less than one period, use one period
-                # Otherwise, use multiple periods to ensure we capture at least RT60
-                if N_rt60 <= N_period:
-                    # Use one period (which is approximately RT60)
-                    N_samples = N_period
-                else:
-                    # Use multiple periods to ensure we capture at least RT60
-                    n_periods = int(np.ceil(N_rt60 / N_period))
-                    N_samples = n_periods * N_period
-            else:
-                # Fallback if frequency array is too short
-                N_samples = (
-                    int(
-                        np.round(
-                            self.params["reverberationTime"] * self.params["sampleRate"]
-                        )
-                    )
-                    + 1
-                )
-
-            # Create time array with correct length (aligned with period)
-            t = np.arange(0, N_samples) * dt
-
-            # Parameters for bandpass window
-            f_low = 150
-            f_high = int(self.params["sampleRate"] / 2 * 0.7)
-            transition_width_low = int(f_low * 0.3)
-            transition_width_high = int(f_high * 0.15)
-
-            if bandpass_window:
-                window = self.create_bandpass_window(
-                    self.params["freqs"],
-                    f_low,
-                    f_high,
-                    transition_width_low,
-                    transition_width_high,
-                )
-                self.params["RTF"] = self.params["RTF"] * window
-            # Construct frequency domain (DC + positive frequencies)
-            full_P = np.concatenate([[0], self.params["RTF"]])
-            # Use irfft for real-valued signals (handles Hermitian symmetry correctly)
-            # n must match the time array length
-            p = np.fft.irfft(full_P, n=N_samples)
-
-            if highpass_filter:
-                p = self.apply_highpass_filter(
-                    p, self.params["sampleRate"], cut_freq, zero_phase
-                )
-            # p = p / np.max(np.abs(p))
-            # Adjust rir length using the RIRLength parameter (truncate after IFFT)
-            nSamples = int(self.params["RIRLength"] * self.params["sampleRate"])
-            if len(p) < nSamples:
-                p = np.concatenate([p, np.zeros(nSamples - len(p))])
-            elif len(p) > nSamples:
-                p = p[:nSamples]
-        elif self.mode == "RTF":
-            p = self.params["RTF"]
-
-        return p
+            rir = np.concatenate([rir, np.zeros(n_out - len(rir))])
+        return rir[:n_out]
 
 
 def convert_imp_abs_t60_convex(room=None, datain=None, params_type=None):
@@ -2856,7 +2887,7 @@ def _pre_calc_images_src_rec_optimized_nofs_impl(
     LL = np.asarray(params["roomSize"], dtype=np.float64)
     x_r = np.asarray(params["posReceiver"], dtype=np.float64)
     x_s = np.asarray(params["posSource"], dtype=np.float64)
-    max_distance_squared = (params["soundSpeed"] * params["reverberationTime"]) ** 2
+    max_distance_squared = (params["soundSpeed"] * image_time_limit(params)) ** 2
     RefCoef_angdep_flag = int(params["angDepFlag"])
 
     if RefCoef_angdep_flag == 1:
@@ -2871,7 +2902,7 @@ def _pre_calc_images_src_rec_optimized_nofs_impl(
     # a boundary shell were generated but not counted -- and shell degeneracy
     # can put hundreds of images on one boundary, overflowing the allocation.
     c = float(params["soundSpeed"])
-    T60 = params["reverberationTime"]
+    T60 = image_time_limit(params)
     N_o_ORG = params["mixEarlyOrder"]
 
     if N_o < N_o_ORG:
@@ -3775,7 +3806,7 @@ def _pre_calc_images_src_rec_optimized_nofs_parallel_impl(
     LL = np.asarray(params["roomSize"], dtype=np.float64)
     x_r = np.asarray(params["posReceiver"], dtype=np.float64)
     x_s = np.asarray(params["posSource"], dtype=np.float64)
-    max_distance_squared = (params["soundSpeed"] * params["reverberationTime"]) ** 2
+    max_distance_squared = (params["soundSpeed"] * image_time_limit(params)) ** 2
     RefCoef_angdep_flag = int(params["angDepFlag"])
 
     if RefCoef_angdep_flag == 1 and not params["silentMode"]:
@@ -3947,7 +3978,7 @@ def pre_calc_images_src_rec_optimized_nofs_v2_numba(params):
     LL = np.asarray(params["roomSize"], dtype=np.float64)
     x_r = np.asarray(params["posReceiver"], dtype=np.float64)
     x_s = np.asarray(params["posSource"], dtype=np.float64)
-    max_distance_squared = (params["soundSpeed"] * params["reverberationTime"]) ** 2
+    max_distance_squared = (params["soundSpeed"] * image_time_limit(params)) ** 2
     RefCoef_angdep_flag = int(params["angDepFlag"])
 
     if RefCoef_angdep_flag == 1 and not params["silentMode"]:

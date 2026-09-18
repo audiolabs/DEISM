@@ -1053,6 +1053,9 @@ def loadSingleParam(configs, args, mode="RTF", roomtype="shoebox"):
         params["sampleRate"] = args.fs or configs["Signal"]["samplingRate"]
         params["RIRLength"] = args.rirlen or configs["Signal"]["RIRLength"]
         params["overSamplingFactor"] = args.K or configs["Signal"]["overSamplingFactor"]
+        # RIR bandpass window phase: "minimum" (causal, default), "zero"
+        # (symmetric pulses on a guarded grid) or "none" (no window).
+        params["rirWindowPhase"] = configs["Signal"].get("RIRWindowPhase", "minimum")
     params["mode"] = mode
 
     # Directivity parameters

@@ -71,7 +71,7 @@
     </section>
 
     <section class="card">
-      <div class="card-heading"><h2>Simulation mode</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>RTF computes the room transfer function on an explicit frequency grid. RIR adds the impulse response (inverse FFT of the transfer function on a grid derived from T60 and the sample rate) and its energy decay curve.</div></div></details></div>
+      <div class="card-heading"><h2>Simulation mode</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>RTF computes the room transfer function on an explicit frequency grid. RIR adds the impulse response (inverse FFT of the transfer function on a grid that resolves the shorter of T60 and the RIR length) and its energy decay curve. The RIR window shapes the band before the inverse FFT: minimum phase keeps the response causal (nothing before an arrival, nothing folded across the end); zero phase gives symmetric pulses with a few milliseconds of pre-ringing on a grid extended by a guard interval; none is the raw inverse FFT for diagnostics.</div></div></details></div>
       <label class="row"><span>Output</span>
         <select data-p="mode">
           <option value="RTF">Transfer function (RTF)</option>
@@ -195,6 +195,11 @@
       <div id="freq-rir" hidden>
         <label class="row"><span>Sample rate [Hz]</span><input type="number" required min="1000" max="48000" step="100" data-p="sampleRate"></label>
         <label class="row"><span>RIR length [s]</span><input type="number" required min="0.1" max="2" step="0.05" data-p="RIRLength"></label>
+        <label class="row"><span>RIR window</span><select data-p="rirWindowPhase">
+          <option value="minimum">Bandpass, minimum phase (causal)</option>
+          <option value="zero">Bandpass, zero phase (guarded grid)</option>
+          <option value="none">None (raw inverse FFT)</option>
+        </select></label>
 
       </div>
       <div class="stat" id="freq-stat"></div>

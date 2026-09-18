@@ -23,11 +23,12 @@ export function updateN1N2N3(c, t60, L) {
  * Returns {A, RsIr, RsrI, RrsI} where each image row of A is
  * [q_x, q_y, q_z, p_x, p_y, p_z] and the R arrays hold [phi, theta, r].
  * Images are split into early (order <= mixEarlyOrder) and late lists.
+ * `timeLimit` bounds the path length (core_deism.image_time_limit).
  */
-export function shoeboxImages({ L, xs, xr, c, t60, maxOrder, mixEarlyOrder, removeDirect }) {
+export function shoeboxImages({ L, xs, xr, c, t60, timeLimit = t60, maxOrder, mixEarlyOrder, removeDirect }) {
   const [n1, n2, n3] = updateN1N2N3(c, t60, L);
   const NoOrg = Math.min(mixEarlyOrder, maxOrder);
-  const maxDist2 = (c * t60) ** 2;
+  const maxDist2 = (c * timeLimit) ** 2; // c*T60, or c*min(T60, RIRLength) in RIR mode
   const early = { A: [], RsIr: [], RsrI: [], RrsI: [] };
   const late = { A: [], RsIr: [], RsrI: [], RrsI: [] };
   // Like the package's default v2-numba backend, the set is bounded by the

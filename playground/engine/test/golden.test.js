@@ -141,13 +141,24 @@ for (const name of CASES) {
     assert.ok(e.worst < tol, `RTF rel err ${e.worst} at bin ${e.worstI} (${F.freqs[e.worstI]} Hz): js=${rtf.re[e.worstI]}+${rtf.im[e.worstI]}i ref=${ref.re[e.worstI]}+${ref.im[e.worstI]}i`);
     if (F.mode === "RIR") {
       const R = loadFixture("shoebox_rir_result");
-      const rir = d.getResults();
-      assert.equal(rir.length, R.nSamples, "RIR length");
-      let scale = 0;
-      for (const v of R.rir) scale = Math.max(scale, Math.abs(v));
-      let worst = 0;
-      for (let i = 0; i < rir.length; i++) worst = Math.max(worst, Math.abs(rir[i] - R.rir[i]) / scale);
-      assert.ok(worst < 1e-4, `RIR rel err ${worst}`);
+      const compare = (rir, ref, label) => {
+        assert.equal(rir.length, R.nSamples, `${label} RIR length`);
+        let scale = 0;
+        for (const v of ref) scale = Math.max(scale, Math.abs(v));
+        let worst = 0;
+        for (let i = 0; i < rir.length; i++) worst = Math.max(worst, Math.abs(rir[i] - ref[i]) / scale);
+        assert.ok(worst < 1e-4, `${label} RIR rel err ${worst}`);
+      };
+      assert.ok(Math.abs(d.state.rirPeriod - R.rirPeriod) < 1e-9, "RIR period");
+      assert.equal(d.state.freqs.length, R.nFreqs.minimum, "minimum-phase grid");
+      compare(d.getResults(), R.rir.minimum, "minimum-phase");
+      compare(d.getResults({ bandpassWindow: false }), R.rir.none, "unwindowed");
+      // the zero-phase window extends the grid by the guard interval
+      const z = new Deism({ ...paramsFromFixture(F), rirWindowPhase: "zero" });
+      z.runAll();
+      assert.equal(z.state.rirGuard, R.rirGuard, "guard interval");
+      assert.equal(z.state.freqs.length, R.nFreqs.zero, "zero-phase grid");
+      compare(z.getResults(), R.rir.zero, "zero-phase");
     }
   });
 }

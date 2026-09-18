@@ -89,6 +89,8 @@ self.onmessage = (ev) => {
       substituted: d.state.substitutedFreqs || [],
       images: d.state.imageCount,
       t60: d.state.reverberationTime,
+      rirPeriod: d.state.rirPeriod ?? null,
+      rirGuard: d.state.rirGuard ?? null,
       sourceOrder: d.params.sourceOrder,
       receiverOrder: d.params.receiverOrder,
       fluctuations: d.state.fluctuations ? { drift: params.drift, volatility: params.volatility, seed: params.fluctuationSeed } : null,

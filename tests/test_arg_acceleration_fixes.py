@@ -122,9 +122,11 @@ def test_sampled_pressure_on_native_rir_grid(monkeypatch, profile):
     assert p['freqs'][0] < measured[0] and p['freqs'][-1] > measured[-1]
     assert len(p['freqs']) == round(1000 / p['freqs'][0])
     n = 2 * len(p['freqs'])
-    reference_rir = np.fft.irfft(np.r_[0, actual], n=n)
+    spectrum = np.r_[0, actual]
+    spectrum[-1] = 0  # get_results zeroes the Nyquist bin
+    reference_rir = np.fft.irfft(spectrum, n=n)[:round(p['rirPeriod'] * p['sampleRate'])]
     length = int(p['sampleRate'] * p['RIRLength'])
-    reference_rir = np.pad(reference_rir, (0, max(0, length-n)))[:length]
+    reference_rir = np.pad(reference_rir, (0, max(0, length-len(reference_rir))))[:length]
     np.testing.assert_array_equal(d.get_results(bandpass_window=False), reference_rir)
 
 
