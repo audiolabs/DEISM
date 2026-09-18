@@ -58,8 +58,9 @@ development/
 # Machine-local raw test-run evidence.
 .development-runs/
 
-# Saved playground simulations
-playground/results/
+# Saved playground simulations (local result.json archives from deism-playground)
+playground/results/*
+!playground/results/.gitignore
 
 # Disposable browser copies regenerated from MAT files at launch
 playground/data/

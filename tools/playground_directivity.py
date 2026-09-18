@@ -110,6 +110,15 @@ def discover_sets():
             else:
                 entry["reason"] = "Single-point response; no sampled sphere directions or radius."
             catalog[key] = entry
+    # Release assets need unique names: a filename shared by the source and
+    # receiver directories (speaker_cuboid_cyldriver_1.mat) is published as
+    # <stem>__<kind>.mat; every other asset keeps its filename.
+    names = {}
+    for entry in catalog.values():
+        names.setdefault(entry["filename"], []).append(entry)
+    for filename, entries in names.items():
+        for entry in entries:
+            entry["asset"] = filename if len(entries) == 1 else f"{filename[:-4]}__{entry['kind']}.mat"
     return catalog
 
 
