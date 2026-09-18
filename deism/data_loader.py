@@ -1,3 +1,4 @@
+from functools import lru_cache
 from importlib import resources
 from pathlib import Path
 
@@ -7,6 +8,22 @@ import os
 import sys
 import scipy.io as sio
 import numpy as np
+
+
+_GIT_LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1"
+
+
+class MissingDirectivityDataError(RuntimeError):
+    """A sampled-directivity file contains an unhydrated Git LFS pointer."""
+
+
+def raise_if_git_lfs_pointer(path):
+    """Fail clearly when a tracked MAT file is still a Git LFS pointer."""
+    with open(path, "rb") as fh:
+        if fh.read(len(_GIT_LFS_POINTER_PREFIX)) == _GIT_LFS_POINTER_PREFIX:
+            raise MissingDirectivityDataError(
+                f"Missing LFS data for {Path(path).name}; run git lfs pull"
+            )
 
 
 _DEFAULT_CONFIG_NAMES = frozenset(
@@ -1245,12 +1262,21 @@ def cmdArgsToDict(mode="RTF", roomtype="shoebox"):
 
     return params, cmdArgs
 
-def load_directive_pressure(silentMode, src_or_rec, name):
+@lru_cache(maxsize=16)
+def _packaged_directive_mat(path, mtime_ns):
+    """Reuse original MAT arrays in a persistent local runner."""
+    return sio.loadmat(path)
+
+
+def load_directive_pressure(silentMode, src_or_rec, name, data_dir=None):
     """
     Functions for loading sampled directional pressure field on a sphere with radius r0 simulated from COMSOL or simulation
     input:
         src_or_rec: string, "source" or "receiver"
         name: string, the name of the profile
+        data_dir: optional explicit sampled_directivity root; caches original MAT
+            arrays by file path and modification time. Without it, local example
+            paths take precedence, then installed example resources.
     output:
         freqs_all: 1D array, the frequencies of the simulated pressure field
         pressure: 2D array, number of frequencies x number of sample points, the simulated pressure field
@@ -1268,11 +1294,21 @@ def load_directive_pressure(silentMode, src_or_rec, name):
         # do nothing
         pass
     data_location = "{}/{}/{}.mat".format(path, src_or_rec, name)
+    if data_dir is not None:
+        data_location = str(Path(data_dir) / src_or_rec / (name + ".mat"))
+    elif not Path(data_location).is_file():
+        data_location = str(resources.files("deism.examples") / "data" / "sampled_directivity" / src_or_rec / (name + ".mat"))
     try:
-        with open(data_location, "rb") as file:
-            FEM_data = sio.loadmat(file)
+        raise_if_git_lfs_pointer(data_location)
+        if data_dir is not None:
+            FEM_data = _packaged_directive_mat(data_location, Path(data_location).stat().st_mtime_ns)
+        else:
+            with open(data_location, "rb") as file:
+                FEM_data = sio.loadmat(file)
     except FileNotFoundError:
         raise FileNotFoundError(f"File {data_location} not found.")
+    except RuntimeError:
+        raise
     except Exception as e:
         raise RuntimeError(f"An error occurred while loading the file: {e}")
 
@@ -1306,10 +1342,13 @@ def load_directpath_pressure(silentMode, name):
         pass
     data_location = "{}/source/{}.mat".format(path, name)
     try:
+        raise_if_git_lfs_pointer(data_location)
         with open(data_location, "rb") as file:
             FEM_data = sio.loadmat(file)
     except FileNotFoundError:
         raise FileNotFoundError(f"File {data_location} not found.")
+    except RuntimeError:
+        raise
     except Exception as e:
         raise RuntimeError(f"An error occurred while loading the file: {e}")
 

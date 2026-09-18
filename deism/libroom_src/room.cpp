@@ -52,6 +52,172 @@ size_t number_image_sources_3(size_t max_order) {
   return 1 + 2 * max_order * (2 * max_order_sq + 3 * max_order + 4) / 3;
 }
 
+
+/******************************************************************************/
+// Beam pruning helpers (see Room_deism::beam_pruning).
+//
+// The visible region of an image source is the set of points p whose segment
+// to the image crosses the generating wall inside the polygon of the wall
+// from which the parent image is visible.  That polygon is convex, so the
+// visible region is contained in the convex cone from the image through it
+// (intersected with the room side of the generating wall).  A child image
+// across wall w can therefore only be seen through  w ∩ cone,  computed here
+// with Sutherland-Hodgman clipping in double precision.  Every clipping plane
+// is pushed outwards by `margin` to allow for numerical error.  Regression
+// tests verify equality with exhaustive search on the tested convex rooms;
+// this heuristic margin is not a general float32 equivalence guarantee.
+/******************************************************************************/
+template<size_t D>
+struct BeamClipper
+{
+  typedef Eigen::Matrix<double, D, 1> Vec;
+  static bool supported(const Wall_deism<D> &) { return false; }
+
+  // Generic dimension: never prunes.
+  static bool child_polygon(
+      const Eigen::Matrix<float, D, Eigen::Dynamic> &,
+      const Wall_deism<D> &,
+      const std::vector<Vec> &,
+      bool,
+      const Vec &,
+      double,
+      std::vector<Vec> &out)
+  {
+    out.clear();
+    return true;
+  }
+};
+
+template<>
+struct BeamClipper<3>
+{
+  typedef Eigen::Matrix<double, 3, 1> Vec;
+
+  static bool supported(const Wall_deism<3> &wall)
+  {
+    // A convex face lies on one side of every boundary edge. Work in the
+    // wall's plane, allowing only roundoff at collinear boundary vertices.
+    const auto &p = wall.flat_corners;
+    if (p.cols() < 3) return false;
+    double area = 0.;
+    for (int i = 0; i < p.cols(); ++i)
+      area += double(p(0,i)) * p(1,(i+1)%p.cols()) - double(p(1,i)) * p(0,(i+1)%p.cols());
+    if (area == 0.) return false;
+    double sign = area > 0. ? 1. : -1.;
+    for (int i = 0; i < p.cols(); ++i)
+    {
+      Eigen::Vector2d edge = (p.col((i+1)%p.cols()) - p.col(i)).cast<double>();
+      for (int j = 0; j < p.cols(); ++j)
+      {
+        Eigen::Vector2d delta = (p.col(j) - p.col(i)).cast<double>();
+        if (sign * (edge.x()*delta.y() - edge.y()*delta.x()) < -1e-7 * edge.norm())
+          return false;
+      }
+    }
+    return true;
+  }
+
+  // Keep the part of the convex polygon `poly` with  n.(x - apex) + margin >= 0.
+  static void clip(std::vector<Vec> &poly, const Vec &n, const Vec &apex,
+                   double margin, std::vector<Vec> &scratch)
+  {
+    size_t count = poly.size();
+    if (count == 0)
+      return;
+    scratch.clear();
+    for (size_t i = 0; i < count; i++)
+    {
+      const Vec &cur = poly[i];
+      const Vec &nxt = poly[(i + 1) % count];
+      double dc = n.dot(cur - apex) + margin;
+      double dn = n.dot(nxt - apex) + margin;
+      if (dc >= 0.)
+        scratch.push_back(cur);
+      if ((dc >= 0.) != (dn >= 0.))
+      {
+        double t = dc / (dc - dn);
+        scratch.push_back(cur + t * (nxt - cur));
+      }
+    }
+    poly.swap(scratch);
+  }
+
+  // Polygon of `corners` (the child's generating wall) through which the
+  // child image can be seen: the wall clipped by the cone from `apex` (the
+  // parent image) through `parent_poly` (on the parent's generating wall
+  // `parent_wall`) and by the room side of that wall.  Returns false when
+  // the result is empty by more than the margin.
+  static bool child_polygon(
+      const Eigen::Matrix<float, 3, Eigen::Dynamic> &corners,
+      const Wall_deism<3> &parent_wall,
+      const std::vector<Vec> &parent_poly,
+      bool parent_is_root,
+      const Vec &apex,
+      double margin,
+      std::vector<Vec> &out)
+  {
+    out.clear();
+    for (int c = 0; c < corners.cols(); c++)
+      out.push_back(corners.col(c).cast<double>());
+    if (parent_is_root)
+      return out.size() >= 3;
+    if (parent_poly.size() < 3)
+      return false;
+
+    std::vector<Vec> scratch;
+    scratch.reserve(out.size() + parent_poly.size() + 4);
+
+    // Room side of the parent's generating wall (its normal points outwards
+    // and the apex lies on the outward side): keep  normal.(x - origin) <= margin.
+    Vec wall_normal = parent_wall.normal.template cast<double>();
+    Vec wall_origin = parent_wall.origin.template cast<double>();
+    clip(out, -wall_normal, wall_origin, margin, scratch);
+    if (out.size() < 3)
+      return false;
+
+    Vec centroid = Vec::Zero();
+    for (size_t i = 0; i < parent_poly.size(); i++)
+      centroid += parent_poly[i];
+    centroid /= static_cast<double>(parent_poly.size());
+
+    size_t count = parent_poly.size();
+    for (size_t i = 0; i < count; i++)
+    {
+      const Vec &a = parent_poly[i];
+      const Vec &b = parent_poly[(i + 1) % count];
+      Vec n = (a - apex).cross(b - apex);
+      double nn = n.norm();
+      if (nn <= 1e-12)
+        continue;  // degenerate edge: no constraint (conservative)
+      n /= nn;
+      double side = n.dot(centroid - apex);
+      if (std::fabs(side) <= 1e-9)
+        continue;  // orientation ambiguous: no constraint (conservative)
+      if (side < 0.)
+        n = -n;
+      clip(out, n, apex, margin, scratch);
+      if (out.size() < 3)
+        return false;
+    }
+    return true;
+  }
+};
+
+
+template<size_t D>
+bool Room_deism<D>::compute_child_beam(
+    const ImageSource<D> &parent, int wall_idx, ImageSource<D> &child)
+{
+  typedef Eigen::Matrix<double, D, 1> Vec;
+  Vec apex = parent.loc.template cast<double>();
+  bool parent_is_root = (parent.parent == NULL);
+  const Wall_deism<D> &parent_wall = walls[parent_is_root ? wall_idx : parent.gen_wall];
+  double margin = beam_margin + 1e-4 * apex.norm();
+  return BeamClipper<D>::child_polygon(
+      walls[wall_idx].corners, parent_wall, parent.beam_poly, parent_is_root,
+      apex, margin, child.beam_poly);
+}
+
 template<size_t D>
 Room_deism<D>::Room_deism(
     const std::vector<Wall_deism<D>> &_walls,
@@ -277,6 +443,11 @@ int Room_deism<D>::image_source_model(const Vectorf<D> &source_location)
   // make sure the list is empty
   while (visible_sources.size() > 0)
     visible_sources.pop();
+  dfs_nodes_visited = 0;
+  dfs_subtrees_pruned = 0;
+  beam_pruning_active = beam_pruning && obstructing_walls.empty();
+  for (const auto &wall : walls)
+    beam_pruning_active = beam_pruning_active && BeamClipper<D>::supported(wall);
 
   if (compact_mode)
   {
@@ -319,6 +490,9 @@ int Room_deism<D>::fill_sources()
   // images, or a reused engine, must never expose stale data from a previous
   // run (reflection_matrix previously accumulated across runs).
   reflection_matrix.clear();
+  // Filled by index below (the previous insert-at-front loop was quadratic
+  // in the number of images).
+  reflection_matrix.resize(n_sources);
   sources.resize(D, n_sources);
   orders.resize(n_sources);
   gen_walls.resize(n_sources);
@@ -362,7 +536,7 @@ int Room_deism<D>::fill_sources()
     /************************************************************************/
     // insert the reflection matrix, but be aware, the size of this->reflection_matrix
     // is n_source, each element within this std::vector is a DxD reflection matrix.
-    reflection_matrix.insert(reflection_matrix.begin(),top.reflection_matrix);
+    reflection_matrix[i] = top.reflection_matrix;
     /************************************************************************/
 
     visible_sources.pop();  // unstack
@@ -382,16 +556,17 @@ void Room_deism<D>::image_sources_dfs(ImageSource<D> &is, int max_order)
    */
 
   ImageSource<D> new_is(n_bands);
+  dfs_nodes_visited++;
 
   // Check the visibility of the source from the different microphones
   bool any_visible = false;
   int m = 0;
+  std::vector<Vectorf<D>> temp_list_intercep;
+  temp_list_intercep.reserve(is.order);
   for (auto mic = microphones.begin() ; mic != microphones.end() ; ++mic, ++m)
   {
-    // bool is_visible = is_visible_dfs(mic->get_loc(), is, list_intercep_p_to_is);
-    std::pair<bool,std::vector<Vectorf<D>>> ret_pair=is_visible_dfs(mic->get_loc(), is);
-    bool is_visible=ret_pair.first;
-    std::vector<Vectorf<D>> temp_list_intercep=ret_pair.second;
+    temp_list_intercep.clear();
+    bool is_visible = is_visible_dfs_impl(mic->get_loc(), is, temp_list_intercep);
     if (is_visible && !any_visible)
     {
       any_visible = is_visible;
@@ -438,6 +613,19 @@ void Room_deism<D>::image_sources_dfs(ImageSource<D> &is, int max_order)
     if (dir <= 0)
       continue;
 
+    // Beam pruning: skip the child and its whole subtree when no point of
+    // wall wi can see `is` (see Room_deism::beam_pruning).
+    if (beam_pruning_active && !is_shoebox)
+    {
+      if (!compute_child_beam(is, static_cast<int>(wi), new_is))
+      {
+        dfs_subtrees_pruned++;
+        continue;
+      }
+    }
+    else
+      new_is.beam_poly.clear();
+
     // The reflection is valid, fill in the image source attributes
     // --->new 0815
     // new_is.attenuation = is.attenuation * walls[wi].get_transmission();
@@ -478,15 +666,27 @@ std::pair<bool,std::vector<Vectorf<D>>> Room_deism<D>::is_visible_dfs(
      True (1) :  visible
      */
 
-  // -->new 0816
-  if (is_obstructed_dfs(p, is))
-    // return false;
-    return std::make_pair<bool,std::vector<Vectorf<D>>>(false,std::vector<Vectorf<D>>());
+  // Thin wrapper kept for the Python binding; the DFS uses the
+  // allocation-free implementation below.
+  std::vector<Vectorf<D>> segs;
+  bool visible = is_visible_dfs_impl(p, is, segs);
+  return std::make_pair(visible, std::move(segs));
+}
 
-  // -->new 0816
-  // From the code logic, a brand-new list_p_to_is is needed for each call, 
-  // so a temporary variable is created.
-  std::vector<Vectorf<D>> temp_list_intercep_p_to_is;
+template<size_t D>
+bool Room_deism<D>::is_visible_dfs_impl(
+    const Vectorf<D> &p,
+    ImageSource<D> &is,
+    std::vector<Vectorf<D>> &segs, int previous_wall)
+{
+  /*
+     Same recursion as the original is_visible_dfs, but the receiver-side
+     segments are appended to one caller-owned vector (receiver level first,
+     exactly the order the original produced by concatenation) instead of
+     building and copying a fresh vector at every recursion level.
+     */
+  if (is_obstructed_dfs(p, is))
+    return false;
 
   if (is.parent != NULL){
     Vectorf<D> intersection;
@@ -500,22 +700,21 @@ std::pair<bool,std::vector<Vectorf<D>>> Room_deism<D>::is_visible_dfs(
     // The source is not visible if the ray does not intersect
     // the generating wall
     if (ret >= 0){
-      temp_list_intercep_p_to_is.push_back(is.loc-intersection);  //-->new 0816
+      // At an exact shared-edge crossing, perpendicular reflections commute.
+      // Use increasing wall ids in receiver-to-source order, counting this
+      // single limiting specular path once. Nonzero segments are untouched.
+      if (previous_wall > wall_id && (intersection - p).squaredNorm() == 0.f &&
+          walls[previous_wall].normal.dot(walls[wall_id].normal) == 0.f)
+        return false;
+      segs.push_back(is.loc-intersection);
       // Check visibility of intersection point from parent source
-      std::pair<bool,std::vector<Vectorf<D>>> ret_pair=is_visible_dfs(
-          intersection,*(is.parent));
-
-      temp_list_intercep_p_to_is.insert(temp_list_intercep_p_to_is.end(),
-        ret_pair.second.begin(),ret_pair.second.end());
-      // remember to use move semantics to change the rvalue to lvalue
-      return std::make_pair<bool,std::vector<Vectorf<D>>>(std::move(ret_pair.first),
-        std::move(temp_list_intercep_p_to_is));
+      return is_visible_dfs_impl(intersection, *(is.parent), segs, wall_id);
     }else
-      return std::make_pair<bool,std::vector<Vectorf<D>>>(false,std::move(temp_list_intercep_p_to_is));
+      return false;
   }
 
   // If we get here this is the original, unobstructed, source
-  return std::make_pair<bool,std::vector<Vectorf<D>>>(true,std::move(temp_list_intercep_p_to_is));
+  return true;
 }
 
 template<size_t D>

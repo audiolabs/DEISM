@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en" data-directivity-base="../data/">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DEISM Playground</title>
+<meta name="description" content="Interactive room acoustics with DEISM: a fast image-source preview and the exact diffraction-enhanced solution, both computed in your browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230E1116'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%232D5BFF' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='2' fill='%232D5BFF'/%3E%3C/svg%3E">
+<!-- BUILD:STYLE --><link rel="stylesheet" href="style.css"><!-- /BUILD:STYLE -->
+</head>
+<body>
+<noscript><div class="noscript">This page needs JavaScript: the playground controls and preview run in your browser.</div></noscript>
+
+<header class="top">
+  <a class="logo" href="https://www.audiolabs-erlangen.de/" target="_blank" rel="noopener" title="International Audio Laboratories Erlangen"><img src="assets/audiolabs-logo-dark.png" alt="AudioLabs" width="68" height="34"></a>
+  <div class="brand"><span class="dot"></span>DEISM <span class="sub">playground</span></div>
+  <div class="links">
+    <a href="https://deism.readthedocs.io/" target="_blank" rel="noopener">Docs</a>
+    <a href="https://doi.org/10.1121/10.0023935" target="_blank" rel="noopener">Paper</a>
+    <a href="https://github.com/audiolabs/DEISM" target="_blank" rel="noopener">Code</a>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ===================== scene + results ===================== -->
+  <section class="content">
+    <div class="scene-wrap">
+      <canvas id="scene" class="scene"></canvas>
+      <div class="scene-legend"><span class="src">● source</span><span class="rec">● receiver</span><span class="img">● image sources (preview)</span><details class="help"><summary aria-label="Help">?</summary><div class="help-text">Drag the background to orbit. Drag source, receiver, or vertex handles to move them. Image sources show the reduced preview only.</div></details></div>
+      <div class="badges" id="badges"></div>
+    </div>
+
+    <div class="plots">
+      <div class="card plot-card">
+        <div class="plot-head"><span>Room transfer function</span><span class="tier-tag" id="rtf-tier"></span></div>
+        <div class="plot-tools"><details class="help"><summary aria-label="Help">?</summary><div class="help-text">Scroll to zoom horizontally; drag to pan. Reset view restores the full domain.</div></details><button type="button" class="btn" id="reset-rtf">Reset view</button></div>
+        <canvas id="plot-rtf" class="plot"></canvas>
+      </div>
+      <div class="card plot-card" id="rir-card" hidden>
+        <div class="plot-head"><span>Room impulse response <span class="plot-sub">and energy decay curve</span></span><span class="tier-tag" id="rir-tier"></span></div>
+        <div class="plot-tools"><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>Left axis: pressure of the impulse response. Right axis: energy decay curve (dashed), the Schroeder backward integral 10·log10(∑<sub>τ≥t</sub> h²(τ) / ∑ h²) in dB, computed from the shown RIR.</div><div>Scroll to zoom horizontally; drag to pan. Reset view restores the full domain.</div></div></details><button type="button" class="btn" id="reset-rir">Reset view</button></div>
+        <canvas id="plot-rir" class="plot rir"></canvas>
+      </div>
+      <div class="card provenance" id="provenance"></div>
+    </div>
+
+    <footer class="foot"><details><summary>About</summary>
+      Preview uses JavaScript with reduced settings. Launch with <code>deism-playground</code> for accurate simulations through the installed Python DEISM workflow.
+      The standalone offline file uses JavaScript for all runs; it does not provide native performance or validated high-order numerical parity. Nothing shown here is precomputed.
+    </details>
+      <p class="license-note">Copyright &copy; 2022-2026 Fraunhofer-Gesellschaft. Subject to the Fraunhofer Software Copyright License (see the package <a href="LICENSE.txt" target="_blank" rel="noopener">LICENSE</a>). Requires a separate license from Fraunhofer beyond internal, non-commercial use for evaluation, testing, and academic research.</p>
+    </footer>
+  </section>
+
+  <!-- ===================== pipeline + controls ===================== -->
+  <form class="panel controls" id="controls">
+
+    <div class="pipeline card">
+      <div class="pipe-head"><span>PIPELINE</span><span id="pipe-explain" class="pipe-explain"></span></div>
+      <div class="pipe-stages" id="pipe-stages"></div>
+      <div class="pipe-error" id="pipe-error" hidden></div>
+    </div>
+
+    <section class="card">
+      <div class="card-heading"><h2>00 · Examples</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div id="preset-note">Pick an example to load the parameters of one of the repository's example scripts. The preview updates at once; press Run for the full simulation.</div></div></details></div>
+      <label class="row"><span>Preset</span>
+        <select id="preset-select"><option value="">Custom settings</option></select>
+      </label>
+      <div class="stat" id="preset-status"></div>
+
+    </section>
+
+    <section class="card">
+      <div class="card-heading"><h2>Simulation mode</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>RTF computes the room transfer function on an explicit frequency grid. RIR adds the impulse response (inverse FFT of the transfer function on a grid derived from T60 and the sample rate) and its energy decay curve.</div></div></details></div>
+      <label class="row"><span>Output</span>
+        <select data-p="mode">
+          <option value="RTF">Transfer function (RTF)</option>
+          <option value="RIR">Impulse response (RIR)</option>
+        </select>
+      </label>
+
+    </section>
+
+    <section class="card">
+      <div class="card-heading"><h2>01 · Room</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>Shoebox: a rectangular room given by length (x), width (y) and height (z). Convex: drag the white vertex handles in the 3D view or edit the coordinates; the room is the convex hull of the vertices, so every vertex must lie on that hull.</div></div></details></div>
+      <div class="seg" role="tablist">
+        <button type="button" class="seg-btn" data-room="shoebox">Shoebox</button>
+        <button type="button" class="seg-btn" data-room="convex">Convex</button>
+      </div>
+      <div id="room-shoebox">
+        <label class="row"><span>Length [m]</span><input type="number" required min="1" max="12" step="0.1" data-p="L"></label>
+        <label class="row"><span>Width [m]</span><input type="number" required min="1" max="10" step="0.1" data-p="W"></label>
+        <label class="row"><span>Height [m]</span><input type="number" required min="1" max="6" step="0.1" data-p="H"></label>
+      </div>
+      <div id="room-convex" hidden>
+        <div class="chips" id="vertex-chips"></div>
+        <label class="row"><span>Vertex X [m]</span><input type="number" required min="-10" max="10" step="0.01" data-v="0"></label>
+        <label class="row"><span>Vertex Y [m]</span><input type="number" required min="-10" max="10" step="0.01" data-v="1"></label>
+        <label class="row"><span>Vertex Z [m]</span><input type="number" required min="-10" max="10" step="0.01" data-v="2"></label>
+        <div class="btn-row">
+          <button type="button" class="btn" id="add-vert" title="Add a vertex outside the largest wall">+ Add vertex</button>
+          <button type="button" class="btn" id="remove-vert" title="Remove the selected vertex">− Remove</button>
+          <button type="button" class="btn" id="reset-verts">Reset</button>
+        </div>
+        <div class="stat" id="convex-stat"></div>
+
+      </div>
+      <div class="stat" id="room-stat"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-heading"><h2>02 · Wall materials</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>Click a wall name to highlight its face in the 3D view. Absorption α is per wall in [0, 1]; impedance is the normalised specific impedance ζ (complex). T60 is estimated from the wall materials when it is not given directly; for convex rooms T60 input is not available.</div></div></details></div>
+      <label class="row"><span>Given as</span>
+        <select data-p="materialType">
+          <option value="absorption">Absorption (per wall)</option>
+          <option value="impedance">Impedance (per wall, complex)</option>
+          <option value="reverberationTime">Reverberation time T60</option>
+        </select>
+      </label>
+      <div id="mat-absorption">
+        <div class="chips">
+          <button type="button" class="chip" data-preset="0.05" title="All walls α = 0.05">Reverberant <small>α 0.05</small></button>
+          <button type="button" class="chip" data-preset="0.15" title="All walls α = 0.15">Living room <small>α 0.15</small></button>
+          <button type="button" class="chip" data-preset="0.4" title="All walls α = 0.4">Studio <small>α 0.4</small></button>
+          <button type="button" class="chip" data-preset="0.85" title="All walls α = 0.85">Damped <small>α 0.85</small></button>
+        </div>
+      </div>
+      <div id="wall-editor">
+        <div id="wall-list" class="walls"></div>
+        <button type="button" class="btn" id="apply-walls">Apply selected wall to all</button>
+        <div class="hint" id="wall-review" role="status"></div>
+      </div>
+      <div id="mat-t60" hidden>
+        <label class="row"><span>T60 [s]</span><input type="number" required min="0.1" max="2" step="0.05" data-p="t60"></label>
+      </div>
+      <label class="row check" id="angdep-row"><input type="checkbox" data-p="angDep"><span>Angle-dependent reflection coefficients</span></label>
+      <div class="stat" id="mat-stat"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-heading"><h2>03 · Source &amp; receiver</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>Drag the blue (source) and orange (receiver) dots in the 3D view or type positions. Reflection order is the maximum number of wall reflections per image source; the 3D view shows the preview's image sources up to order 3 only.</div></div></details></div>
+      <div class="grid2">
+        <div>
+          <div class="lbl src">Source [m]</div>
+          <label class="row"><span>x</span><input type="number" required min="0.1" max="10" step="0.01" data-pos="src" data-axis="0"></label>
+          <label class="row"><span>y</span><input type="number" required min="0.1" max="8" step="0.01" data-pos="src" data-axis="1"></label>
+          <label class="row"><span>z</span><input type="number" required min="0.1" max="5" step="0.01" data-pos="src" data-axis="2"></label>
+        </div>
+        <div>
+          <div class="lbl rec">Receiver [m]</div>
+          <label class="row"><span>x</span><input type="number" required min="0.1" max="10" step="0.01" data-pos="rec" data-axis="0"></label>
+          <label class="row"><span>y</span><input type="number" required min="0.1" max="8" step="0.01" data-pos="rec" data-axis="1"></label>
+          <label class="row"><span>z</span><input type="number" required min="0.1" max="5" step="0.01" data-pos="rec" data-axis="2"></label>
+        </div>
+      </div>
+      <label class="row"><span>Reflection order</span><input type="number" required min="0" max="30" step="1" data-p="maxReflOrder"></label>
+
+      <div class="stat" id="sr-stat"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-heading"><h2>04 · Directivity</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div id="dataset-grid-note"></div><div id="dir-hint">Orientation: Z-X-Z Euler angles α, β, γ in degrees; 0/0/0 faces +x. SH order is the spherical-harmonic truncation of the directivity fit. The sphere radius follows the dataset.</div></div></details></div>
+      <div class="seg" id="dir-view">
+        <button type="button" class="seg-btn" data-dv="src">Source</button>
+        <button type="button" class="seg-btn" data-dv="rec">Receiver</button>
+      </div>
+      <div class="balloon-tools"><button type="button" class="btn" id="reset-balloon">Reset view</button><details class="help"><summary aria-label="Help">?</summary><div class="help-text">Rotates around z while idle. Drag to orbit; rotation pauses while dragging and resumes on release. Arrow keys also rotate the view. Acoustic orientation stays unchanged.</div></details></div><canvas tabindex="0" aria-label="Directivity view; drag or use arrow keys to orbit" id="balloon" class="balloon" width="300" height="200"></canvas>
+      <label class="row"><span>Type</span>
+        <select data-dir="type"><option value="monopole">Monopole (analytic)</option></select>
+      </label>
+      <label class="row"><span>SH order</span><input type="number" required min="0" max="8" step="1" data-dir="order"></label>
+      <label class="row"><span>α (first Z) [°]</span><input type="number" required min="0" max="360" step="any" data-dir="a"></label>
+      <label class="row"><span>β (X) [°]</span><input type="number" required min="0" max="180" step="any" data-dir="b"></label>
+      <label class="row"><span>γ (second Z) [°]</span><input type="number" required min="0" max="360" step="any" data-dir="g"></label>
+      <label class="row"><span>Balloon at [Hz]</span><input type="number" required min="20" max="1000" step="10" data-p="balloonFreq"></label>
+
+
+      <div class="hint" id="dataset-warning" role="status"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-heading"><h2>05 · Method &amp; frequencies</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div id="method-note"></div><div>RTF mode solves on the start–end grid in the given step. RIR mode derives its frequency grid from T60 and the sample rate (resolution 1/T60 up to the Nyquist frequency), then applies a band-pass window and an inverse FFT; RIR length only pads or truncates the output.</div></div></details></div>
+      <div class="seg" id="method-seg">
+        <button type="button" class="seg-btn" data-method="ORG">ORG</button>
+        <button type="button" class="seg-btn" data-method="LC">LC</button>
+        <button type="button" class="seg-btn" data-method="MIX">MIX</button>
+      </div>
+
+      <label class="row" id="mix-row"><span>MIX early order</span><input type="number" required min="0" max="5" step="1" data-p="mixEarlyOrder"></label>
+      <div id="freq-rtf">
+        <label class="row"><span>Start [Hz]</span><input type="number" required min="1" max="1000" step="1" data-p="startFreq"></label>
+        <label class="row"><span>End [Hz]</span><input type="number" required min="100" max="24000" step="1" data-p="endFreq"></label>
+        <label class="row"><span>Step [Hz]</span><input type="number" required min="1" max="100" step="1" data-p="freqStep"></label>
+      </div>
+      <div id="freq-rir" hidden>
+        <label class="row"><span>Sample rate [Hz]</span><input type="number" required min="1000" max="48000" step="100" data-p="sampleRate"></label>
+        <label class="row"><span>RIR length [s]</span><input type="number" required min="0.1" max="2" step="0.05" data-p="RIRLength"></label>
+
+      </div>
+      <div class="stat" id="freq-stat"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-heading"><h2>06 · Path fluctuations</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>Every image path of length r gets c · N(t · drift, √t · volatility) added, t = r / c, as in <code>DEISM.update_fluctuations()</code>. Volatility is in s½; paths are unchanged when both volatility and drift are zero.</div><div>Example values: the four runs of <code>examples/deism_volatility_example.py</code> use volatility 0, 0.5e-5, 1e-5 and 1.5e-5 s½ with drift 0; the "Path fluctuations" presets use 1.5e-5 s½. Drift is relative: 1e-4 lengthens every path by 0.01 % on average (a 100 m path by 1 cm); negative values shorten them.</div></div></details></div>
+      <label class="row"><span>Volatility [s½]</span><input type="number" min="0" step="0.000001" data-p="volatility" class="num" placeholder="e.g. 1.5e-5"></label>
+      <label class="row"><span>Drift</span><input type="number" min="-0.99" max="1" step="0.0001" data-p="drift" class="num" placeholder="e.g. 0 or 1e-4"></label>
+      <label class="row check"><input type="checkbox" data-p="fixedSeed"><span>Fixed seed</span></label>
+      <label class="row" id="seed-row"><span>Seed</span><input type="number" min="0" step="1" data-p="fluctuationSeed" class="num"></label>
+
+    </section>
+
+    <section class="card run-card">
+      <div class="card-heading"><h2>07 · Run</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>The preview updates live with reduced settings (LC method, reflection order ≤ 3, SH order ≤ 2, at most 256 frequency bins). Run computes the full settings: with <code>deism-playground</code> in the local Python DEISM package, in the standalone file with the JavaScript port (native performance and high-order parity are not validated there).</div><div>With the local launcher, each completed run is written as JSON to the folder shown below the button; the exact file path appears with the result. The standalone file cannot save results.</div></div></details></div>
+      <button type="button" class="run" id="run-btn">▸ Run accurate DEISM</button>
+      <button type="button" class="run cancel" id="cancel-btn" hidden>■ Cancel</button>
+      <div class="stat" id="run-save-note"></div>
+    </section>
+  </form>
+</main>
+
+<!-- BUILD:DATA --><!-- /BUILD:DATA -->
+<!-- BUILD:WORKER --><!-- /BUILD:WORKER -->
+<!-- BUILD:APP --><script type="module" src="app.js"></script><!-- /BUILD:APP -->
+</body>
+</html>

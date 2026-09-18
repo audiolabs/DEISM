@@ -612,7 +612,7 @@ class Room_deism_python:
             )
         return arr.astype(np.complex64)
 
-    def is_visible_dfs(self, p, old_is):
+    def is_visible_dfs(self, p, old_is, previous_wall=-1):
         # Most time consuming function !
         # if self.is_obstructed_dfs(p, old_is):
         #     return False
@@ -625,11 +625,16 @@ class Room_deism_python:
             # vector from intersection point to IS
             # NTPRA !!!
             if ret >= 0:
+                # Match the native convention for exact perpendicular edge hits.
+                if (previous_wall > wall_id and np.array_equal(intersect_p, p)
+                        and np.dot(self.walls[previous_wall].normal,
+                                   self.walls[wall_id].normal) == 0):
+                    return False, list_intecp_p_to_is
                 # NTPRA !!!
                 list_intecp_p_to_is.append(old_is.loc - intersect_p)
                 # NTPRA !!!
                 ret_dfs, intecp_p_to_is_new = self.is_visible_dfs(
-                    intersect_p, old_is.parent
+                    intersect_p, old_is.parent, wall_id
                 )
                 # NTPRA !!!
                 list_intecp_p_to_is = list_intecp_p_to_is + intecp_p_to_is_new
@@ -1163,6 +1168,7 @@ class Room_deism_cpp:
             print(f"Done [{minutes} minutes, {seconds:.3f} seconds]", end="\n\n")
 
     def _init_room(self, *args):
+        previous_engine = self.room_engine
         args = list(args)
         if len(args) == 0:
             obstructing_walls = find_non_convex_walls(self.walls)
@@ -1190,6 +1196,11 @@ class Room_deism_cpp:
             self.room_engine = libroom_deism.Room_deism(*args)
         else:
             raise TypeError("The room dimension should only be 2 or 3")
+
+        # Preserve the documented native controls when replacing the engine.
+        for name in ("beam_pruning", "beam_margin"):
+            if hasattr(previous_engine, name) and hasattr(self.room_engine, name):
+                setattr(self.room_engine, name, getattr(previous_engine, name))
 
     def generate_walls_convex(self, *choose_wall_centers):
         # Find the unique normals

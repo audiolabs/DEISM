@@ -235,18 +235,24 @@ setup_kwargs = dict(
     # packages=find_packages(),
     # Keep the example YAML files as the single source of truth while exposing
     # them from installed distributions through the internal deism.examples
-    # resource package. The small Python examples are intentionally shipped;
-    # examples/data remains excluded from package data and MANIFEST.in.
-    packages=["deism", "deism.examples"],
-    package_dir={"deism.examples": "examples"},
-    package_data={"deism.examples": ["configSingleParam*.yml"]},
+    # resource package. Ship sampled directivities and the built playground;
+    # unrelated large example response datasets remain excluded.
+    packages=["deism", "deism.examples", "deism.playground_assets"],
+    package_dir={"deism.examples": "examples", "deism.playground_assets": "playground"},
+    package_data={
+        "deism.examples": ["configSingleParam*.yml", "data/sampled_directivity/source/*.mat", "data/sampled_directivity/receiver/*.mat"],
+        "deism.playground_assets": ["demo.html", "native.html", "catalog.json", "LICENSE.txt"],
+    },
+    exclude_package_data={"deism.playground_assets": ["data/*.json"]},
     description="An image source-based method used to simulate room transfer functions for arbitrary room shapes.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     author="Zeyu Xu",
     author_email="zeyu.xu@audiolabs-erlangen.de",
     url="https://github.com/audiolabs/DEISM",
-    # license="MIT", !!! Todo: add license
+    # License metadata comes from pyproject.toml (license = {file = "LICENSE"}):
+    # the Fraunhofer Software Copyright License, not MIT. Only the vendored
+    # libroom sources are MIT (see deism/libroom_src headers).
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
     # Libroom C extension

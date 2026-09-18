@@ -5,6 +5,7 @@ Zeyu Xu
 """
 
 import gc
+import math
 import time
 import numpy as np
 from scipy import special as scy
@@ -489,16 +490,13 @@ class DEISM:
             self.params["nSamples"] = int(
                 self.params["sampleRate"] * self.params["RIRLength"]
             )
-            # frequency spacing, minimun spacing should be 1/T60,
-            # Make sure fs/2 is integer multiple of fstep
+            # Resolve at least T60, with an integer number of positive bins.
             min_f_step = 1 / self.params["reverberationTime"]
-            # Find the minimum step that's >= min_f_step and divides fs/2 evenly
+            # Choose a step <= 1/T60 that divides fs/2 evenly.
             n_steps = np.ceil((self.params["sampleRate"] / 2) / min_f_step)
             f_step = (self.params["sampleRate"] / 2) / n_steps
             # The linear frequencies starts from f_step and ends at fs/2
-            self.params["freqs"] = np.arange(
-                f_step, self.params["sampleRate"] / 2 + f_step, f_step
-            )
+            self.params["freqs"] = np.arange(1, int(n_steps) + 1) * f_step
         elif self.params["mode"] == "RTF":
             self.params["freqs"] = np.arange(
                 self.params["startFreq"],
@@ -702,23 +700,27 @@ class DEISM:
 
         return window
 
-    def run_DEISM(self, if_clean_up: bool = True, if_shutdown_ray: bool = True):
+    def run_DEISM(self, if_clean_up: bool = True, if_shutdown_ray: bool = True, on_progress=None):
         """
         Run DEISM using the Numba backend (default).
 
         Args:
             if_clean_up: If True, delete large image arrays (and any stored
                          path-length fluctuation draws) after computation.
+            on_progress: Optional callback(completed_batch_images, method) for
+                         shoebox Numba batches; independent of silentMode.
             if_shutdown_ray: Ignored (kept for backward compatibility).
                              Only used by run_DEISM_ray().
         """
         from deism.parallel_backends import run_DEISM as _run_DEISM
         from deism.parallel_backends import run_DEISM_ARG as _run_DEISM_ARG
 
+        # Keep the optional callback out of persistent simulation parameters.
+        solve_params = self.params if on_progress is None else dict(self.params, _on_progress=on_progress)
         if self.roomtype == "shoebox":
-            self.params["RTF"] = _run_DEISM(self.params)
+            self.params["RTF"] = _run_DEISM(solve_params)
         elif self.roomtype == "convex":
-            self.params["RTF"] = _run_DEISM_ARG(self.params)
+            self.params["RTF"] = _run_DEISM_ARG(solve_params)
         # Clean up large matrices in self.params, e.g., params["images"]
         if if_clean_up:
             for key in ("images", *FLUCTUATION_KEYS):
@@ -1288,25 +1290,34 @@ def vectorize_C_nm_s(params):
     return params
 
 
+def _signed_mode_index_maps(max_order):
+    """
+    Flat SH index j = n**2 + n + m -> (n, m) with signed m, as int arrays, plus
+    the wrapped tensor slot m % (2*max_order+1) used by the (n, m) coefficient
+    tensors (a negative m indexes from the end of the mode axis).
+    """
+    n_arr, col_arr = _flat_nm_index_maps(max_order)
+    m_arr = col_arr - n_arr
+    return (
+        n_arr.astype(int),
+        m_arr.astype(int),
+        np.mod(m_arr, 2 * max_order + 1),
+    )
+
+
 def vectorize_C_nm_s_ARG(params):
     """Vectorize the source directivity coefficients, order and modes"""
-    n_all = np.zeros([(params["sourceOrder"] + 1) ** 2], dtype="int")
-    m_all = np.zeros([(params["sourceOrder"] + 1) ** 2], dtype="int")
-    n_images = max(params["images"]["R_sI_r_all"].shape)
-    C_nm_s_vec = np.zeros(
-        [len(params["waveNumbers"]), (params["sourceOrder"] + 1) ** 2, n_images],
-        dtype="complex",
-    )
-    # For each order and mode, vectorize the coefficients
-    for n in range(params["sourceOrder"] + 1):
-        for m in range(-n, n + 1):
-            n_all[n**2 + n + m] = n
-            m_all[n**2 + n + m] = m
-            C_nm_s_vec[:, n**2 + n + m, :] = params["C_nm_s_ARG"][:, n, m, :]
-    # Add the vectorized coefficients to the params dictionary
+    N = params["sourceOrder"]
+    n_all, m_all, slot_all = _signed_mode_index_maps(N)
+    if "C_nm_s_ARG" in params:
+        C = params["C_nm_s_ARG"]
+        packed = np.empty((C.shape[3], C.shape[0], n_all.size), dtype=np.complex64)
+        for j, (n, slot) in enumerate(zip(n_all, slot_all)):
+            packed[:, :, j] = C[:, n, slot, :].T
+        params["C_nm_s_ARG_vec"] = packed
+    # Production LC/MIX refits already write this layout directly.
     params["n_all"] = n_all
     params["m_all"] = m_all
-    params["C_nm_s_ARG_vec"] = C_nm_s_vec.astype(np.complex64)
     # Update the updated_where dictionary if track_updated_where is True
     if params["track_updated_where"]:
         params["updated_where"]["C_nm_s_ARG_vec"] = ["vectorize_C_nm_s_ARG"]
@@ -1317,21 +1328,12 @@ def vectorize_C_nm_s_ARG(params):
 
 def vectorize_C_vu_r(params):
     """Vectorize the receiver directivity coefficients, order and modes"""
-    v_all = np.zeros([(params["receiverOrder"] + 1) ** 2], dtype="int")
-    u_all = np.zeros([(params["receiverOrder"] + 1) ** 2], dtype="int")
-    C_vu_r_vec = np.zeros(
-        [len(params["waveNumbers"]), (params["receiverOrder"] + 1) ** 2],
-        dtype="complex",
-    )
-    # For receiver
-    for v in range(params["receiverOrder"] + 1):
-        for u in range(-v, v + 1):
-            v_all[v**2 + v + u] = v
-            u_all[v**2 + v + u] = u
-            C_vu_r_vec[:, v**2 + v + u] = params["C_vu_r"][:, v, u]
+    # Receiver coefficients remain (frequency, signed mode).
+    v_all, u_all, slot_all = _signed_mode_index_maps(params["receiverOrder"])
+    C_vu_r_vec = params["C_vu_r"][:, v_all, slot_all]
     params["v_all"] = v_all
     params["u_all"] = u_all
-    params["C_vu_r_vec"] = C_vu_r_vec.astype(np.complex64)
+    params["C_vu_r_vec"] = np.ascontiguousarray(C_vu_r_vec, dtype=np.complex64)
     # Update the updated_where dictionary if track_updated_where is True
     if params["track_updated_where"]:
         params["updated_where"]["C_vu_r_vec"] = ["vectorize_C_vu_r"]
@@ -1362,7 +1364,8 @@ def init_source_directivities(params):
     else:  # If not simple source directivities are used, load the directivity data
         # ------------- Load simulation data -------------
         freqs, Psh_source, Dir_all_source, r0_source = load_directive_pressure(
-            params["silentMode"], "source", params["sourceType"]
+            params["silentMode"], "source", params["sourceType"],
+            params.get("directivityDataPath"),
         )
         # ---------------- Some checks ----------------
         # Check the radius of the source if matches the one defined in params["radiusSource"]
@@ -1373,11 +1376,10 @@ def init_source_directivities(params):
             )
         # -------------------------------
         # Check if the frequencies are the same as the ones defined in params["freqs"]
-        if not np.allclose(freqs, params["freqs"]):
-            # Abort the program if the frequencies are not the same
-            raise ValueError(
-                "The frequencies in the directivity data are not the same as the ones defined in params['freqs']"
-            )
+        if freqs.shape != params["freqs"].shape or not np.allclose(freqs, params["freqs"]):
+            Psh_source = interpolate_functions(
+                Psh_source.T, freqs, params["freqs"]
+            ).T
         # ------------------------------------------------
         # Apply rotation to the directions and then get the directivity coefficients
         Dir_all_source_rotated = rotate_directions(
@@ -1392,7 +1394,7 @@ def init_source_directivities(params):
 
         # Obtain spherical harmonic coefficients from the rotated sound field
         Pmnr0_source = SHCs_from_pressure_LS(
-            Psh_source, Dir_all_source_rotated, params["sourceOrder"], freqs
+            Psh_source, Dir_all_source_rotated, params["sourceOrder"], params["freqs"]
         )
         # Calculate source directivity coefficients C_nm^s
         C_nm_s = get_directivity_coefs(
@@ -1437,7 +1439,8 @@ def init_receiver_directivities(params):
     else:  # If not simple source directivities are used, load the directivity data
         # ------------- Load simulation data -------------
         freqs, Psh_receiver, Dir_all_receiver, r0_receiver = load_directive_pressure(
-            params["silentMode"], "receiver", params["receiverType"]
+            params["silentMode"], "receiver", params["receiverType"],
+            params.get("directivityDataPath"),
         )
         # ---------------- Some checks ----------------
         # Check the radius of the receiver if matches the one defined in params["radiusReceiver"]
@@ -1448,11 +1451,10 @@ def init_receiver_directivities(params):
             )
         # -------------------------------
         # Check if the frequencies are the same as the ones defined in params["freqs"]
-        if not np.allclose(freqs, params["freqs"]):
-            # Abort the program if the frequencies are not the same
-            raise ValueError(
-                "The frequencies in the directivity data are not the same as the ones defined in params['freqs']"
-            )
+        if freqs.shape != params["freqs"].shape or not np.allclose(freqs, params["freqs"]):
+            Psh_receiver = interpolate_functions(
+                Psh_receiver.T, freqs, params["freqs"]
+            ).T
         # ------------------------------------------------
         # If one needs to normalize the receiver directivity by point source strength
         # Note that this is because one uses point source as source to get the directivity data in FEM simulation
@@ -1475,7 +1477,7 @@ def init_receiver_directivities(params):
             )
         # Obtain spherical harmonic coefficients from the rotated sound field
         Pmnr0_receiver = SHCs_from_pressure_LS(
-            Psh_receiver, Dir_all_receiver_rotated, params["receiverOrder"], freqs
+            Psh_receiver, Dir_all_receiver_rotated, params["receiverOrder"], params["freqs"]
         )
         # Calculate receiver directivity coefficients C_vu^r
         C_vu_r = get_directivity_coefs(
@@ -1510,7 +1512,7 @@ def init_receiver_directivities(params):
 
 #     # Obtain spherical harmonic coefficients from the rotated sound field
 #     Pmnr0_source = SHCs_from_pressure_LS(
-#         Psh_source, Dir_all_source_rotated, params["sourceOrder"], freqs
+#         Psh_source, Dir_all_source_rotated, params["sourceOrder"], params["freqs"]
 #     )
 #     # Calculate source directivity coefficients C_nm^s
 #     C_nm_s = get_directivity_coefs(
@@ -1542,7 +1544,7 @@ def init_receiver_directivities(params):
 #     )
 #     # Obtain spherical harmonic coefficients from the rotated sound field
 #     Pmnr0_receiver = SHCs_from_pressure_LS(
-#         Psh_receiver, Dir_all_receiver_rotated, params["receiverOrder"], freqs
+#         Psh_receiver, Dir_all_receiver_rotated, params["receiverOrder"], params["freqs"]
 #     )
 #     # Calculate receiver directivity coefficients C_vu^r
 #     C_vu_r = get_directivity_coefs(
@@ -1640,7 +1642,15 @@ def get_directivity_coefs(k, maxSHorder, Pmnr0, r0):
     return C_nm_s
 
 
-def cal_C_nm_s_arg(reflection_matrix, Psh_source, src_Psh_coords, params, method="fast"):
+def cal_C_nm_s_arg(
+    reflection_matrix,
+    Psh_source,
+    src_Psh_coords,
+    params,
+    method="fast",
+    out_dtype=np.complex128,
+    image_major=False,
+):
     """
     Calculating the reflected source directivity coefficients for each reflection path (image source)
     Input:
@@ -1650,6 +1660,10 @@ def cal_C_nm_s_arg(reflection_matrix, Psh_source, src_Psh_coords, params, method
     4. params: the parameters of the room and the simulation
     5. method: "fast" (default, algebraic acceleration via probe-recovered SH rotation)
        or "legacy" (per-image SH least-squares refit, the original implementation).
+    6. out_dtype: dtype of the returned tensor (default complex128, the historical
+       return type). The fast path fits in complex128 and casts each image block
+       once while writing, so requesting complex64 avoids a second full-size copy.
+    image_major: return (image, frequency, signed mode) for LC/MIX.
     Output:
     1. C_nm_s_new_all: the reflected source directivity coefficients for each reflection path, shape (N_freqs, N_src_dir+1, 2*N_src_dir+1, N_images)
 
@@ -1659,9 +1673,13 @@ def cal_C_nm_s_arg(reflection_matrix, Psh_source, src_Psh_coords, params, method
     if method == "legacy":
         # Original implementation: for every image, rotate all sampled source
         # directions and solve a full spherical-harmonic least-squares problem.
-        return _cal_C_nm_s_arg_legacy(
+        out = _cal_C_nm_s_arg_legacy(
             reflection_matrix, Psh_source, src_Psh_coords, params
-        )
+        ).astype(out_dtype, copy=False)
+        if image_major:
+            n, m, _ = _signed_mode_index_maps(params["sourceOrder"])
+            return np.ascontiguousarray(out[:, n, m, :].transpose(2, 0, 1))
+        return out
     elif method == "fast":
         # Accelerated implementation: solve the base source SH fit once, then
         # recover per-image coefficient transforms using a small probe basis.
@@ -1670,6 +1688,8 @@ def cal_C_nm_s_arg(reflection_matrix, Psh_source, src_Psh_coords, params, method
             Psh_source,
             src_Psh_coords,
             params,
+            out_dtype=out_dtype,
+            image_major=image_major,
         )
     else:
         raise ValueError(
@@ -1844,7 +1864,47 @@ def _select_well_conditioned_probe(src_Psh_coords, N_src_dir, cond_thresh=1e6):
     return None, None, None, None
 
 
-def _cal_C_nm_s_arg_fast(reflection_matrix, Psh_source, src_Psh_coords, params):
+def _matrix_bit_keys(R_img):
+    """
+    (n, 3, 3) float64 matrices -> (n, 9) int64 rows carrying the exact bit
+    patterns, so that grouping treats only bit-identical matrices as equal
+    (value comparison would merge -0.0 with 0.0, and the sign of a zero
+    coordinate can change an azimuth by 2*pi and hence the last bit of a
+    spherical-harmonic value).
+    """
+    return np.ascontiguousarray(R_img).reshape(R_img.shape[0], 9).view(np.int64)
+
+
+def _sh_basis_batch(coords, n_arr, m_arr):
+    """
+    Vectorized counterpart of _build_sh_basis_from_coords for a batch of
+    direction sets. coords: (B, 3, K) Cartesian directions. Returns Y with
+    shape (B, K, n_modes) where column j = n**2 + n + m, i.e. exactly the rows
+    of _build_sh_basis_from_coords(coords[b], N) for every b.
+    """
+    az, el, _r = cart2sph(coords[:, 0, :], coords[:, 1, :], coords[:, 2, :])
+    inclination = np.pi / 2 - el
+    # One ufunc call evaluates every (n, m) mode at every direction instead of
+    # one Python-level scipy call per mode and per image.
+    Y = sph_harm(
+        m_arr[:, None, None],
+        n_arr[:, None, None],
+        az[None, :, :],
+        inclination[None, :, :],
+    )  # (n_modes, B, K)
+    return np.moveaxis(Y, 0, 2)
+
+
+def _cal_C_nm_s_arg_fast(
+    reflection_matrix,
+    Psh_source,
+    src_Psh_coords,
+    params,
+    out_dtype=np.complex128,
+    reuse_identical=None,
+    batch_images=None,
+    image_major=False,
+):
     """
     Algebraic acceleration of the per-image SH refit.
 
@@ -1852,12 +1912,33 @@ def _cal_C_nm_s_arg_fast(reflection_matrix, Psh_source, src_Psh_coords, params):
     fit the base pressure SH coefficients once (fnm_base), recover the small rotation
     matrix M_i from a probe set, and solve M_i @ fnm_i = fnm_base per image instead of
     a full 1764-direction pseudoinverse.
+
+    The per-image mathematics is unchanged from the original fast path; this
+    version evaluates it for batches of images at once (one spherical-harmonic
+    ufunc call, one batched matmul and one batched LAPACK solve per batch),
+    divides by the spherical Hankel factors inside the batch, and writes each
+    block into the final rectangular tensor or image-major packed array
+    in `out_dtype`.
+    Images that share a bit-identical reflection matrix (common when the room
+    has parallel walls) are fitted once and their block is copied to every
+    image index, which is exactly what per-image evaluation would produce.
+
+    Options (also readable from params):
+      reuse_identical: fit each distinct reflection matrix once
+                       (params["directivityRefitReuseIdentical"], default True)
+      batch_images:    images per batch, bounds temporary memory
+                       (params["directivityRefitBatchImages"], default 256)
     """
-    k = params["waveNumbers"]
+    k = np.asarray(params["waveNumbers"])
     N_src_dir = params["sourceOrder"]
     r0_src = params["radiusSource"]
     n_images = reflection_matrix.shape[2]
     nf = len(k)
+    if reuse_identical is None:
+        reuse_identical = bool(params.get("directivityRefitReuseIdentical", 1))
+    if batch_images is None:
+        batch_images = int(params.get("directivityRefitBatchImages", 256))
+    batch_images = max(1, batch_images)
 
     # Select one well-conditioned source-direction subset.  The same probe set is
     # reused for every reflection matrix, which is the main source of speedup.
@@ -1871,36 +1952,117 @@ def _cal_C_nm_s_arg_fast(reflection_matrix, Psh_source, src_Psh_coords, params):
             "for fast ARG C_nm refit; use method='legacy'."
         )
     # P contains the Cartesian probe directions before reflection.
-    P = src_Psh_coords[:, probe_idx]
+    P = np.asarray(src_Psh_coords[:, probe_idx], dtype=np.float64)
 
     # Fit the original source pressure data once in the full sampling grid.  This
     # replaces the legacy repeated full-grid LS solve for every image source.
     Y_base = _build_sh_basis_from_coords(src_Psh_coords, N_src_dir)
     fnm_base = np.linalg.pinv(Y_base) @ Psh_source[:nf, :].T  # (n_modes, nf)
 
-    # These arrays map flat SH coefficient rows back into the legacy tensor layout.
+    # Flat SH row j = n**2 + n + m maps to tensor slot [n, m] where a negative m
+    # wraps to 2N+1+m (the same signed-m indexing the legacy division loop used).
     n_arr, col_arr = _flat_nm_index_maps(N_src_dir)
-    Pmnr0_source_all = np.zeros(
-        [
-            k.size,
-            N_src_dir + 1,
-            2 * N_src_dir + 1,
-            n_images,
-        ],
-        dtype="complex",
+    m_arr = col_arr - n_arr
+    n_modes = n_arr.size
+    slot_arr = np.mod(m_arr, 2 * N_src_dir + 1)
+
+    # h_n^(2)(k r0) per degree, expanded to one row per mode so the division is
+    # a single broadcast per batch (same operands as _divide_by_sphankel).
+    hn = np.empty((N_src_dir + 1, nf), dtype=complex)
+    for n in range(N_src_dir + 1):
+        hn[n, :] = sphankel2(n, k * r0_src)
+    hn_modes = hn[n_arr, :]  # (n_modes, nf)
+
+    shape = (
+        (n_images, nf, n_modes) if image_major else
+        (nf, N_src_dir + 1, 2 * N_src_dir + 1, n_images)
     )
-    for i in range(n_images):
-        # Ri maps original source directions into the reflected image-source frame.
-        Ri = reflection_matrix[:, :, i].astype(np.float64)
-        # Build the SH basis only at reflected probe directions.
-        Yi_probe = _build_sh_basis_from_coords(Ri @ P, N_src_dir)  # (K, n_modes)
+    out = np.empty(shape, dtype=out_dtype) if image_major else np.zeros(shape, dtype=out_dtype)
+    if n_images == 0:
+        return out
+
+    # Reflection matrices as (n_images, 3, 3) float64, exactly the per-image
+    # `reflection_matrix[:, :, i].astype(np.float64)` of the original loop.
+    R_img = np.ascontiguousarray(
+        np.moveaxis(np.asarray(reflection_matrix, dtype=np.float64), 2, 0)
+    )
+
+    def _fit_blocks(Rb):
+        """Directivity coefficient blocks (B, n_modes, nf) for matrices Rb (B, 3, 3)."""
+        # Build the SH basis only at reflected probe directions, for all B at once.
+        Yb = _sh_basis_batch(Rb @ P, n_arr, m_arr)  # (B, K, n_modes)
         # M_i is the small SH-space transform satisfying Y(R_i P) ~= Y(P) @ M_i.
-        M_i = Y_probe_pinv @ Yi_probe  # (n_modes, n_modes)
-        # Recover reflected coefficients from M_i @ fnm_i = fnm_base.
-        fnm_i = np.linalg.solve(M_i, fnm_base)  # (n_modes, nf)
-        # Scatter flat n**2+n+m rows into Pmnr0[:, n, m+n, i] (SHCs convention).
-        Pmnr0_source_all[:, n_arr, col_arr, i] = fnm_i.T
-    return _divide_by_sphankel(Pmnr0_source_all, k, N_src_dir, r0_src)
+        Mb = Y_probe_pinv @ Yb  # (B, n_modes, n_modes)
+        # Recover reflected coefficients from M_i @ fnm_i = fnm_base (batched LU).
+        fnm_b = np.linalg.solve(
+            Mb, np.broadcast_to(fnm_base, (Rb.shape[0], n_modes, nf))
+        )  # (B, n_modes, nf)
+        # Pressure SH coefficients -> directivity coefficients C_nm = Pmnr0 / h_n.
+        return fnm_b / hn_modes[None, :, :]
+
+    out_flat = None if image_major else out.reshape(
+        nf, (N_src_dir + 1) * (2 * N_src_dir + 1), n_images)
+    # Fast refit rows are ordered by increasing m; packed consumers use their
+    # existing signed-mode ordering. Match the modes explicitly.
+    packed_n, packed_m, _ = _signed_mode_index_maps(N_src_dir)
+    packed_rows = packed_n ** 2 + packed_n + packed_m
+    flat_slot = n_arr * (2 * N_src_dir + 1) + slot_arr
+
+    def _write_chunk(s, e, blocks):
+        """out[:, n, m, s:e] = blocks[img - s, j, f] with basic-slice writes only."""
+        # Cast once while the block is contiguous, then one strided copy per
+        # mode.  Scattering to non-contiguous image indices with advanced
+        # indexing, or casting inside the strided copy, costs several times
+        # more than the whole fit.
+        blocks = np.ascontiguousarray(blocks, dtype=out_dtype)
+        if image_major:
+            out[s:e] = blocks[:, packed_rows, :].transpose(0, 2, 1)
+            return
+        for j in range(n_modes):
+            out_flat[:, flat_slot[j], s:e] = blocks[:, j, :].T
+
+    if reuse_identical:
+        # Bit-exact grouping only: no rounding, no merging of nearly equal
+        # matrices.  first_idx picks one representative per distinct matrix.
+        _uniq, first_idx, inverse = np.unique(
+            _matrix_bit_keys(R_img), axis=0, return_index=True, return_inverse=True
+        )
+        inverse = np.asarray(inverse).reshape(-1)
+        n_uni = int(first_idx.shape[0])
+    else:
+        first_idx = np.arange(n_images)
+        inverse = first_idx
+        n_uni = n_images
+
+    block_bytes = n_modes * nf * np.dtype(out_dtype).itemsize
+    budget = float(params.get("directivityRefitUniqueBudgetMiB", 256)) * 2**20
+    if reuse_identical and n_uni * block_bytes <= budget:
+        # Few distinct matrices: fit each once into a per-matrix store, then
+        # expand to images in contiguous chunks (only slice writes).
+        store = np.empty((n_uni, n_modes, nf), dtype=out_dtype)
+        R_uni = R_img[first_idx]
+        for u0 in range(0, n_uni, batch_images):
+            u1 = min(u0 + batch_images, n_uni)
+            store[u0:u1] = _fit_blocks(R_uni[u0:u1])
+        for s in range(0, n_images, batch_images):
+            e = min(s + batch_images, n_images)
+            _write_chunk(s, e, store[inverse[s:e]])
+    else:
+        # Many distinct matrices (or reuse disabled): work through the images
+        # in contiguous chunks with bounded temporaries; identical matrices
+        # are still fitted once within a chunk.
+        for s in range(0, n_images, batch_images):
+            e = min(s + batch_images, n_images)
+            if reuse_identical:
+                _u, loc_first, loc_inv = np.unique(
+                    _matrix_bit_keys(R_img[s:e]), axis=0,
+                    return_index=True, return_inverse=True,
+                )
+                blocks = _fit_blocks(R_img[s:e][loc_first])[np.asarray(loc_inv).reshape(-1)]
+            else:
+                blocks = _fit_blocks(R_img[s:e])
+            _write_chunk(s, e, blocks)
+    return out
 
 
 def init_source_directivities_ARG(params):
@@ -1912,6 +2074,10 @@ def init_source_directivities_ARG(params):
     # Print source type
     if not params["silentMode"]:
         print(f"[Data] Source type: {params['sourceType']}. ", end="")
+    image_major = params.get("DEISM_method") in ("LC", "MIX")
+    coefficient_key = "C_nm_s_ARG_vec" if image_major else "C_nm_s_ARG"
+    params.pop("C_nm_s_ARG" if image_major else "C_nm_s_ARG_vec", None)
+    params.pop(coefficient_key, None)
     ifRotateRoom = params["ifRotateRoom"]
     reflection_matrix = params["reflection_matrix"]
     room_rotation = params["roomRotation"]
@@ -1922,24 +2088,25 @@ def init_source_directivities_ARG(params):
         k = params["waveNumbers"]
         # Calculate source directivity coefficients C_nm^s
         C_nm_s = -1j * k * scy.spherical_jn(0, 0) * np.conj(sph_harm(0, 0, 0, 0))
-        # Duplicate the directivity coefficients for each image source by adding a fourth dimension
-        # We can do this by multiplying the directivity coefficients with a 1x1x1xN_images array
-        params["C_nm_s_ARG"] = C_nm_s[..., None, None, None].astype(
-            np.complex64
-        ) * np.ones(  # noqa: E203
-            (1, 1, 1, reflection_matrix.shape[2])
-        ).astype(
-            np.complex64
-        )
+        # Allocate only the representation needed by the selected solver.
+        if image_major:
+            params[coefficient_key] = np.broadcast_to(
+                C_nm_s[None, :, None], (reflection_matrix.shape[2], k.size, 1)
+            ).astype(np.complex64, order="C")
+        else:
+            params[coefficient_key] = np.broadcast_to(
+                C_nm_s[:, None, None, None], (k.size, 1, 1, reflection_matrix.shape[2])
+            ).astype(np.complex64, order="C")
         params["sourceOrder"] = 0
         # Update the updated_where dictionary
         if params["track_updated_where"]:
-            params["updated_where"]["C_nm_s_ARG"] = ["init_source_directivities_ARG"]
+            params["updated_where"][coefficient_key] = ["init_source_directivities_ARG"]
             params["updated_where"]["sourceOrder"] = ["init_source_directivities_ARG"]
     else:  # If not simple source directivities are used, load the directivity data
         # load directivities
         freqs, Psh_source, Dir_all_source, r0_source = load_directive_pressure(
-            params["silentMode"], "source", params["sourceType"]
+            params["silentMode"], "source", params["sourceType"],
+            params.get("directivityDataPath"),
         )
         # ---------------- Some checks ----------------
         # Check the radius of the source if matches the one defined in params["radiusSource"]
@@ -1950,21 +2117,20 @@ def init_source_directivities_ARG(params):
             )
         # -------------------------------
         # Check if the frequencies are the same as the ones defined in params["freqs"]
-        if not np.allclose(freqs, params["freqs"]):
-            # Abort the program if the frequencies are not the same
-            raise ValueError(
-                "The frequencies in the directivity data are not the same as the ones defined in params['freqs']"
-            )
+        if freqs.shape != params["freqs"].shape or not np.allclose(freqs, params["freqs"]):
+            Psh_source = interpolate_functions(
+                Psh_source.T, freqs, params["freqs"]
+            ).T
         # ------------------------------------------------
         # Get the source sampling points in Cartesian coordinates w.r.t the origin
         x_src, y_src, z_src = sph2cart(
             Dir_all_source[:, 0], np.pi / 2 - Dir_all_source[:, 1], 1
         )
-        # Get the rotation matrix for the source
+        # Get the rotation matrix for the source. Orientation angles are given
+        # in degrees (see rotate_directions for the shoebox path); convert to
+        # radians before building the Z-X-Z rotation matrix.
         source_R = rotation_matrix_ZXZ(
-            params["orientSource"][0],
-            params["orientSource"][1],
-            params["orientSource"][2],
+            *(np.asarray(params["orientSource"], dtype=float) * np.pi / 180)
         )
         if ifRotateRoom == 1:
             # Check if room_rotation is in params
@@ -1997,17 +2163,22 @@ def init_source_directivities_ARG(params):
                     end="",
                 )
         # Get source directivity coefficients
+        # Request the stored complex64 layout directly: the fast path casts each
+        # image block once while writing, so no full-size complex128 tensor and
+        # no second full-size copy are kept for large image counts.
         C_nm_s_ARG = cal_C_nm_s_arg(
             reflection_matrix,
             Psh_source,
             rotated_coords_src,
             params,
             method=params.get("directivityRefitMethod", "fast"),
+            out_dtype=np.complex64,
+            image_major=image_major,
         )
-        params["C_nm_s_ARG"] = C_nm_s_ARG.astype(np.complex64)
+        params[coefficient_key] = np.asarray(C_nm_s_ARG, dtype=np.complex64)
         # Update the updated_where dictionary if track_updated_where is True
         if params["track_updated_where"]:
-            params["updated_where"]["C_nm_s_ARG"] = ["init_source_directivities_ARG"]
+            params["updated_where"][coefficient_key] = ["init_source_directivities_ARG"]
     if not params["silentMode"]:
         print(" Done!", end="\n\n")
     return params
@@ -2044,7 +2215,8 @@ def init_receiver_directivities_ARG(params):
             ]
     else:  # If not simple source directivities are used, load the directivity data
         freqs, Psh_receiver, Dir_all_receiver, r0_receiver = load_directive_pressure(
-            params["silentMode"], "receiver", params["receiverType"]
+            params["silentMode"], "receiver", params["receiverType"],
+            params.get("directivityDataPath"),
         )
         # ---------------- Some checks ----------------
         # Check the radius of the receiver if matches the one defined in params["radiusReceiver"]
@@ -2055,11 +2227,10 @@ def init_receiver_directivities_ARG(params):
             )
         # -------------------------------
         # Check if the frequencies are the same as the ones defined in params["freqs"]
-        if not np.allclose(freqs, params["freqs"]):
-            # Abort the program if the frequencies are not the same
-            raise ValueError(
-                "The frequencies in the directivity data are not the same as the ones defined in params['freqs']"
-            )
+        if freqs.shape != params["freqs"].shape or not np.allclose(freqs, params["freqs"]):
+            Psh_receiver = interpolate_functions(
+                Psh_receiver.T, freqs, params["freqs"]
+            ).T
         # ------------------------------------------------
         if params["ifReceiverNormalize"]:
             S = params["pointSrcStrength"]
@@ -2068,11 +2239,11 @@ def init_receiver_directivities_ARG(params):
         x_rec, y_rec, z_rec = sph2cart(
             Dir_all_receiver[:, 0], np.pi / 2 - Dir_all_receiver[:, 1], 1
         )
-        # Get the rotation matrix for the receiver
+        # Get the rotation matrix for the receiver. Orientation angles are
+        # given in degrees (see rotate_directions for the shoebox path);
+        # convert to radians before building the Z-X-Z rotation matrix.
         receiver_R = rotation_matrix_ZXZ(
-            params["orientReceiver"][0],
-            params["orientReceiver"][1],
-            params["orientReceiver"][2],
+            *(np.asarray(params["orientReceiver"], dtype=float) * np.pi / 180)
         )
         if ifRotateRoom == 1:
             # Check if roomRotation is in params
@@ -2138,6 +2309,149 @@ def init_receiver_directivities_ARG(params):
 # -------------------------------
 # About Wigner 3j symbols
 # -------------------------------
+# Exact factorials as Python integers; extended on demand.
+_FACTORIALS = [1]
+
+
+def _factorial_table(n_max):
+    while len(_FACTORIALS) <= n_max:
+        _FACTORIALS.append(_FACTORIALS[-1] * len(_FACTORIALS))
+    return _FACTORIALS
+
+
+def _wigner_3j_exact(j1, j2, j3, m1, m2, m3):
+    """
+    Wigner 3j symbol (j1 j2 j3; m1 m2 m3) for integer arguments via the Racah
+    formula evaluated in exact integer/rational arithmetic; only the final
+    square root is taken in floating point, so the result is the correctly
+    rounded float64 value of the exact symbol (same value sympy's wigner_3j
+    gives after float() up to its own last-ulp evaluation error).
+    """
+    if m1 + m2 + m3 != 0:
+        return 0.0
+    if j3 < abs(j1 - j2) or j3 > j1 + j2:
+        return 0.0
+    if abs(m1) > j1 or abs(m2) > j2 or abs(m3) > j3:
+        return 0.0
+    f = _factorial_table(j1 + j2 + j3 + 1)
+    t_min = max(0, j2 - j3 - m1, j1 - j3 + m2)
+    t_max = min(j1 + j2 - j3, j1 - m1, j2 + m2)
+    # sum_t (-1)^t / D_t accumulated as an exact fraction num/den.
+    num = 0
+    den = 1
+    for t in range(t_min, t_max + 1):
+        d = (
+            f[t]
+            * f[j3 - j2 + t + m1]
+            * f[j3 - j1 + t - m2]
+            * f[j1 + j2 - j3 - t]
+            * f[j1 - t - m1]
+            * f[j2 - t + m2]
+        )
+        num = num * d + (den if t % 2 == 0 else -den)
+        den *= d
+    if num == 0:
+        return 0.0
+    # W^2 = Delta(j1 j2 j3) * prod(j +- m)! * (num/den)^2, all exact integers.
+    sq_num = (
+        f[j1 + j2 - j3]
+        * f[j1 - j2 + j3]
+        * f[-j1 + j2 + j3]
+        * f[j1 + m1]
+        * f[j1 - m1]
+        * f[j2 + m2]
+        * f[j2 - m2]
+        * f[j3 + m3]
+        * f[j3 - m3]
+        * num
+        * num
+    )
+    sq_den = f[j1 + j2 + j3 + 1] * den * den
+    # Python int/int division is correctly rounded, as is math.sqrt.
+    value = math.sqrt(sq_num / sq_den)
+    sign = -1.0 if ((j1 - j2 - m3) % 2) else 1.0
+    if num < 0:
+        sign = -sign
+    return sign * value
+
+
+# Process-local cache of Wigner tables keyed by (source order, receiver order).
+# Tables are tiny (a few hundred KB at order 5/5) and callers receive copies.
+_WIGNER_TABLE_CACHE = {}
+_WIGNER_TABLE_CACHE_MAX = 8
+
+
+def _wigner_tables(N_src_dir, V_rec_dir):
+    """
+    Return (W_1_all, W_2_all) float64 tables for pre_calc_Wigner:
+      W_1_all[n, v, l]       = (n v l; 0 0 0)
+      W_2_all[n, v, l, m, u] = (n v l; -m u m-u), signed m/u index from the end
+    Only entries with |n-v| <= l <= n+v and |u-m| <= l are populated, exactly
+    as the original sympy loop did.  (n v l; 0 0 0) is evaluated once per
+    (n, v, l) and the m,u -> -m,-u symmetry (a factor (-1)^(n+v+l)) halves the
+    number of (n v l; -m u m-u) evaluations.
+    """
+    key = (int(N_src_dir), int(V_rec_dir))
+    cached = _WIGNER_TABLE_CACHE.get(key)
+    if cached is None:
+        N, V = key
+        W_1_all = np.zeros([N + 1, V + 1, N + V + 1])
+        W_2_all = np.zeros([N + 1, V + 1, N + V + 1, 2 * N + 1, 2 * V + 1])
+        for n in range(N + 1):
+            for v in range(V + 1):
+                for l in range(abs(n - v), n + v + 1):
+                    W_1_all[n, v, l] = _wigner_3j_exact(n, v, l, 0, 0, 0)
+                    parity_sign = -1.0 if ((n + v + l) % 2) else 1.0
+                    for m in range(-n, n + 1):
+                        for u in range(-v, v + 1):
+                            if abs(u - m) > l:
+                                continue
+                            if m < 0 or (m == 0 and u < 0):
+                                # Filled from the (-m, -u) partner below.
+                                continue
+                            w = _wigner_3j_exact(n, v, l, -m, u, m - u)
+                            W_2_all[n, v, l, m, u] = w
+                            if m != 0 or u != 0:
+                                W_2_all[n, v, l, -m, -u] = parity_sign * w
+        if len(_WIGNER_TABLE_CACHE) >= _WIGNER_TABLE_CACHE_MAX:
+            _WIGNER_TABLE_CACHE.pop(next(iter(_WIGNER_TABLE_CACHE)))
+        # The symmetry sign can turn an exact zero into -0.0. Match the
+        # reference tables byte-for-byte, including their positive zeros.
+        W_1_all[W_1_all == 0] = 0.0
+        W_2_all[W_2_all == 0] = 0.0
+        cached = (W_1_all, W_2_all)
+        _WIGNER_TABLE_CACHE[key] = cached
+        # Never hand out the cached arrays themselves.
+        for arr in cached:
+            arr.setflags(write=False)
+    return cached[0].copy(), cached[1].copy()
+
+
+def _wigner_tables_sympy(N_src_dir, V_rec_dir):
+    """Original sympy implementation (reference for _wigner_tables)."""
+    W_1_all = np.zeros([N_src_dir + 1, V_rec_dir + 1, N_src_dir + V_rec_dir + 1])
+    W_2_all = np.zeros(
+        [
+            N_src_dir + 1,
+            V_rec_dir + 1,
+            N_src_dir + V_rec_dir + 1,
+            2 * N_src_dir + 1,
+            2 * V_rec_dir + 1,
+        ]
+    )
+    for n in range(N_src_dir + 1):
+        for m in range(-n, n + 1):
+            for v in range(V_rec_dir + 1):
+                for u in range(-1 * v, v + 1):
+                    for l in range(np.abs(n - v), n + v + 1):
+                        if np.abs(u - m) <= l:
+                            W_1 = wigner_3j(n, v, l, 0, 0, 0)
+                            W_1_all[n, v, l] = float(W_1)
+                            W_2 = wigner_3j(n, v, l, -m, u, m - u)
+                            W_2_all[n, v, l, m, u] = float(W_2)
+    return W_1_all, W_2_all
+
+
 def pre_calc_Wigner(params, timeit=True):
     """
     Precalculate Wigner 3j symbols
@@ -2167,35 +2481,15 @@ def pre_calc_Wigner(params, timeit=True):
     start = time.perf_counter()
     if not params["silentMode"]:
         print("[Calculating] Wigner 3J matrices, ", end="")
-    N_src_dir = params["sourceOrder"]
-    V_rec_dir = params["receiverOrder"]
+    N_src_dir = int(params["sourceOrder"])
+    V_rec_dir = int(params["receiverOrder"])
 
-    # Initialize matrices
-
-    # W1 has indices (n,v,l) with size (N+1)*(V+1)*(N+V+1)
-    W_1_all = np.zeros([N_src_dir + 1, V_rec_dir + 1, N_src_dir + V_rec_dir + 1])
-
-    # W2 has indices (n,v,l,-m_mod,u) with size (N+1)*(V+1)*(N+V+1)*(2*N+1)*(2*V+1)
-    W_2_all = np.zeros(
-        [
-            N_src_dir + 1,
-            V_rec_dir + 1,
-            N_src_dir + V_rec_dir + 1,
-            2 * N_src_dir + 1,
-            2 * V_rec_dir + 1,
-        ]
-    )
-
-    for n in range(N_src_dir + 1):
-        for m in range(-n, n + 1):
-            for v in range(V_rec_dir + 1):
-                for u in range(-1 * v, v + 1):
-                    for l in range(np.abs(n - v), n + v + 1):
-                        if np.abs(u - m) <= l:
-                            W_1 = wigner_3j(n, v, l, 0, 0, 0)
-                            W_1_all[n, v, l] = float(W_1)
-                            W_2 = wigner_3j(n, v, l, -m, u, m - u)
-                            W_2_all[n, v, l, m, u] = float(W_2)
+    if params.get("wignerMethod", "exact") == "sympy":
+        # Reference implementation kept for validation of the exact-rational
+        # tables below: one sympy call per (n, m, v, u, l) combination.
+        W_1_all, W_2_all = _wigner_tables_sympy(N_src_dir, V_rec_dir)
+    else:
+        W_1_all, W_2_all = _wigner_tables(N_src_dir, V_rec_dir)
 
     Wigner = {
         "W_1_all": W_1_all.astype(np.complex64),

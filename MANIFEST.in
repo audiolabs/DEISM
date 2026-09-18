@@ -23,10 +23,18 @@ prune development
 prune docs
 prune examples
 # Restore the internal deism.examples package after pruning the large example
-# tree. examples/data and other non-package assets remain excluded.
+# tree. Only the sampled directivity subtree is restored below.
 include examples/*.py
 include examples/configSingleParam*.yml
 prune playground
+include playground/__init__.py
+include playground/demo.html
+include playground/native.html
+include playground/catalog.json
+include playground/LICENSE.txt
+prune playground/data
+recursive-include examples/data/sampled_directivity *.mat
+include examples/data/sampled_directivity/README.md
 prune tests
 prune tools
 prune deism/tests

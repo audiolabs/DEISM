@@ -1,0 +1,11 @@
+{
+  "name": "deism-playground",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Browser playground for DEISM with a JavaScript port of the solver, validated against the Python package.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test engine/test/*.test.js src/test/*.test.js",
+    "build": "python ../tools/playground_build.py"
+  }
+}

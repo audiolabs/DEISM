@@ -12,6 +12,7 @@ import os
 import sys
 
 import numpy as np
+import pytest
 
 if not hasattr(np, "complex_"):
     # Compatibility for sound_field_analysis.sphankel2 under NumPy 2.x.
@@ -162,6 +163,7 @@ def _compare_arg_c_nm_methods():
     assert fast_err < FLOAT32_REFLECTION_TOL
 
 
+@pytest.mark.directivity_data
 def test_arg_cal_c_nm_fast_matches_legacy():
     _compare_arg_c_nm_methods()
 

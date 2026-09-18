@@ -1,7 +1,7 @@
 """Verify DEISM-ARG compact geometry and attenuation reconstruction.
 
 Run from the repo root with:
-    /Users/xuzeyu/.venv/deism_test/bin/python tests/test_arg_decouple.py
+    python tests/test_arg_decouple.py
 
 The file is also pytest-compatible when pytest is installed.
 """

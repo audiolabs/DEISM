@@ -203,3 +203,11 @@ Convex
   The loader builds ``params`` from an explicit list of YAML keys, so adding
   these names to a configuration file has no effect. See the compact image
   storage section of the README.
+- Further programmatic performance switches for convex rooms (all default
+  to the fast, exact behaviour): ``directivityRefitReuseIdentical`` (fit
+  each distinct reflection matrix once), ``directivityRefitBatchImages``
+  and ``directivityRefitUniqueBudgetMiB`` (temporary-memory bounds of the
+  batched source refit), ``wignerMethod`` (``"exact"`` or ``"sympy"``),
+  ``numbaArgLcBatchImages`` (LC kernel batch), and on the C++ room engine
+  ``deism.room_convex.room_engine.beam_pruning`` (image-tree pruning). See
+  the README section "Speed of the convex pipeline".

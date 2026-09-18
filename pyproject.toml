@@ -19,6 +19,7 @@ markers = [
   "slow: long-running tests, excluded from the default run (use -m slow)",
   "examples: end-to-end example smoke tests, run locally (use -m examples)",
   "integration: downstream-consumer coupling tests, run locally (use -m integration)",
+  "directivity_data: needs original Git LFS sampled-directivity MAT files",
 ]
 # The JASA figure examples take ~70s each; keep the default run quick.
 addopts = "-m 'not slow'"
@@ -61,6 +62,9 @@ dependencies = [
 # Only needed by examples/deism_arg_pra_compare.py, which cross-checks the
 # DEISM-ARG image sources against pyroomacoustics.
 examples = ["pyroomacoustics"]
+
+[project.scripts]
+deism-playground = "deism.playground_server:main"
 
 [project.urls]
 Homepage = "https://github.com/audiolabs/DEISM"

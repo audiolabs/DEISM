@@ -34,6 +34,8 @@
 #include <pybind11/stl.h>
 
 #include <Eigen/Dense>
+#include <cmath>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -125,6 +127,17 @@ PYBIND11_MODULE(libroom_deism, m) {
         .def_readonly("wall_sequence",&Room_deism<3>::wall_sequence)  //--> compact Tier A
         .def_readonly("incidence_cos",&Room_deism<3>::incidence_cos)  //--> compact Tier A
         .def_readwrite("compact_mode",&Room_deism<3>::compact_mode)  //--> compact Tier A
+        .def_readonly("beam_pruning_active", &Room_deism<3>::beam_pruning_active)
+        .def_readwrite("beam_pruning",&Room_deism<3>::beam_pruning)  //--> beam pruning
+        .def_property("beam_margin",
+            [](const Room_deism<3> &room) { return room.beam_margin; },
+            [](Room_deism<3> &room, double margin) {
+                if (!std::isfinite(margin) || margin < 0.)
+                    throw std::invalid_argument("beam_margin must be finite and nonnegative");
+                room.beam_margin = margin;
+            })
+        .def_readonly("dfs_nodes_visited",&Room_deism<3>::dfs_nodes_visited)  //--> beam pruning
+        .def_readonly("dfs_subtrees_pruned",&Room_deism<3>::dfs_subtrees_pruned)  //--> beam pruning
         .def("clear_mics",&Room_deism<3>::clear_mics);  //--> compact Tier A
 
     // The 2D Room_deism class
