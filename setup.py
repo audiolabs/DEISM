@@ -244,7 +244,10 @@ setup_kwargs = dict(
         "deism.examples": ["configSingleParam*.yml"],
         "deism.playground_assets": ["demo.html", "native.html", "catalog.json", "LICENSE.txt"],
     },
-    exclude_package_data={"deism.playground_assets": ["data/*.json"]},
+    # Never ship the browser copies of the datasets or saved playground runs.
+    exclude_package_data={
+        "deism.playground_assets": ["data/*", "data/*.json", "results/*", "results/*/*"]
+    },
     description="An image source-based method used to simulate room transfer functions for arbitrary room shapes.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
