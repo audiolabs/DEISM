@@ -9,6 +9,7 @@ import hashlib
 import inspect
 import io
 import json
+import os
 import sys
 import time
 from importlib import resources
@@ -23,7 +24,14 @@ from deism.data_loader import load_directive_pressure
 from deism.version import __version__
 
 ASSETS = resources.files("deism.playground_assets")
+# Packaged fallback; deism-playground sets DEISM_DATA_DIR to the resolved
+# directory (checkout, explicit directory or the download cache).
 DATA = resources.files("deism.examples") / "data" / "sampled_directivity"
+
+
+def data_dir():
+    from deism.playground_datasets import ENV_VAR
+    return Path(os.environ[ENV_VAR]) if os.environ.get(ENV_VAR) else Path(str(DATA))
 FIELDS = set("mode roomType roomRotation roomSize vertices wallCenters posSource posReceiver orientSource orientReceiver maxReflOrder mixEarlyOrder DEISM_method angDepFlag material startFreq endFreq freqStep sampleRate RIRLength sourceType receiverType sourceOrder receiverOrder radiusSource radiusReceiver ifReceiverNormalize qFlowStrength ifRemoveDirectPath drift volatility fluctuationSeed directivityFreqPolicy rirWindowPhase".split())
 
 
@@ -45,6 +53,7 @@ def provenance():
     if not _convex_use_compact_storage({}) or _convex_compact_engine({}) != "cpp":
         raise RuntimeError("Compact C++ geometry must be the installed default")
     return dict(version=__version__, python=sys.executable, package=str(root),
+                data=str(data_dir()),
                 native=libroom_deism.__file__, threads=numba.get_num_threads(),
                 solver="parallel Numba", shoebox="v2-numba", convex="compact C++", refit="fast")
 
@@ -130,7 +139,7 @@ def build(q):
     if q["roomType"] == "shoebox" and p.get("shoeboxImageCalcVersion", "v2-numba") != "v2-numba":
         raise RuntimeError("The installed configuration must select Numba shoebox image generation")
     p["silentMode"] = 1
-    p["directivityDataPath"] = str(DATA)
+    p["directivityDataPath"] = str(data_dir())
     if q["roomType"] == "shoebox":
         d.update_room(roomDimensions=np.asarray(q["roomSize"], dtype=float))
     else:
@@ -211,7 +220,7 @@ def simulate(q, emit=lambda event: None):
             if not info or not info["supported"] or info["kind"] != role:
                 raise ValueError(f"Unsupported {role} dataset: {key}")
             name = Path(info["filename"]).stem
-            data = load_directive_pressure(1, role, name, str(DATA))
+            data = load_directive_pressure(1, role, name, str(data_dir()))
             if abs(float(np.asarray(data[3]).item()) - q["radius" + role.title()]) > 1e-8:
                 raise ValueError(f"{role} radius must match the original MAT dataset")
             p[role + "Type"] = name

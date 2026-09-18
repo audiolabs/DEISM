@@ -235,12 +235,13 @@ setup_kwargs = dict(
     # packages=find_packages(),
     # Keep the example YAML files as the single source of truth while exposing
     # them from installed distributions through the internal deism.examples
-    # resource package. Ship sampled directivities and the built playground;
-    # unrelated large example response datasets remain excluded.
+    # resource package. Ship the built playground; the sampled-directivity
+    # MAT datasets (186 MB) are not packaged: deism-playground fetches them
+    # from the GitHub release on first use (deism/playground_datasets.py).
     packages=["deism", "deism.examples", "deism.playground_assets"],
     package_dir={"deism.examples": "examples", "deism.playground_assets": "playground"},
     package_data={
-        "deism.examples": ["configSingleParam*.yml", "data/sampled_directivity/source/*.mat", "data/sampled_directivity/receiver/*.mat"],
+        "deism.examples": ["configSingleParam*.yml"],
         "deism.playground_assets": ["demo.html", "native.html", "catalog.json", "LICENSE.txt"],
     },
     exclude_package_data={"deism.playground_assets": ["data/*.json"]},

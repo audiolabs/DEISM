@@ -37,14 +37,25 @@ def convert_dataset(path, kind, key, output_dir):
     return destination
 
 
-def initialize_datasets(assets, mat_root, data_dir=None):
-    """Regenerate all supported JSON files before the local page is served."""
+def initialize_datasets(assets, mat_root, data_dir=None, skip_missing=False):
+    """Regenerate all supported JSON files before the local page is served.
+
+    With ``skip_missing`` a supported dataset whose MAT file is absent or a
+    Git LFS pointer is skipped and any stale JSON for it removed, so the page
+    only offers what the Python runner can actually load.
+    """
+    from deism.playground_datasets import is_usable
+
     assets, mat_root = Path(assets), Path(mat_root)
     output_dir = Path(data_dir) if data_dir is not None else assets / "data"
     catalog = json.loads((assets / "catalog.json").read_text())
     outputs = []
     for key, info in catalog.items():
-        if info["supported"]:
-            outputs.append(convert_dataset(mat_root / info["kind"] / info["filename"],
-                                           info["kind"], key, output_dir))
+        if not info["supported"]:
+            continue
+        source = mat_root / info["kind"] / info["filename"]
+        if skip_missing and not is_usable(source):
+            (output_dir / (key + ".json")).unlink(missing_ok=True)
+            continue
+        outputs.append(convert_dataset(source, info["kind"], key, output_dir))
     return outputs

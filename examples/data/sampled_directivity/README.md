@@ -26,6 +26,12 @@ commercially without a separate license from Fraunhofer.
 ## Format and use
 
 The files are tracked with Git LFS; run `git lfs install` and `git lfs pull`
-after cloning. `tools/playground_directivity.py` converts them into the
-untracked JSON files the browser playground loads on demand; Python
-simulations read the MAT files directly.
+after cloning. They are not included in the PyPI wheels: they are attached to
+the GitHub release as assets, and `deism-playground` downloads them on first
+use into `~/.cache/deism/sampled_directivity` (see the playground README for
+`--data-dir`, `DEISM_DATA_DIR` and `--clear-cache`). The Python loaders look
+in `./examples/data`, then the directory named by `DEISM_DATA_DIR`, then that
+cache. `tools/playground_directivity.py` converts the files into the
+untracked JSON files the browser playground loads on demand and records
+their SHA-256 in `playground/catalog.json`; Python simulations read the MAT
+files directly.

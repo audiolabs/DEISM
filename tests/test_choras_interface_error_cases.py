@@ -187,22 +187,25 @@ def test_m1_endpoint_hold_out_of_band(name):
 
 
 # ---------------------------------------------------------------------------
-# M2a — transform-grid size driven by the maximum bandwise T60
+# M2a — transform-grid size driven by min(max bandwise T60, RIRLength)
 # ---------------------------------------------------------------------------
 
 # (material, expected max bandwise T60 [s], expected frequency count M)
-# pinned to the MeasurementRoom table in major_issues.md.
+# for the MeasurementRoom with RIRLength = 1 s at 44.1 kHz: the grid resolves
+# rirPeriod = min(T60, RIRLength), i.e. ceil(fs / 2 * rirPeriod) bins, so the
+# two long-T60 materials are capped by the 1 s output length.
 M2_EXPECTED = [
-    ("wood", 5.649, 124554),
-    ("fully_reflective", 11.428, 251987),
-    ("upholstered_chairs", 0.131, 2894),
+    ("wood", 5.649, 22050),
+    ("fully_reflective", 11.428, 22050),
+    ("upholstered_chairs", 0.131, 2889),
 ]
 
 
 @pytest.mark.parametrize("name,t60_expected,m_expected", M2_EXPECTED)
 def test_m2a_grid_size_characterization(name, t60_expected, m_expected, monkeypatch):
-    """Documents the current policy: one weakly absorbing band controls
-    the grid for the whole solve. Update alongside any M2 fix."""
+    """Documents the current policy: the largest bandwise T60 controls the
+    grid for the whole solve, capped by RIRLength (rirPeriod). Update
+    alongside any M2 fix."""
     # DEISM's constructor parses sys.argv; strip pytest's arguments
     # (the CHORAS interface sanitizes argv for the same reason).
     monkeypatch.setattr(sys, "argv", [sys.argv[0]])
@@ -225,7 +228,7 @@ def test_m2a_grid_size_characterization(name, t60_expected, m_expected, monkeypa
     m = len(deism.params["freqs"])
     assert m == pytest.approx(m_expected, rel=1e-2), (
         f"{name}: grid has {m} frequency samples, expected ~{m_expected} "
-        f"under the max-bandwise-T60 policy"
+        f"under the min(max bandwise T60, RIRLength) policy"
     )
 
 

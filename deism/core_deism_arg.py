@@ -1646,6 +1646,14 @@ def get_ref_geometry_ARG(params, room_pra_deism):
     image_mask = np.ones(orders.shape[0], dtype=bool)
     if params["ifRemoveDirectPath"]:
         image_mask = orders != 0
+    # In RIR mode the inverse FFT of get_results is periodic over rirPeriod =
+    # min(T60, RIRLength) (DEISM.update_freqs), so an image arriving later
+    # would fold into the output. Keep only paths within c * rirPeriod, as the
+    # shoebox image search does (image_time_limit); RTF mode keeps every image.
+    if params.get("mode") == "RIR":
+        from deism.core_deism import image_time_limit  # lazy: circular import
+
+        image_mask &= R_sI_r_all[2, :] <= params["soundSpeed"] * image_time_limit(params)
 
     # Apply the same mask to every geometry array so image columns remain aligned.
     geometry = {

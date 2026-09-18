@@ -9,13 +9,12 @@ The before/after evaluation uses exactly two scripts:
 | [`compare_optimization_functions.py`](compare_optimization_functions.py) | Identical-input source refitting, receiver fitting, source/receiver packing, Wigner preparation, and LC dispatch; native image generation; one-to-one pyroomacoustics image matching. |
 | [`compare_optimization_responses.py`](compare_optimization_responses.py) | Example-derived configurations, subprocess isolation and resource limits, repeated RTF/RIR execution, error metrics, evidence aggregation, and compact HTML tables. Shared infrastructure is imported by the function script. |
 
-See `--help` on each script.
 Both scripts provide `--help`. Use `--profiles`, `--orders`, `--modes`, and
 `--methods` to select response cases, or `--functions` to select individual
 function measurements. `--summarize` reads existing results without running
 simulations. The response script's `--report` option updates only its marked
-section at the end of the optimization report and generates one linked
-before/after figure page per configuration from the saved arrays. RTF pages
+section of an HTML comparison report (created on first use) and generates one
+linked before/after figure page per configuration from the saved arrays. RTF pages
 show magnitude and phase; RIR pages show magnitude and the converted waveform.
 Plotting is outside benchmark timing. No additional comparison script is needed.
 
@@ -63,8 +62,9 @@ worker flags are documented separately in `--help`.
 | `shoebox_images_v1`, `shoebox_images_v2` | `shoebox_images_cal_compare.py`: explicit image-backend smoke controls |
 | Image function cases | `deism_arg_pra_compare.py`: rotated-room image multiset comparison |
 
-The main sweep changes reflection order and solver method deliberately. RIR
-adaptations of sampled directional RTF examples and exclusions of FEM
-postprocessing are described in the linked protocol. Controls are reported
+The main sweep changes reflection order and solver method deliberately.
+Sampled directional RTF examples are adapted to RIR mode as described in the
+`make` adapters of the response script, and FEM postprocessing of the
+publication examples is excluded from the timings. Controls are reported
 separately. This harness does not execute GUI plotting, interface wrappers or
 argument-demonstration scripts as acoustic benchmarks.

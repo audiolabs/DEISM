@@ -285,3 +285,24 @@ test("RIR synthesis leaves the RTF untouched and follows min(T60, RIRLength)", (
   assert.ok(s.state.imageCount < d.state.imageCount, "images bounded by c*RIRLength");
   assert.throws(() => new Deism({ ...base, RIRLength: 0.5, rirWindowPhase: "linear" }), /rirWindowPhase/);
 });
+
+test("RIR mode keeps only convex images within c * rirPeriod", () => {
+  const base = {
+    mode: "RIR", roomType: "convex", sampleRate: 4000, maxReflOrder: 4, DEISM_method: "LC",
+    vertices: [[0, 0, 0], [0, 0, 3.5], [0, 3, 2.5], [0, 3, 0], [4, 0, 0], [4, 0, 3.5], [4, 3, 2.5], [4, 3, 0]],
+    material: { type: "impedance", value: 18, bandFreqs: [1000] },
+  };
+  const full = new Deism({ ...base, RIRLength: 0.5 });
+  full.updateWallMaterials(); full.updateFreqs(); full.updateSourceReceiver();
+  const short = new Deism({ ...base, RIRLength: 0.02 });
+  short.updateWallMaterials(); short.updateFreqs(); short.updateSourceReceiver();
+  assert.equal(short.state.rirPeriod, 0.02);
+  const limit = short.p.soundSpeed * 0.02;
+  assert.ok(full.state.arg.RsIr.some((r) => r[2] > limit), "the full run has images beyond the limit");
+  assert.ok(short.state.arg.RsIr.every((r) => r[2] <= limit), "short run keeps only paths within c * rirPeriod");
+  assert.ok(short.state.imageCount < full.state.imageCount);
+  assert.equal(short.state.arg.earlyIndices.length + short.state.arg.lateIndices.length, short.state.imageCount);
+  const rtf = new Deism({ ...base, mode: "RTF", startFreq: 100, endFreq: 300, freqStep: 100 });
+  rtf.updateWallMaterials(); rtf.updateFreqs(); rtf.updateSourceReceiver();
+  assert.equal(rtf.state.imageCount, full.state.imageCount, "RTF mode keeps every image");
+});

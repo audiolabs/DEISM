@@ -46,7 +46,7 @@ import { toKernelSph } from "./geometry.js";
 export { DirectivityError };
 
 /** Version of the Python package this engine was ported from and validated against. */
-export const ENGINE_VERSION = "2.2.1.16-js";
+export const ENGINE_VERSION = "2.3.0-js";
 
 export const DEFAULT_PARAMS = {
   mode: "RTF",
@@ -315,6 +315,13 @@ export class Deism {
       const RsIr = g.sources.map((s) => toKernelSph([p.posReceiver[0] - s[0], p.posReceiver[1] - s[1], p.posReceiver[2] - s[2]]));
       let keep = g.orders.map((_, i) => i);
       if (p.ifRemoveDirectPath) keep = keep.filter((i) => g.orders[i] !== 0);
+      if (p.mode === "RIR") {
+        // As get_ref_geometry_ARG: the inverse FFT is periodic over
+        // rirPeriod = min(T60, RIRLength), so images arriving later would
+        // fold into the output. Keep only paths within c * rirPeriod.
+        const limit = p.soundSpeed * Math.min(this.state.reverberationTime, p.RIRLength);
+        keep = keep.filter((i) => RsIr[i][2] <= limit);
+      }
       const geom = {
         count: keep.length,
         sources: keep.map((i) => g.sources[i]),

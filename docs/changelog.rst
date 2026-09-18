@@ -3,10 +3,25 @@ Changelog
 Release history for the ``deism`` package. This page is the canonical
 changelog; update it when cutting a release.
 
-Unreleased
-----------
+2.3.0
+-----
 
-- **RIR synthesis (wrap-around and pre-ringing fixed):** ``get_results``
+- **Packaging (datasets):** the sampled-directivity MAT datasets (186 MB)
+  are no longer part of the wheels or the sdist. They stay in the
+  repository under Git LFS and are attached to the GitHub release;
+  ``deism-playground`` downloads the supported datasets on first use into
+  ``~/.cache/deism/sampled_directivity`` (SHA-256 verified against
+  ``playground/catalog.json``) and reports the directory it uses. Lookup
+  order: ``--data-dir`` / ``DEISM_DATA_DIR``, a checkout in the working
+  directory (or an editable install), then the cache; ``--no-download`` and
+  ``--clear-cache`` control the copy. Missing datasets are listed as "not
+  downloaded" in the selector instead of aborting the launcher, and the
+  Python loaders fall back to ``DEISM_DATA_DIR`` and the cache after the
+  local and packaged example trees (``deism/playground_datasets.py``).
+- **Behaviour change: RIR synthesis (wrap-around and pre-ringing fixed).**
+  Every impulse response changes: the bandpass window is applied with
+  minimum phase by default and the grid resolves min(T60, RIRLength).
+  ``get_results``
   previously synthesised the impulse response on a frequency grid whose
   inverse FFT is periodic over exactly T60 and shaped it with a zero-phase
   bandpass window. The window's pre-ringing (about 20 ms for the 45 Hz
@@ -25,9 +40,12 @@ Unreleased
     discarded after the inverse FFT. ``"none"`` (also the legacy
     ``bandpass_window=False``) skips the window and now zeroes the Nyquist
     bin, which used to leave an alternating floor at about -50 dB.
-  - The RIR grid and the shoebox image set resolve ``rirPeriod`` =
+  - The RIR grid and the image set resolve ``rirPeriod`` =
     min(T60, ``RIRLength``): a shorter RIRLength costs fewer bins and
-    images (``image_time_limit``); a longer one is zero-padded beyond T60
+    images (``image_time_limit``; convex rooms now drop the images whose
+    path exceeds ``c * rirPeriod`` after the libroom search, as the shoebox
+    search already did, since a later arrival would fold into the
+    period); a longer one is zero-padded beyond T60
     and reported (console, playground warning). ``params["rirPeriod"]``
     and ``params["rirGuard"]`` record the synthesis span and guard.
   - ``get_results`` leaves ``params["RTF"]`` untouched (it used to window
@@ -35,7 +53,7 @@ Unreleased
     ``params["nSamples"]`` is gone; the window constants are in
     ``DEFAULT_RIR_WINDOW`` (``params["rirWindow"]`` overrides them) and the
     window takes the true Nyquist frequency.
-  - The playground mirrors all of this (engine ``2.2.1.16-js``): an RIR
+  - The playground mirrors all of this (engine ``2.3.0-js``): an RIR
     window selector next to the RIR length, the synthesis span and guard in
     the run details, and golden fixtures for the three phases
     (``python tools/playground_fixtures.py --rir-only``).
@@ -44,7 +62,7 @@ Unreleased
   Git LFS pointers with an actionable error. Lightweight test checkouts skip
   original-data tests, while the LFS-enabled playground job requires all
   supported datasets and runs both original-data and preset/example solve
-  checks. Release checkouts hydrate LFS payloads before packaging.
+  checks.
 - Generated previews and saved results fall back to a user cache when the
   installed playground assets are read-only. HTTP tests use isolated preview
   fixtures and do not depend on generated files or original MAT datasets.
@@ -123,6 +141,9 @@ Unreleased
   the legacy backend); a given T60 is kept exactly so the 1/T60 RIR grid
   matches; the convex visibility test carries the libroom tolerance; the
   ORG kernel evaluates each spherical harmonic once per image (2.6× faster).
+2.2.1.16
+--------
+
 - New optional atmospheric path-length fluctuations for both room types and
   all DEISM methods. ``DEISM.update_fluctuations()``, called after
   ``update_source_receiver()`` and before ``run_DEISM()``, perturbs the length

@@ -266,6 +266,7 @@ function loadRawDataset(name) {
 async function readRawDataset(name) {
   if (rawDatasets[name]) return rawDatasets[name];
   if (!DATASET_INFO[name]?.supported) throw new Error(`Unsupported dataset ${name}`);
+  if (window.DEISM_NATIVE?.datasets?.[name] === false) throw new Error(`Dataset ${DATASET_INFO[name].filename} is not downloaded; restart deism-playground with network access, or pass --data-dir pointing at a checkout's examples/data/sampled_directivity.`);
   if (window.location.protocol === "file:") throw new Error("Serve the playground over HTTP or use deism-playground to load directivity data.");
   const base = document.documentElement.dataset.directivityBase || "data/";
   const res = await fetch(`${base}${encodeURIComponent(name)}.json`);
@@ -851,7 +852,7 @@ function renderProvenance() {
     const p = accurate.provenance;
     const st = Object.entries(p.stageTimes || {}).map(([k, v]) => `${k.replace("update_", "")} ${v.toFixed(0)} ms`).join(", ");
     const fl = p.fluctuations ? ` · fluctuations drift ${p.fluctuations.drift} volatility ${p.fluctuations.volatility} seed ${p.fluctuations.seed ?? "fresh"}` : "";
-    if (p.backend) lines.push(`Python: ${p.backend.package} · native: ${p.backend.native} · startup ${p.startup_ms.toFixed(0)} ms · result IPC ${p.transfer_ms.toFixed(2)} ms · UI ${(p.uiElapsed / 1000).toFixed(2)} s`);
+    if (p.backend) lines.push(`Python: ${p.backend.package} · native: ${p.backend.native}${p.backend.data ? ` · datasets: ${p.backend.data}` : ""} · startup ${p.startup_ms.toFixed(0)} ms · result IPC ${p.transfer_ms.toFixed(2)} ms · UI ${(p.uiElapsed / 1000).toFixed(2)} s`);
     lines.push(`<b>Accurate${accurate.stale ? " (stale; not displayed)" : ""}</b>${p.preset ? ` · ${p.preset}` : ""} · ${p.backend ? `Python DEISM ${p.backend.version} · ${p.backend.solver} · ${p.backend.threads} threads` : `DEISM JS engine ${ENGINE_VERSION} (offline; high-order parity unvalidated)`} · ${p.room} · ${p.method}${p.method === "MIX" ? ` (ORG up to reflection order ${p.mixEarlyOrder})` : ""} · reflection order ${p.order} · SH order ${p.sh.join("/")} (source/receiver) · source ${DATASET_INFO[p.src]?.filename || p.src} → receiver ${DATASET_INFO[p.rec]?.filename || p.rec} · ${p.nFreqs} frequency bins · ${p.images} image sources · T60 ${p.t60.toFixed(2)} s${fl}${rirNote(p)} · ${(p.elapsed / 1000).toFixed(2)} s (${st}) · ${p.when}`);
   } else {
     lines.push("<b>Accurate</b> · not run yet");
@@ -1239,6 +1240,13 @@ function renderDirOptions(kind) {
     o.value = name;
     o.textContent = datasetLabel(name);
     o.title = `${info.filename} (${kind}, sphere radius ${info.r0} m)`;
+    if (window.DEISM_NATIVE?.datasets?.[name] === false) {
+      // The launcher found no original MAT file for it (offline first run,
+      // or an incomplete --data-dir); the Python runner could not load it.
+      o.disabled = true;
+      o.textContent += " (not downloaded)";
+      o.title += " — missing from " + (window.DEISM_NATIVE.dataDir || "the dataset directory");
+    }
     group.appendChild(o);
   }
   if (group.children.length) sel.appendChild(group);

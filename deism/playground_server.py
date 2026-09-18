@@ -173,12 +173,15 @@ class Runner:
 
 class Server(ThreadingHTTPServer):
     daemon_threads = True
-    def __init__(self, address, runner, data_root=None):
+    def __init__(self, address, runner, data_root=None, datasets=None, data_dir=None):
         super().__init__(address, Handler)
         self.runner = runner
         self.token = secrets.token_urlsafe(32)
         self.origin = f"http://127.0.0.1:{self.server_port}"
         self.data_root = Path(data_root) if data_root is not None else _writable_playground_root()
+        # catalog key -> True when the original MAT file was found (None: unknown)
+        self.datasets = datasets
+        self.data_dir = str(data_dir) if data_dir is not None else None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -214,6 +217,10 @@ class Handler(BaseHTTPRequestHandler):
         native = dict(token=self.server.token)
         if self.server.runner is not None:
             native["resultsDir"] = str(Path(self.server.runner.results_dir).resolve())
+        if self.server.datasets is not None:
+            native["datasets"] = self.server.datasets
+        if self.server.data_dir is not None:
+            native["dataDir"] = self.server.data_dir
         boot = f"<script>window.DEISM_NATIVE={json.dumps(native)};</script>".encode()
         html = html.replace(b"<head>", b"<head>" + boot, 1)
         self.send_bytes(html, "text/html; charset=utf-8")
@@ -270,21 +277,65 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
 
+def prepare_datasets(explicit=None, download_missing=True, log=print):
+    """Resolve the sampled-directivity MAT directory, fetching missing files.
+
+    Returns ``(directory, availability)`` where availability maps catalog keys
+    to True/False. Download failures are reported and leave the playground
+    usable with the datasets that are present (monopoles always work).
+    """
+    from deism import playground_datasets as datasets
+
+    catalog = datasets.load_catalog()
+    found = datasets.resolve(explicit, catalog)
+    if found.status.missing and download_missing and not found.status.pointers:
+        keys = datasets.missing_keys(found.download_target, catalog)
+        size = datasets.download_size(catalog, keys) / 1e6
+        log(f"Downloading {len(keys)} directivity dataset file(s) ({size:.0f} MB) from "
+            f"{datasets.DATASET_BASE_URL} into {found.download_target} (one-time; "
+            f"--no-download skips this, --clear-cache removes the copy)", flush=True)
+        try:
+            datasets.download(found.download_target, catalog, keys, progress=lambda line: log(line, flush=True))
+        except datasets.DatasetDownloadError as error:
+            log(f"Download failed: {error}", flush=True)
+            log("Continuing with the datasets that are available; monopole transducers always work.", flush=True)
+        found = datasets.resolve(explicit, catalog)
+    status = found.status
+    total = len(status.present) + len(status.missing)
+    log(f"Directivity datasets: {found.directory} ({found.source}; {len(status.present)} of {total} available)", flush=True)
+    if status.missing:
+        log(datasets.hint(status, found.source), flush=True)
+    availability = {k: True for k in status.present}
+    availability.update({k: False for k in status.missing})
+    return found.directory, availability
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=0, help="localhost port (default: choose an available port)")
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--data-dir", help="directory holding the original sampled-directivity MAT files "
+                        "(source/ and receiver/); default: a checkout in the working directory, then "
+                        "~/.cache/deism/sampled_directivity, downloaded from the GitHub release if missing")
+    parser.add_argument("--no-download", action="store_true", help="never download datasets; use what is present")
+    parser.add_argument("--clear-cache", action="store_true", help="delete the downloaded datasets and exit")
     args = parser.parse_args()
+    from deism import playground_datasets as datasets
     from deism.playground_data import initialize_datasets
+    if args.clear_cache:
+        print(f"Removed {datasets.clear_cache()}", flush=True)
+        return
     packaged = Path(str(resources.files("deism.playground_assets")))
     writable = _writable_playground_root()
-    initialize_datasets(packaged,
-                        str(resources.files("deism.examples") / "data" / "sampled_directivity"),
-                        data_dir=writable / "data")
+    data_dir, availability = prepare_datasets(args.data_dir, download_missing=not args.no_download)
+    # The simulation process and the Python loaders read the same directory.
+    os.environ[datasets.ENV_VAR] = str(data_dir)
+    initialize_datasets(packaged, data_dir, data_dir=writable / "data", skip_missing=True)
     runner = Runner(results_dir=writable / "results")
     server = None
     try:
-        server = Server(("127.0.0.1", args.port), runner, data_root=writable)
+        server = Server(("127.0.0.1", args.port), runner, data_root=writable,
+                        datasets=availability, data_dir=data_dir)
         print(f"DEISM playground: {server.origin}/", flush=True)
         if not args.no_browser:
             webbrowser.open(server.origin + "/")

@@ -5,8 +5,18 @@ Copyright © 2022-2026 Fraunhofer-Gesellschaft. The playground is subject to the
 Install DEISM and run `deism-playground` from any directory. The command serves
 this UI on `127.0.0.1`, starts one persistent Python simulation process, and opens
 your browser. Ctrl+C shuts down both. `--no-browser` and `--port 8765` are optional.
-Normal wheels and editable installs include the built UI and original example
-MAT datasets; users need no Node.js or manual build.
+Wheels and editable installs include the built UI; users need no Node.js or
+manual build.
+
+The original sampled-directivity MAT datasets (186 MB) are not part of the
+wheels. On the first run the launcher downloads them from the GitHub release
+into `~/.cache/deism/sampled_directivity` (verified against the SHA-256 values
+in `catalog.json`) and reports the directory it uses. The lookup order is
+`--data-dir` or `DEISM_DATA_DIR`, then `examples/data/sampled_directivity` of a
+checkout in the working directory (or of an editable install), then the cache.
+`--no-download` skips the download and `--clear-cache` deletes the cached copy.
+Without the datasets the page still runs monopole transducers; sampled
+datasets that are missing are listed as "not downloaded" in the selector.
 
 **Run Python DEISM** executes the public `DEISM` workflow. Imports and Numba
 initialization are reused between runs; one simulation is active at a time.
@@ -82,9 +92,9 @@ Python loads the original MAT pressure, directions, radii, and complete frequenc
 Preview JSON files retain original frequencies and directions, with float32 pressure.
 Both built HTML pages are approximately 0.32 MB and contain no pressure datasets.
 Only selected datasets are fetched from `data/` and cached in the page session.
-The native launcher regenerates these ignored JSON files from the original MAT data before serving the page. JSON datasets are neither tracked in Git nor included in the Python package. Python simulations use the original MAT files.
+The native launcher regenerates these ignored JSON files from the original MAT data before serving the page, skipping datasets whose MAT file is missing. JSON datasets are neither tracked in Git nor included in the Python package. Python simulations use the original MAT files.
 
-Original MAT datasets use Git LFS. Run `git lfs install` and `git lfs pull` after cloning. Browser-only use through a local HTTP server requires running `python tools/playground_directivity.py` first; a static HTML page cannot itself convert MAT files.
+Original MAT datasets use Git LFS in the repository (`git lfs install` and `git lfs pull` after cloning) and are attached to the GitHub release for `deism-playground` to download. Browser-only use through a local HTTP server requires running `python tools/playground_directivity.py` first; a static HTML page cannot itself convert MAT files.
 
 Sampled directivities follow the Python class when the simulation grid differs
 from the dataset grid (`init_source_directivities` / `interpolate_functions`):

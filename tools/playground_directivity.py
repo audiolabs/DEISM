@@ -22,8 +22,10 @@ Usage (from the repository root)::
 """
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import sys
 
 import scipy.io as sio
@@ -73,6 +75,21 @@ def display_label(stem, kind, r0=None):
     return label
 
 
+def file_digest(path):
+    """(sha256, size) of a dataset file. A Git LFS pointer reports the object
+    it stands for, so the catalog stays valid in a checkout without ``git lfs pull``."""
+    with open(path, "rb") as fh:
+        head = fh.read(256)
+        if head.startswith(b"version https://git-lfs.github.com/spec/v1"):
+            oid = re.search(rb"oid sha256:([0-9a-f]{64})", head)
+            size = re.search(rb"size (\d+)", head)
+            return oid.group(1).decode(), int(size.group(1))
+        digest = hashlib.sha256(head)
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest(), os.path.getsize(path)
+
+
 def discover_sets():
     """Discover every local MAT file; inspect its schema before offering it."""
     from pathlib import Path
@@ -83,7 +100,10 @@ def discover_sets():
             name = path.stem
             key = name if name not in catalog else name + "__" + kind
             supported = all(f in fields for f in ("freqs_mesh", "Psh", "Dir_all", "r0"))
-            entry = {"kind": kind, "filename": path.name, "supported": supported}
+            sha256, size = file_digest(path)
+            # sha256/size let deism-playground verify the files it downloads
+            # from the GitHub release (deism/playground_datasets.py).
+            entry = {"kind": kind, "filename": path.name, "supported": supported, "sha256": sha256, "size": size}
             if supported:
                 entry["r0"] = float(sio.loadmat(path, variable_names=["r0"])["r0"].item())
                 entry["label"] = display_label(name, kind, entry["r0"])

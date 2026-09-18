@@ -33,8 +33,8 @@ include playground/native.html
 include playground/catalog.json
 include playground/LICENSE.txt
 prune playground/data
-recursive-include examples/data/sampled_directivity *.mat
-include examples/data/sampled_directivity/README.md
+# The sampled-directivity MAT datasets stay out of the sdist and wheels;
+# deism-playground downloads them from the GitHub release on first use.
 prune tests
 prune tools
 prune deism/tests

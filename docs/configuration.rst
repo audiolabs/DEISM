@@ -165,7 +165,8 @@ RIR mode uses the ``Signal`` section:
 
 The frequency grid of RIR mode runs from one step to ``sampleRate / 2`` with
 a step of at most ``1 / rirPeriod``, where ``rirPeriod = min(T60, RIRLength)``;
-the shoebox image set is bounded by the path length ``c * rirPeriod`` as well.
+the image set is bounded by the path length ``c * rirPeriod`` as well (the
+shoebox search stops there; convex rooms drop the libroom images beyond it).
 ``get_results`` shapes the RTF with a raised-cosine bandpass window (150 Hz
 high-pass with a 45 Hz transition, low-pass at 70 % of Nyquist with a 15 %
 transition; ``params["rirWindow"]`` overrides ``lowCut``, ``lowWidth``,

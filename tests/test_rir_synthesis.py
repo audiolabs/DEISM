@@ -129,3 +129,49 @@ def test_invalid_window_phase_is_rejected(monkeypatch):
     d.params["rirWindowPhase"] = "linear"
     with pytest.raises(ValueError, match="rirWindowPhase"):
         d.get_results()
+
+
+TILTED = np.array(
+    [[0, 0, 0], [0, 0, 3.5], [0, 3, 2.5], [0, 3, 0], [4, 0, 0], [4, 0, 3.5], [4, 3, 2.5], [4, 3, 0]],
+    dtype=np.float64,
+)
+
+
+def build_convex(monkeypatch, mode="RIR", rir_length=0.5, order=4):
+    from deism.core_deism_arg import find_wall_centers
+
+    monkeypatch.setattr(sys, "argv", ["test"])
+    with contextlib.redirect_stdout(io.StringIO()):
+        d = core.DEISM(mode, "convex", silent=True)
+    p = d.params
+    p["silentMode"] = 1
+    p.update(vertices=TILTED.copy(), wallCenters=find_wall_centers(TILTED), ifRotateRoom=0,
+             maxReflOrder=order, DEISM_method="LC", mixEarlyOrder=1, sampleRate=FS,
+             RIRLength=rir_length, sourceType="monopole", receiverType="monopole",
+             sourceOrder=0, receiverOrder=0, startFreq=100, endFreq=300, freqStep=100)
+    n_walls = len(p["wallCenters"])
+    with contextlib.redirect_stdout(io.StringIO()):
+        d.update_wall_materials(np.full((n_walls, 1), 18.0), np.array([1000.0]), "impedance")
+        d.update_freqs()
+        d.update_source_receiver()
+    return d
+
+
+def test_convex_rir_keeps_only_images_within_c_times_period(monkeypatch):
+    """Convex rooms drop the libroom images arriving after rirPeriod; a later
+    arrival would fold into the periodic inverse FFT. RTF mode keeps them all."""
+    full = build_convex(monkeypatch, rir_length=0.5)
+    short = build_convex(monkeypatch, rir_length=0.02)
+    rtf = build_convex(monkeypatch, mode="RTF")
+    c = short.params["soundSpeed"]
+    assert short.params["rirPeriod"] == 0.02
+    r_full = full.params["images"]["R_sI_r_all"][2]
+    r_short = short.params["images"]["R_sI_r_all"][2]
+    assert np.any(r_full > c * 0.02), "the full run has images beyond the limit"
+    assert np.all(r_short <= c * 0.02)
+    assert len(r_short) < len(r_full) == len(rtf.params["images"]["R_sI_r_all"][2])
+    images = short.params["images"]
+    n = len(r_short)
+    assert images["orders"].shape == (n,) and images["atten_all"].shape[1] == n
+    assert images["wall_sequence"].shape[0] == n and images["incidence_cos"].shape[0] == n
+    assert short.params["reflection_matrix"].shape[2] == n

@@ -1,5 +1,7 @@
 # Native playground validation — 2026-09-10
 
+> Measured on the 2.2.1.16 development build. Since 2.3.0 the wheels no longer contain the MAT datasets (`deism-playground` downloads them on first use), so the wheel-content and wheel-size statements below describe that earlier build; the timings and numerical gates are unaffected.
+
 DEISM 2.2.1.16, macOS arm64, Python 3.10, 10 Numba threads. Direct Python and the persistent HTTP runner used the same editable installation, datasets, parameters and defaults. Runs were sequential: one first-use pair and three warmed pairs per case.
 
 | Case | Images | Direct median (s) | Native median (s) | Gate |

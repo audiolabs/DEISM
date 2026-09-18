@@ -43,8 +43,15 @@ process, and opens your browser. No Node.js or manual HTML build is needed.
 Ctrl+C stops both processes. Use `deism-playground --no-browser --port 8765` to
 choose a port and open the page yourself.
 
+The sampled-directivity MAT datasets (186 MB) are not included in the wheels.
+On the first run the launcher downloads them from the GitHub release into
+`~/.cache/deism/sampled_directivity`; a checkout in the working directory
+(`examples/data/sampled_directivity`, after `git lfs pull`) or the `--data-dir`
+option is used instead when present, `--no-download` skips the download, and
+`--clear-cache` removes the copy. Monopole transducers work without them.
+
 The live preview uses JavaScript with reduced settings; **Run Python DEISM**
-uses the installed Python workflow and original packaged MAT datasets. See
+uses the installed Python workflow and the original MAT datasets. See
 [playground usage and validation](playground/README.md) for supported settings,
 performance measurements, and offline-demo limitations.
 
