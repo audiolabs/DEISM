@@ -23,6 +23,8 @@ def make_catalog(files):
 FILES = {"a_source": ("source", "a.mat", b"MATLAB 5.0 MAT-file source a"),
          "b_receiver": ("receiver", "b.mat", b"MATLAB 5.0 MAT-file receiver b")}
 CATALOG = make_catalog(FILES)
+# a filename shared by both roles is published under a role-specific asset name
+CATALOG["b_receiver"]["asset"] = "b__receiver.mat"
 CATALOG["direct"] = dict(kind="source", filename="direct.mat", supported=False,
                          sha256=hashlib.sha256(b"dp").hexdigest(), size=2)
 
@@ -97,8 +99,8 @@ class Files(http.server.SimpleHTTPRequestHandler):
 def release(tmp_path):
     site = tmp_path / "release"
     site.mkdir()
-    for kind, name, payload in FILES.values():
-        (site / name).write_bytes(payload)
+    for key, (kind, name, payload) in FILES.items():
+        (site / CATALOG[key].get("asset", name)).write_bytes(payload)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), partial(Files, directory=str(site)))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -231,3 +233,17 @@ def test_loader_falls_back_to_env_directory_and_cache(isolated, monkeypatch):
     assert float(load_directive_pressure(1, "source", "x")[3].item()) == 0.5
     with pytest.raises(FileNotFoundError):
         load_directive_pressure(1, "source", "nope")
+
+
+def test_catalog_gives_shared_filenames_distinct_asset_names():
+    import sys
+    sys.path.insert(0, "tools")
+    from playground_directivity import discover_sets
+    from deism.playground_datasets import load_catalog
+
+    catalog = load_catalog()
+    assets = [info["asset"] for info in catalog.values()]
+    assert len(assets) == len(set(assets)) == 20
+    assert catalog["speaker_cuboid_cyldriver_1"]["asset"] == "speaker_cuboid_cyldriver_1__source.mat"
+    assert catalog["speaker_cuboid_cyldriver_1__receiver"]["asset"] == "speaker_cuboid_cyldriver_1__receiver.mat"
+    assert all(info["asset"] == info["filename"] for k, info in catalog.items() if "cuboid_cyldriver_1" not in k)

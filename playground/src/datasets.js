@@ -13,7 +13,8 @@ export const DATASET_CATALOG = {
     "supported": false,
     "sha256": "7e4c81a00724aca9b612f261e03bc8585e2602f9e6464cdfbeb011a2147298c1",
     "size": 9200,
-    "reason": "Single-point response; no sampled sphere directions or radius."
+    "reason": "Single-point response; no sampled sphere directions or radius.",
+    "asset": "Speaker_cuboid_cyldriver_directpath.mat"
   },
   "Speaker_cuboid_cyldriver_source": {
     "kind": "source",
@@ -22,7 +23,8 @@ export const DATASET_CATALOG = {
     "sha256": "0c49003a6dfc23a2debcf943d8b80dc1a8ebca3af6d859b787ce71ae06d1ab0a",
     "size": 13887584,
     "r0": 0.4,
-    "label": "Cuboid speaker, cylindrical driver \u00b7 r 0.4 m"
+    "label": "Cuboid speaker, cylindrical driver \u00b7 r 0.4 m",
+    "asset": "Speaker_cuboid_cyldriver_source.mat"
   },
   "Speaker_cyl_cyldriver_directpath": {
     "kind": "source",
@@ -30,7 +32,8 @@ export const DATASET_CATALOG = {
     "supported": false,
     "sha256": "bb5c625103de4c8d32f3ab87956733a92c806c65e362147b2b5c0dfc5948420d",
     "size": 9200,
-    "reason": "Single-point response; no sampled sphere directions or radius."
+    "reason": "Single-point response; no sampled sphere directions or radius.",
+    "asset": "Speaker_cyl_cyldriver_directpath.mat"
   },
   "Speaker_cyl_cyldriver_source": {
     "kind": "source",
@@ -39,7 +42,8 @@ export const DATASET_CATALOG = {
     "sha256": "76bdfbcf2919cf8b4a12fd887d76fe2958b2b24fcb22456f28f31be7078bb4e1",
     "size": 13887584,
     "r0": 0.4,
-    "label": "Cylindrical speaker, cylindrical driver \u00b7 r 0.4 m"
+    "label": "Cylindrical speaker, cylindrical driver \u00b7 r 0.4 m",
+    "asset": "Speaker_cyl_cyldriver_source.mat"
   },
   "Speaker_small_cuboid_cyldriver_directpath": {
     "kind": "source",
@@ -47,7 +51,8 @@ export const DATASET_CATALOG = {
     "supported": false,
     "sha256": "58426d9405da7f0bdef176721e47c8dd0459774699b38724a88fca3ce80709d2",
     "size": 9200,
-    "reason": "Single-point response; no sampled sphere directions or radius."
+    "reason": "Single-point response; no sampled sphere directions or radius.",
+    "asset": "Speaker_small_cuboid_cyldriver_directpath.mat"
   },
   "Speaker_small_cuboid_cyldriver_source": {
     "kind": "source",
@@ -56,7 +61,8 @@ export const DATASET_CATALOG = {
     "sha256": "0a9ef124c55092a1306e8472f49ac27ae93d94e50a42761b54926d0914ef267a",
     "size": 13887584,
     "r0": 0.2,
-    "label": "Small cuboid speaker, cylindrical driver \u00b7 r 0.2 m"
+    "label": "Small cuboid speaker, cylindrical driver \u00b7 r 0.2 m",
+    "asset": "Speaker_small_cuboid_cyldriver_source.mat"
   },
   "Speaker_small_cyl_cyldriver_directpath": {
     "kind": "source",
@@ -64,7 +70,8 @@ export const DATASET_CATALOG = {
     "supported": false,
     "sha256": "47122d0a3e72e281830ad58f9cab3f031627fd86d04109d5e3e065d0be34e65a",
     "size": 9200,
-    "reason": "Single-point response; no sampled sphere directions or radius."
+    "reason": "Single-point response; no sampled sphere directions or radius.",
+    "asset": "Speaker_small_cyl_cyldriver_directpath.mat"
   },
   "Speaker_small_cyl_cyldriver_source": {
     "kind": "source",
@@ -73,7 +80,8 @@ export const DATASET_CATALOG = {
     "sha256": "896a2bcbfd7d7ad4be8e3508a3112a967dc22119392fa59a16153c25630b8acd",
     "size": 13887584,
     "r0": 0.2,
-    "label": "Small cylindrical speaker, cylindrical driver \u00b7 r 0.2 m"
+    "label": "Small cylindrical speaker, cylindrical driver \u00b7 r 0.2 m",
+    "asset": "Speaker_small_cyl_cyldriver_source.mat"
   },
   "Speaker_small_sph_cyldriver_directpath": {
     "kind": "source",
@@ -81,7 +89,8 @@ export const DATASET_CATALOG = {
     "supported": false,
     "sha256": "e55a886c8944d3113cfae65574249901a06bed520d0b901868dbb9072dcd7eff",
     "size": 9200,
-    "reason": "Single-point response; no sampled sphere directions or radius."
+    "reason": "Single-point response; no sampled sphere directions or radius.",
+    "asset": "Speaker_small_sph_cyldriver_directpath.mat"
   },
   "Speaker_small_sph_cyldriver_source": {
     "kind": "source",
@@ -90,7 +99,8 @@ export const DATASET_CATALOG = {
     "sha256": "ae7354cc0e8efae5c330c858a0c654393fcfb605e7502d4f53974a2a0e361e1d",
     "size": 13887584,
     "r0": 0.2,
-    "label": "Small spherical speaker, cylindrical driver \u00b7 r 0.2 m"
+    "label": "Small spherical speaker, cylindrical driver \u00b7 r 0.2 m",
+    "asset": "Speaker_small_sph_cyldriver_source.mat"
   },
   "Speaker_sph_cyldriver_directpath": {
     "kind": "source",
@@ -98,7 +108,8 @@ export const DATASET_CATALOG = {
     "supported": false,
     "sha256": "832a60ab0f3fb3e7df71a4d7a32fa40fae3242af0d3bc921b439437516e1550a",
     "size": 9200,
-    "reason": "Single-point response; no sampled sphere directions or radius."
+    "reason": "Single-point response; no sampled sphere directions or radius.",
+    "asset": "Speaker_sph_cyldriver_directpath.mat"
   },
   "Speaker_sph_cyldriver_source": {
     "kind": "source",
@@ -107,7 +118,8 @@ export const DATASET_CATALOG = {
     "sha256": "b22d4916f68d796c626f9604d2b9cc9654b5475c75319c24d7b7f267abe08bc9",
     "size": 13887584,
     "r0": 0.4,
-    "label": "Spherical speaker, cylindrical driver \u00b7 r 0.4 m"
+    "label": "Spherical speaker, cylindrical driver \u00b7 r 0.4 m",
+    "asset": "Speaker_sph_cyldriver_source.mat"
   },
   "speaker_cuboid_cyldriver_1": {
     "kind": "source",
@@ -116,7 +128,8 @@ export const DATASET_CATALOG = {
     "sha256": "1146acce6ef8f92581f3d4329929d25fd33c732b71e5b64a0982c8fb841a1e9d",
     "size": 13887800,
     "r0": 0.4,
-    "label": "Cuboid speaker, cylindrical driver (variant 1) \u00b7 r 0.4 m"
+    "label": "Cuboid speaker, cylindrical driver (variant 1) \u00b7 r 0.4 m",
+    "asset": "speaker_cuboid_cyldriver_1__source.mat"
   },
   "Speaker_cuboid_cyldriver_receiver": {
     "kind": "receiver",
@@ -125,7 +138,8 @@ export const DATASET_CATALOG = {
     "sha256": "a44650e8439a895b99019fe0602ceae99507afbaa42593e95e6b70b60c1956bd",
     "size": 13887584,
     "r0": 0.5,
-    "label": "Cuboid speaker, cylindrical driver \u00b7 r 0.5 m"
+    "label": "Cuboid speaker, cylindrical driver \u00b7 r 0.5 m",
+    "asset": "Speaker_cuboid_cyldriver_receiver.mat"
   },
   "Speaker_cyl_cyldriver_receiver": {
     "kind": "receiver",
@@ -134,7 +148,8 @@ export const DATASET_CATALOG = {
     "sha256": "6aba95d23329de481c37347d475709dad241098af00946bb38ddf2ed7f6ad1a8",
     "size": 13887584,
     "r0": 0.5,
-    "label": "Cylindrical speaker, cylindrical driver \u00b7 r 0.5 m"
+    "label": "Cylindrical speaker, cylindrical driver \u00b7 r 0.5 m",
+    "asset": "Speaker_cyl_cyldriver_receiver.mat"
   },
   "Speaker_small_cuboid_cyldriver_receiver": {
     "kind": "receiver",
@@ -143,7 +158,8 @@ export const DATASET_CATALOG = {
     "sha256": "2687701018fdcff7b1104c74e3b7ba306aa471e0d6a07470ae8b735e0d0dd187",
     "size": 13887584,
     "r0": 0.25,
-    "label": "Small cuboid speaker, cylindrical driver \u00b7 r 0.25 m"
+    "label": "Small cuboid speaker, cylindrical driver \u00b7 r 0.25 m",
+    "asset": "Speaker_small_cuboid_cyldriver_receiver.mat"
   },
   "Speaker_small_cyl_cyldriver_receiver": {
     "kind": "receiver",
@@ -152,7 +168,8 @@ export const DATASET_CATALOG = {
     "sha256": "93289bb02aceb0054efa643b56dcf6c561d14e7ae1cf8ee77fc146553efec849",
     "size": 13887584,
     "r0": 0.25,
-    "label": "Small cylindrical speaker, cylindrical driver \u00b7 r 0.25 m"
+    "label": "Small cylindrical speaker, cylindrical driver \u00b7 r 0.25 m",
+    "asset": "Speaker_small_cyl_cyldriver_receiver.mat"
   },
   "Speaker_small_sph_cyldriver_receiver": {
     "kind": "receiver",
@@ -161,7 +178,8 @@ export const DATASET_CATALOG = {
     "sha256": "b337a2422033c99dcf615ba49b47625f984f8c549f1592348b81da7263cbb111",
     "size": 13887584,
     "r0": 0.25,
-    "label": "Small spherical speaker, cylindrical driver \u00b7 r 0.25 m"
+    "label": "Small spherical speaker, cylindrical driver \u00b7 r 0.25 m",
+    "asset": "Speaker_small_sph_cyldriver_receiver.mat"
   },
   "Speaker_sph_cyldriver_receiver": {
     "kind": "receiver",
@@ -170,7 +188,8 @@ export const DATASET_CATALOG = {
     "sha256": "4cd6bdd78279c5be32a6a52fcb63bbff0922a1e5cc81d9158f0d275336088b0e",
     "size": 13887584,
     "r0": 0.5,
-    "label": "Spherical speaker, cylindrical driver \u00b7 r 0.5 m"
+    "label": "Spherical speaker, cylindrical driver \u00b7 r 0.5 m",
+    "asset": "Speaker_sph_cyldriver_receiver.mat"
   },
   "speaker_cuboid_cyldriver_1__receiver": {
     "kind": "receiver",
@@ -179,6 +198,7 @@ export const DATASET_CATALOG = {
     "sha256": "29643a0f152527df9bfd9e4dbb565b7b6a37d358328202f3e1191bbbd528b600",
     "size": 13887800,
     "r0": 0.5,
-    "label": "Cuboid speaker, cylindrical driver (variant 1) \u00b7 r 0.5 m"
+    "label": "Cuboid speaker, cylindrical driver (variant 1) \u00b7 r 0.5 m",
+    "asset": "speaker_cuboid_cyldriver_1__receiver.mat"
   }
 };

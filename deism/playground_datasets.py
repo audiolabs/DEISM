@@ -13,7 +13,9 @@ first directory holding every supported dataset wins):
 
 Missing files are downloaded from the release into the cache (or into the
 explicit directory when one was given) and verified against the SHA-256
-values recorded in ``playground/catalog.json``. Git LFS pointer files count
+values recorded in ``playground/catalog.json`` (whose ``asset`` field names
+the release asset; it differs from the filename only for
+``speaker_cuboid_cyldriver_1.mat``, which exists for both roles). Git LFS pointer files count
 as missing. Everything here is standard library only.
 """
 from __future__ import annotations
@@ -191,7 +193,9 @@ def download(directory, catalog, keys=None, base_url=None, progress=None, timeou
         info = catalog[key]
         target = directory / relative_path(info)
         target.parent.mkdir(parents=True, exist_ok=True)
-        url = base_url + info["filename"]
+        # Release asset name: the filename, or <stem>__<kind>.mat when the
+        # source and receiver directories share a filename (catalog "asset").
+        url = base_url + info.get("asset", info["filename"])
         temporary = target.with_name(target.name + ".part")
         digest = hashlib.sha256()
         try:
