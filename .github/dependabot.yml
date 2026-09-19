@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # Keep the GitHub Actions in the workflows current; one grouped pull
+  # request per month instead of one per action.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns: ["*"]

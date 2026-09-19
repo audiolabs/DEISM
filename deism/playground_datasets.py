@@ -195,12 +195,16 @@ def download(directory, catalog, keys=None, base_url=None, progress=None, timeou
         target.parent.mkdir(parents=True, exist_ok=True)
         # Release asset name: the filename, or <stem>__<kind>.mat when the
         # source and receiver directories share a filename (catalog "asset").
-        url = base_url + info.get("asset", info["filename"])
+        asset = info.get("asset", info["filename"])
+        url = base_url + asset
         temporary = target.with_name(target.name + ".part")
         digest = hashlib.sha256()
         try:
             if progress:
-                progress(f"  {info['filename']} ({int(info.get('size', 0)) / 1e6:.1f} MB)")
+                # Name the asset when it differs from the filename, so the two
+                # speaker_cuboid_cyldriver_1.mat downloads are told apart.
+                label = asset if asset == info["filename"] else f"{asset} -> {relative_path(info).as_posix()}"
+                progress(f"  {label} ({int(info.get('size', 0)) / 1e6:.1f} MB)")
             with urllib.request.urlopen(url, timeout=timeout) as response, temporary.open("wb") as out:
                 for chunk in iter(lambda: response.read(_CHUNK), b""):
                     digest.update(chunk)

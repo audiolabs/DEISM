@@ -73,7 +73,10 @@ libroom_files = [
 if sys.platform == "win32":
     extra_compile_args = ["/DEIGEN_MPL2_ONLY", "/O2", "/DEIGEN_NO_DEBUG"]
 else:
-    extra_compile_args = ["-DEIGEN_MPL2_ONLY", "-Wall", "-O3", "-DEIGEN_NO_DEBUG"]
+    # -g0 overrides the -g that Python's own CFLAGS add. Without it, the
+    # Eigen template debug info made the manylinux libroom extension 77 MB
+    # (1.5 MB on macOS) and the 2.3.0 Linux wheels 17 MB instead of 1 MB.
+    extra_compile_args = ["-DEIGEN_MPL2_ONLY", "-Wall", "-O3", "-g0", "-DEIGEN_NO_DEBUG"]
 extra_link_args = []
 # Only add "-arch arm64" if running on ARM-based macOS
 if sys.platform == "darwin" and platform.machine() == "arm64":

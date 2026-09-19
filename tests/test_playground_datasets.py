@@ -117,7 +117,7 @@ def test_download_fetches_only_missing_files_and_verifies_checksums(tmp_path, re
     written = ds.download(target, CATALOG, base_url=release, progress=lines.append)
     assert [p.name for p in written] == ["b.mat"]
     assert (target / "receiver" / "b.mat").read_bytes() == FILES["b_receiver"][2]
-    assert lines == ["  b.mat (0.0 MB)"]
+    assert lines == ["  b__receiver.mat -> receiver/b.mat (0.0 MB)"]  # renamed asset is named
     assert ds.download(target, CATALOG, base_url=release) == []
     assert ds.inspect(target, CATALOG).complete
     # a pointer is replaced
