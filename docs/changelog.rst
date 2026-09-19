@@ -3,6 +3,42 @@ Changelog
 Release history for the ``deism`` package. This page is the canonical
 changelog; update it when cutting a release.
 
+2.3.1.1
+-------
+
+Playground fixes on top of 2.3.1; the solver is unchanged.
+
+- **Run validation lights the right pipeline stage again.** The 2.3.1
+  refactor that shared the parameter validation with the script export
+  collapsed every validation failure onto the generic *parameters* chip.
+  Room-geometry errors (unusable vertex set, vertex inside the hull of the
+  others, convex-hull build failure) mark *update_room* again, a source or
+  receiver outside the room marks *update_source_receiver*, and T60 input
+  on a convex room marks *update_wall_materials*, as in 2.3.0. Form-field
+  errors keep the *parameters* chip.
+- **Saved-result path matches the results folder.** The launcher archives
+  each run under a resolved path, so it shares the prefix of the
+  ``resultsDir`` it hands the page and the run card shows the shortened
+  ``results/<run>/result.json`` form even when the playground root is
+  reached through a symlink (for example ``/tmp`` or ``/var`` on macOS) or
+  a relative path.
+- **Git LFS pointer files never win over a usable dataset.** Both the
+  working-directory lookup of a sampled-directivity MAT file and the
+  fallback search (``DEISM_DATA_DIR``, packaged examples tree, playground
+  download cache) now skip unfetched LFS pointer files and continue to the
+  next candidate. A clone without ``git lfs pull`` therefore loads the
+  copy that ``deism-playground`` downloaded instead of failing with
+  "Missing LFS data". An explicit ``data_dir`` still reports its own file.
+- Run-card help text reworded; ``demo.html`` / ``native.html`` rebuilt
+  from the sources.
+- Tests: browser workflow tests assert the marked stage for each
+  validation case; ``tests/test_playground_datasets.py`` covers the LFS
+  pointer skip in the environment directory and in the working directory;
+  ``tests/test_playground_result_storage.py`` covers the resolved archive
+  path for a relative results directory.
+- Packaging is unchanged: ``DATASET_RELEASE`` keeps pointing at the v2.3.0
+  release assets and the JavaScript engine (``2.3.0-js``) is untouched.
+
 2.3.1
 -----
 

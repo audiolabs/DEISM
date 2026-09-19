@@ -252,3 +252,36 @@ test("run card and completed summary report the result archive", () => {
   assert.equal(relCtx.displaySavedPath("/tmp/deism/results/Custom_20260918/result.json"), "results/Custom_20260918/result.json");
   assert.equal(relCtx.displaySavedPath("/elsewhere/result.json"), "/elsewhere/result.json");
 });
+
+// Exercise the Run handler as well as validation, so losing error.stage at the
+// catch site cannot silently leave the relevant pipeline indicator unmarked.
+for (const scenario of [
+  { name: "invalid geometry", stage: "update_room", geometry: { ok: false, error: "Invalid room" } },
+  { name: "orphan vertex", stage: "update_room", geometry: { ok: true, orphan: [0] } },
+  { name: "convex construction failure", stage: "update_room", convexError: true },
+  { name: "outside source", stage: "update_source_receiver", outside: "src" },
+  { name: "outside receiver", stage: "update_source_receiver", outside: "rec" },
+  { name: "convex T60", stage: "update_wall_materials", t60: true },
+]) {
+  test(`Run validation marks the correct stage: ${scenario.name}`, async () => {
+    const source = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+    const start = source.includes("function stageError(") ? source.indexOf("function stageError(") : source.indexOf("function currentExportParams(");
+    const validation = source.slice(start, source.indexOf("async function downloadPython("));
+    const run = source.slice(source.indexOf("async function runAccurate("), source.indexOf("async function runNative("));
+    const errors = [];
+    const state = { roomType: "convex", vertices: [], src: [1, 1, 1], rec: [2, 2, 2],
+      materialType: scenario.t60 ? "reverberationTime" : "absorption" };
+    const context = { state, running: false, performance: { now: () => 0 },
+      resetPipeline() {}, failAt: (stage, message) => errors.push({ stage, message }),
+      roomGeometry: () => scenario.geometry || { ok: true },
+      ConvexRoom: class { constructor() { if (scenario.convexError) throw new Error("Invalid convex room"); } },
+      insideRoom: (position) => position !== state[scenario.outside],
+    };
+    vm.createContext(context);
+    vm.runInContext(validation + run, context);
+    await context.runAccurate();
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0].stage, scenario.stage);
+    assert.ok(errors[0].message.length > 0);
+  });
+}

@@ -162,3 +162,12 @@ def test_script_export_http_auth_and_destination(tmp_path, capsys):
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_result_archive_resolves_relative_directory(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    request = {"params": {"maxReflOrder": 2}}
+    saved = Path(save_result("results", request, {}, datetime.now()))
+    assert saved.is_absolute()
+    assert saved.parent.parent == (tmp_path / "results").resolve()
+    assert json.loads(saved.read_text())["params"] == request["params"]

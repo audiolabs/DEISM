@@ -235,6 +235,24 @@ def test_loader_falls_back_to_env_directory_and_cache(isolated, monkeypatch):
         load_directive_pressure(1, "source", "nope")
 
 
+def test_loader_skips_git_lfs_pointer_in_env_for_usable_cache(isolated, monkeypatch):
+    import numpy as np
+    from scipy.io import savemat
+    from deism.data_loader import load_directive_pressure
+
+    tmp = isolated
+    cache = ds.cache_dir() / "source"
+    cache.mkdir(parents=True)
+    savemat(cache / "x.mat", dict(freqs_mesh=[100], Dir_all=[[0, 0]], r0=0.25, Psh=np.array([[1 + 2j]])))
+    env = tmp / "env" / "source"
+    env.mkdir(parents=True)
+    (env / "x.mat").write_text(
+        "version https://git-lfs.github.com/spec/v1\noid sha256:0\nsize 1\n"
+    )
+    monkeypatch.setenv(ds.ENV_VAR, str(tmp / "env"))
+    assert float(load_directive_pressure(1, "source", "x")[3].item()) == 0.25
+
+
 def test_catalog_gives_shared_filenames_distinct_asset_names():
     import sys
     sys.path.insert(0, "tools")
@@ -247,3 +265,24 @@ def test_catalog_gives_shared_filenames_distinct_asset_names():
     assert catalog["speaker_cuboid_cyldriver_1"]["asset"] == "speaker_cuboid_cyldriver_1__source.mat"
     assert catalog["speaker_cuboid_cyldriver_1__receiver"]["asset"] == "speaker_cuboid_cyldriver_1__receiver.mat"
     assert all(info["asset"] == info["filename"] for k, info in catalog.items() if "cuboid_cyldriver_1" not in k)
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_loader_local_lfs_pointer_respects_explicit_directory(isolated, explicit):
+    import numpy as np
+    from scipy.io import savemat
+    from deism.data_loader import load_directive_pressure, MissingDirectivityDataError
+
+    local = Path.cwd() / "examples" / "data" / "sampled_directivity"
+    pointer = local / "source" / "x.mat"
+    pointer.parent.mkdir(parents=True)
+    pointer.write_text("version https://git-lfs.github.com/spec/v1\noid sha256:0\nsize 1\n")
+    cached = ds.cache_dir() / "source" / "x.mat"
+    cached.parent.mkdir(parents=True)
+    savemat(cached, dict(freqs_mesh=[100], Dir_all=[[0, 0]], r0=0.25,
+                        Psh=np.array([[1 + 2j]])))
+    if explicit:
+        with pytest.raises(MissingDirectivityDataError, match="Missing LFS data for x.mat"):
+            load_directive_pressure(1, "source", "x", data_dir=local)
+    else:
+        assert float(load_directive_pressure(1, "source", "x")[3].item()) == 0.25

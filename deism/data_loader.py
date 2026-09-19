@@ -1273,10 +1273,11 @@ def _packaged_directive_mat(path, mtime_ns):
 
 def _fallback_directivity_path(src_or_rec, name):
     """Where a sampled-directivity MAT file lives when the working directory
-    has none: the packaged examples tree (editable installs), the directory
-    named by DEISM_DATA_DIR, then the deism-playground download cache. Returns
-    the first existing file, else the packaged path for the error message."""
-    from deism.playground_datasets import ENV_VAR, cache_dir
+    has none: ``DEISM_DATA_DIR`` when set, then the packaged examples tree
+    (editable installs), then the deism-playground download cache. Returns the
+    first usable (non–Git-LFS-pointer) file, else the first candidate path for
+    the error message."""
+    from deism.playground_datasets import ENV_VAR, cache_dir, is_usable
 
     rel = Path(src_or_rec) / (name + ".mat")
     candidates = []
@@ -1288,7 +1289,7 @@ def _fallback_directivity_path(src_or_rec, name):
         candidates.insert(0, Path(os.environ[ENV_VAR]) / rel)
     candidates.append(cache_dir() / rel)
     for candidate in candidates:
-        if candidate.is_file():
+        if is_usable(candidate):
             return str(candidate)
     return str(candidates[0])
 
@@ -1321,8 +1322,11 @@ def load_directive_pressure(silentMode, src_or_rec, name, data_dir=None):
     data_location = "{}/{}/{}.mat".format(path, src_or_rec, name)
     if data_dir is not None:
         data_location = str(Path(data_dir) / src_or_rec / (name + ".mat"))
-    elif not Path(data_location).is_file():
-        data_location = _fallback_directivity_path(src_or_rec, name)
+    else:
+        from deism.playground_datasets import is_usable
+
+        if not is_usable(data_location):
+            data_location = _fallback_directivity_path(src_or_rec, name)
     try:
         raise_if_git_lfs_pointer(data_location)
         if data_dir is not None:

@@ -440,24 +440,47 @@ function ensureWorker() {
   return worker;
 }
 
+/** Validation error that maps onto a pipeline stage chip (see STAGES). */
+function stageError(stage, message) {
+  const error = new Error(message);
+  error.stage = stage;
+  return error;
+}
+
 function currentExportParams() {
   const geom = roomGeometry();
-  if (!geom.ok) throw new Error(geom.error);
+  if (!geom.ok) throw stageError("update_room", geom.error);
   if (geom.orphan && geom.orphan.length) {
-    throw new Error(`Vertex ${geom.orphan.map((i) => "V" + (i + 1)).join(", ")} lies inside the convex hull of the other vertices.`);
+    throw stageError(
+      "update_room",
+      `Vertex ${geom.orphan.map((i) => "V" + (i + 1)).join(", ")} lies inside the convex hull of the other vertices; the room is not the convex polyhedron of the given vertices.`,
+    );
   }
   let room = null;
   if (state.roomType === "convex") {
-    room = new ConvexRoom(state.vertices);
+    try {
+      room = new ConvexRoom(state.vertices);
+    } catch (e) {
+      throw stageError("update_room", e.message);
+    }
   }
   for (const [k, lbl] of [["src", "Source"], ["rec", "Receiver"]]) {
-    if (!insideRoom(state[k], geom, room)) throw new Error(`${lbl} is on the boundary or outside of the room.`);
+    if (!insideRoom(state[k], geom, room)) {
+      throw stageError("update_source_receiver", `${lbl} is on the boundary or outside of the room.`);
+    }
   }
   if (state.materialType === "reverberationTime" && state.roomType === "convex") {
-    throw new Error("T60 input is not supported for convex rooms; use impedance or absorption coefficients instead.");
+    throw stageError(
+      "update_wall_materials",
+      "T60 input is not supported for convex rooms; use impedance or absorption coefficients instead.",
+    );
   }
-  validatePageState(state);
-  if (!$("#controls").checkValidity()) throw new Error("Complete the highlighted numeric inputs.");
+  try {
+    validatePageState(state);
+    if (!$("#controls").checkValidity()) throw new Error("Complete the highlighted numeric inputs.");
+  } catch (e) {
+    throw stageError("parameters", e.message);
+  }
   return { params: buildParams("accurate", geom, room), geom };
 }
 
@@ -492,7 +515,7 @@ async function runAccurate() {
   try {
     ({ params, geom } = currentExportParams());
     params = exportSnapshot(params).params;
-  } catch (e) { return failAt("parameters", e.message); }
+  } catch (e) { return failAt(e.stage || "parameters", e.message); }
   const request = { id: ++runId, t0, params, geom, order: stageOrder(), signature: currentSignature(), preset: activePreset?.name || null };
   currentRun = request;
   running = true;

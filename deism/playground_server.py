@@ -82,7 +82,9 @@ def save_result(root, request, result, started):
     temporary = folder / "result.json.tmp"
     temporary.write_text(json.dumps(payload, allow_nan=False, indent=2), encoding="utf-8")
     temporary.replace(folder / "result.json")
-    return str(folder / "result.json")
+    # Resolve so the path matches window.DEISM_NATIVE.resultsDir (also resolved)
+    # and displaySavedPath can strip the results-folder prefix reliably.
+    return str((folder / "result.json").resolve())
 
 
 class Runner:
