@@ -11,6 +11,10 @@ ones.
 
 The images are computed once; update_fluctuations() re-samples on them, so
 run_DEISM() is called with if_clean_up=False to keep them alive between runs.
+
+Model: J. Lawrence, Z. Xu, A. Walther, N. Peters and E. A. P. Habets,
+"Integrating atmospheric fluctuations into the image source method,"
+JASA Express Lett. 6 (7): 072401 (2026), https://doi.org/10.1121/10.0044473
 """
 
 # -------------------------------------------------------

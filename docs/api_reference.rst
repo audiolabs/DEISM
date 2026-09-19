@@ -20,7 +20,8 @@ Typical usage pattern:
 5. Call ``update_source_receiver()`` and ``update_directivities()`` in the
    roomtype-appropriate order.
 6. Optionally call ``update_fluctuations()`` to perturb the image path
-   lengths with atmospheric fluctuations (``drift`` / ``volatility``).
+   lengths with atmospheric fluctuations (``drift`` / ``volatility``);
+   the model is described in :ref:`fluctuation-paper`.
 7. Call ``run_DEISM()``.
 
 .. currentmodule:: deism.core_deism

@@ -254,6 +254,7 @@ Shoebox workflow:
 - `update_wall_materials()`
 - `update_freqs()`
 - `update_directivities()` and `update_source_receiver()` in either order
+- `update_fluctuations()` (optional atmospheric path-length fluctuations; see the [fluctuation paper](#academic-publications))
 - `run_DEISM()`
 
 Convex workflow:
@@ -263,6 +264,7 @@ Convex workflow:
 - `update_freqs()`
 - `update_source_receiver()`
 - `update_directivities()`
+- `update_fluctuations()` (optional; must follow `update_source_receiver()`)
 - `run_DEISM()`
 
 The convex order is stricter because ARG directivity setup depends on
@@ -284,6 +286,8 @@ Advanced or research-oriented examples:
 - `examples/deism_arg_IWAENC_fig5_fig6.py`
 - `examples/deism_JASA_fig8.py`
 - `examples/deism_JASA_fig9.py`
+- `examples/deism_volatility_example.py` (shoebox atmospheric fluctuations)
+- `examples/deism_arg_volatility_example.py` (convex atmospheric fluctuations)
 
 For more detail, use the docs pages linked above instead of relying only on the
 older example scripts.
@@ -335,6 +339,10 @@ If you use this package in your research, please cite [our paper](https://doi.or
 > Zeyu Xu, Adrian Herzog, Alexander Lodermeyer, Emanuël A. P. Habets, Albert G. Prinn; Simulating room transfer functions between transducers mounted on audio devices using a modified image source method. **J. Acoust. Soc. Am.** 1 January 2024; 155 (1): 343–357. https://doi.org/10.1121/10.0023935
 
 > Z. Xu, E.A.P. Habets and A.G. Prinn; Simulating sound fields in rooms with arbitrary geometries using the diffraction-enhanced image source method, Proc. of International Workshop on Acoustic Signal Enhancement (IWAENC), 2024.
+
+The optional atmospheric path-length fluctuations (`drift`, `volatility`, `fluctuationSeed`; `update_fluctuations()`) implement the model of:
+
+> Jeremy Lawrence, Zeyu Xu, Andreas Walther, Nils Peters, Emanuël A. P. Habets; Integrating atmospheric fluctuations into the image source method. **JASA Express Lett.** 1 July 2026; 6 (7): 072401. https://doi.org/10.1121/10.0044473
 
 
 

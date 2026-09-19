@@ -334,6 +334,10 @@ class DEISM:
     def update_fluctuations(self):
         """Add Gaussians to each acoustic path to stochastically model atmospheric fluctuations.
 
+        Model: J. Lawrence, Z. Xu, A. Walther, N. Peters and E. A. P. Habets,
+        "Integrating atmospheric fluctuations into the image source method,"
+        JASA Express Lett. 6 (7): 072401 (2026), https://doi.org/10.1121/10.0044473
+
         Uses params["drift"], params["volatility"] and params["fluctuationSeed"]
         (all optional, defaults 0 / 0 / None leave the images unchanged).
         Call after update_source_receiver() and before run_DEISM(). Each call

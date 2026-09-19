@@ -97,3 +97,14 @@ If you use this package in your research, please cite the following papers:
     diffraction-enhanced image source method,"
     *Proc. International Workshop on Acoustic Signal Enhancement (IWAENC)*,
     2024.
+
+.. _fluctuation-paper:
+
+**Atmospheric Fluctuations**
+    Jeremy Lawrence, Zeyu Xu, Andreas Walther, Nils Peters,
+    Emanuël A. P. Habets;
+    "Integrating atmospheric fluctuations into the image source method."
+    *JASA Express Lett.* 6 (7): 072401 (2026).
+    `DOI: 10.1121/10.0044473 <https://doi.org/10.1121/10.0044473>`_
+    Implemented by ``update_fluctuations()`` (``drift``, ``volatility``,
+    ``fluctuationSeed``).

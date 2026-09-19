@@ -105,7 +105,7 @@ important mappings are:
      - Fractional delay bias of the optional path-length fluctuations (dimensionless); both room types, default 0 leaves results unchanged
    * - ``Environment.volatility``
      - ``volatility``
-     - Standard deviation of the delay random walk in s^(1/2); applied by ``update_fluctuations()``, default 0 disables it
+     - Standard deviation of the delay random walk in s^(1/2); applied by ``update_fluctuations()``, default 0 disables it. Model: :ref:`fluctuation-paper`
    * - ``Environment.fluctuationSeed``
      - ``fluctuationSeed``
      - Non-negative integer seed for reproducible fluctuation draws; ``null`` draws afresh on every call

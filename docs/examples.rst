@@ -69,6 +69,22 @@ Class-based workflow examples
 - Useful when evaluating image-calculation performance rather than acoustics
   correctness alone.
 
+``deism_volatility_example.py``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Uses ``DEISM("RIR", "shoebox")`` with ``update_fluctuations()``.
+- Computes the images once and re-samples atmospheric path-length
+  fluctuations of increasing ``volatility`` on them, comparing each RIR with
+  the unperturbed reference.
+- Model: :ref:`fluctuation-paper`. Writes outputs below ``outputs/volatility``.
+
+``deism_arg_volatility_example.py``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Convex-room (DEISM-ARG) counterpart of ``deism_volatility_example.py``;
+  ``update_fluctuations()`` follows ``update_source_receiver()``.
+- Model: :ref:`fluctuation-paper`. Writes outputs below ``outputs/volatility``.
+
 Advanced and legacy research scripts
 ------------------------------------
 

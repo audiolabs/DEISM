@@ -7,6 +7,10 @@ reference (volatility 0); the following runs re-sample Gaussian path-length
 fluctuations of increasing volatility on the same image set. Geometry and
 rotation are those of deism_arg_singleparam_example.py; base parameters come
 from configSingleParam_ARG_RIR.yml. Outputs go to ./outputs/volatility.
+
+Model: J. Lawrence, Z. Xu, A. Walther, N. Peters and E. A. P. Habets,
+"Integrating atmospheric fluctuations into the image source method,"
+JASA Express Lett. 6 (7): 072401 (2026), https://doi.org/10.1121/10.0044473
 """
 
 # -------------------------------------------------------
