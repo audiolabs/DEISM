@@ -3,6 +3,41 @@ Changelog
 Release history for the ``deism`` package. This page is the canonical
 changelog; update it when cutting a release.
 
+2.3.1
+-----
+
+- **Playground: export Python scripts.** The run card gains *Set up* and
+  *Last run* buttons. *Set up* writes an editable script for the validated
+  current controls without running; *Last run* writes the settings captured
+  when the last successful run was dispatched, unaffected by later edits,
+  preset changes or failed runs. The script rebuilds the simulation through
+  the public ``DEISM`` API: room geometry (convex wall centers keep their
+  material rows; vertices are world coordinates, the rotation only turns the
+  acoustic frames), per-wall materials, sampled directivities resolved to the
+  original MAT files (``DATA_DIR`` / ``DEISM_DATA_DIR``, never downloaded),
+  frequency settings, optional fluctuations and RTF/RIR output. Running it
+  computes the result in memory and plots it; it writes no files.
+- The launcher (``deism-playground``) saves exports through a new
+  ``POST /export-script`` endpoint into ``playground/scripts/`` of its
+  writable playground root (git-ignored) as ``deism_setup.py`` /
+  ``deism_lastrun.py`` with numbered suffixes for repeats, never overwriting;
+  the page and the console print the saved path. The standalone
+  ``demo.html`` cannot write to a project folder and says so.
+- Unfixed fluctuation seeds are drawn on the page before a run is
+  dispatched, so the seed used is recorded in the result archive and in the
+  *Last run* export; exporting a *Set up* with unfixed fluctuations draws a
+  seed of its own. Offline JavaScript runs use a different solver and random
+  generator, so their exports reproduce the settings, not the numbers.
+- Tests: ``tests/test_playground_python_export.py`` executes
+  browser-generated scripts against the native adapter (grids exact, complex
+  RTF/RIR at ``rtol=1e-6``), including a 32-case MIX matrix over room type,
+  output mode, fluctuations and source/receiver directivity, plus seed
+  reproducibility in both workflows. ``tests/test_playground_result_storage.py``
+  covers the save endpoint.
+- Packaging is unchanged: the sampled-directivity datasets remain attached to
+  the v2.3.0 GitHub release and ``DATASET_RELEASE`` keeps pointing there; the
+  JavaScript engine (``2.3.0-js``) is untouched.
+
 2.3.0
 -----
 
@@ -141,6 +176,7 @@ changelog; update it when cutting a release.
   the legacy backend); a given T60 is kept exactly so the 1/T60 RIR grid
   matches; the convex visibility test carries the libroom tolerance; the
   ORG kernel evaluates each spherical harmonic once per image (2.6× faster).
+
 2.2.1.16
 --------
 

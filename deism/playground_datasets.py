@@ -30,6 +30,8 @@ from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
+# The release that carries the MAT assets; later package releases keep
+# pointing here unless the datasets themselves change.
 DATASET_RELEASE = "v2.3.0"
 DATASET_BASE_URL = f"https://github.com/audiolabs/DEISM/releases/download/{DATASET_RELEASE}/"
 ENV_VAR = "DEISM_DATA_DIR"
