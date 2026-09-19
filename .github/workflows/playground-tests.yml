@@ -61,10 +61,12 @@ jobs:
           from deism import playground_datasets as d
           directory = "examples/data/sampled_directivity"
           catalog = d.load_catalog()
-          keys = d.missing_keys(directory, catalog)
+          # All 20 files, not only the supported ones: the catalog tool below
+          # scans every MAT file in the directory, LFS pointers included.
+          keys = d.missing_keys(directory, catalog, supported_only=False)
           print(f"{len(keys)} file(s) to fetch from {d.DATASET_BASE_URL}")
           d.download(directory, catalog, keys, progress=print)
-          status = d.inspect(directory, catalog)
+          status = d.inspect(directory, catalog, supported_only=False)
           assert status.complete, status.missing
           PY
 

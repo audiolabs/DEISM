@@ -93,9 +93,13 @@ def file_digest(path):
 def discover_sets():
     """Discover every local MAT file; inspect its schema before offering it."""
     from pathlib import Path
+    from deism.playground_datasets import is_lfs_pointer
     catalog = {}
     for kind in ("source", "receiver"):
         for path in sorted((Path(DATA_DIR) / kind).glob("*.mat")):
+            if is_lfs_pointer(path):
+                raise SystemExit(f"{path} is a Git LFS pointer, not a MAT file; run `git lfs pull` "
+                                 "or download the datasets from the GitHub release first")
             fields = dict((name, shape) for name, shape, _ in sio.whosmat(path))
             name = path.stem
             key = name if name not in catalog else name + "__" + kind
