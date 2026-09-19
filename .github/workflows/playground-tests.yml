@@ -9,15 +9,23 @@ on:
 permissions:
   contents: read
 
+# Pull-request updates supersede older runs. Main pushes use the commit SHA so
+# every merged commit receives its own complete verdict.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   playground:
     name: Playground engine golden tests
     runs-on: ubuntu-latest
 
     steps:
+      # No LFS checkout: the sampled-directivity MAT files (194 MB) come from
+      # the GitHub release assets below, cached between runs, so CI does not
+      # spend Git LFS bandwidth. The checkout leaves LFS pointer files, which
+      # the downloader treats as missing and replaces.
       - uses: actions/checkout@v6
-        with:
-          lfs: true
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v6
@@ -40,6 +48,27 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install --editable . pytest
+
+      - name: Restore cached directivity datasets
+        uses: actions/cache@v4
+        with:
+          path: examples/data/sampled_directivity
+          key: directivity-${{ hashFiles('playground/catalog.json') }}
+
+      - name: Download missing directivity datasets from the release assets
+        run: |
+          python - <<'PY'
+          from deism import playground_datasets as d
+          directory = "examples/data/sampled_directivity"
+          catalog = d.load_catalog()
+          # All 20 files, not only the supported ones: the catalog tool below
+          # scans every MAT file in the directory, LFS pointers included.
+          keys = d.missing_keys(directory, catalog, supported_only=False)
+          print(f"{len(keys)} file(s) to fetch from {d.DATASET_BASE_URL}")
+          d.download(directory, catalog, keys, progress=print)
+          status = d.inspect(directory, catalog, supported_only=False)
+          assert status.complete, status.missing
+          PY
 
       - name: Regenerate fixtures and datasets from the Python solver
         run: |
