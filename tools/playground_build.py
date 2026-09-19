@@ -35,7 +35,7 @@ ENGINE_MODULES = [
     "deism.js",
     "data.js",
 ]
-APP_MODULES = ["scene.js", "plots.js", "datasets.js", "presets.js", "state.js", "app.js"]
+APP_MODULES = ["scene.js", "plots.js", "datasets.js", "presets.js", "state.js", "python-export.js", "app.js"]
 
 
 LICENSE_NOTICE_HTML = """<!--

@@ -171,6 +171,29 @@ class Runner:
         return connection.recv()
 
 
+def save_script(root, request):
+    """Save source only, never execute it; preserve earlier exports and edits."""
+    if set(request) != {"filename", "code"}:
+        raise ValueError("Expected filename and code")
+    filename, code = request["filename"], request["code"]
+    if filename not in ("deism_setup.py", "deism_lastrun.py"):
+        raise ValueError("Unsupported script filename")
+    if not isinstance(code, str) or not code.strip():
+        raise ValueError("Script must contain Python source")
+    root = Path(root).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    stem = Path(filename).stem
+    counter = 0
+    while True:
+        path = root / (filename if counter == 0 else f"{stem}_{counter:02d}.py")
+        try:
+            with path.open("x", encoding="utf-8") as output:
+                output.write(code)
+            return str(path)
+        except FileExistsError:
+            counter += 1
+
+
 class Server(ThreadingHTTPServer):
     daemon_threads = True
     def __init__(self, address, runner, data_root=None, datasets=None, data_dir=None):
@@ -181,6 +204,7 @@ class Server(ThreadingHTTPServer):
         self.data_root = Path(data_root) if data_root is not None else _writable_playground_root()
         # catalog key -> True when the original MAT file was found (None: unknown)
         self.datasets = datasets
+        self.scripts_dir = self.data_root / "scripts"
         self.data_dir = str(data_dir) if data_dir is not None else None
 
 
@@ -214,7 +238,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         html = (assets / "native.html").read_bytes()
-        native = dict(token=self.server.token)
+        native = dict(token=self.server.token, scriptsDir=str(self.server.scripts_dir.resolve()))
         if self.server.runner is not None:
             native["resultsDir"] = str(Path(self.server.runner.results_dir).resolve())
         if self.server.datasets is not None:
@@ -247,6 +271,11 @@ class Handler(BaseHTTPRequestHandler):
             request = json.loads(self.rfile.read(length))
             if not isinstance(request, dict):
                 raise ValueError("Request must be a JSON object")
+            if self.path == "/export-script":
+                saved = save_script(self.server.scripts_dir, request)
+                print(f"Saved Python script to: {saved}", flush=True)
+                self.send_bytes(json.dumps(dict(savedPath=saved)).encode(), "application/json")
+                return
             if self.path == "/cancel":
                 self.server.runner.stop(job=request["id"])
                 self.send_response(204)
@@ -255,6 +284,9 @@ class Handler(BaseHTTPRequestHandler):
             if self.path != "/run":
                 self.send_error(404)
                 return
+        except OSError:
+            self.send_error(500, "Could not save Python script")
+            return
         except (ValueError, KeyError) as error:
             self.send_error(400, str(error))
             return
@@ -337,6 +369,7 @@ def main():
         server = Server(("127.0.0.1", args.port), runner, data_root=writable,
                         datasets=availability, data_dir=data_dir)
         print(f"DEISM playground: {server.origin}/", flush=True)
+        print(f"Python script exports: {server.scripts_dir.resolve()}", flush=True)
         if not args.no_browser:
             webbrowser.open(server.origin + "/")
         server.serve_forever(poll_interval=0.1)

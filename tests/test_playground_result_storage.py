@@ -115,3 +115,50 @@ def test_server_serves_external_dataset_without_demo_html(tmp_path, monkeypatch)
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_script_export_preserves_files_and_rejects_paths(tmp_path):
+    import pytest
+    from deism.playground_server import save_script
+    request = dict(filename="deism_setup.py", code="raise RuntimeError('source must not execute')\n")
+    first = Path(save_script(tmp_path / "scripts", request))
+    second = Path(save_script(tmp_path / "scripts", request))
+    assert first.name == "deism_setup.py"
+    assert second.name == "deism_setup_01.py"
+    assert first.read_text() == second.read_text() == request["code"]
+    for filename in ("../escape.py", "/tmp/escape.py", "other.py"):
+        with pytest.raises(ValueError, match="filename"):
+            save_script(tmp_path / "scripts", dict(request, filename=filename))
+    with pytest.raises(ValueError):
+        save_script(tmp_path / "scripts", dict(request, code=None))
+
+
+def test_script_export_http_auth_and_destination(tmp_path, capsys):
+    import threading
+    import urllib.request
+    import urllib.error
+    import pytest
+    from deism.playground_server import Server
+    server = Server(("127.0.0.1", 0), None, data_root=tmp_path / "playground")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps(dict(filename="deism_lastrun.py", code="print('example')\n")).encode()
+        def post(token, origin):
+            request = urllib.request.Request(server.origin + "/export-script", data=payload,
+                headers={"Content-Type": "application/json", "X-DEISM-Token": token, "Origin": origin})
+            return urllib.request.urlopen(request)
+        for token, origin in [("wrong", server.origin), (server.token, "https://untrusted.example")]:
+            with pytest.raises(urllib.error.HTTPError) as error:
+                post(token, origin)
+            assert error.value.code == 403
+        assert not server.scripts_dir.exists()
+        with post(server.token, server.origin) as response:
+            saved = Path(json.loads(response.read())["savedPath"])
+        assert saved == tmp_path / "playground" / "scripts" / "deism_lastrun.py"
+        assert saved.read_text() == "print('example')\n"
+        assert str(saved) in capsys.readouterr().out
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()

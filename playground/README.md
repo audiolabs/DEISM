@@ -56,6 +56,56 @@ Editing during a run leaves the completed result stale. Invalid inputs,
 coincident source/receiver positions, missing required material assignments,
 and non-finite output produce errors rather than successful curves.
 
+## Export Python scripts
+
+**Set up** saves an editable Python script using the
+full current settings, without requiring a simulation first. It uses the same
+input validation as Run. **Last run** exports the last
+successful run's captured settings, even after controls or presets change or a
+later run fails. Script exports require the local `deism-playground` launcher;
+the standalone static demo cannot write to a project folder. Scripts are saved
+to `playground/scripts/` in an editable checkout, independently of the browser's
+Downloads folder. The server uses its writable playground root (the user cache
+for a read-only installation). The page and launcher console report the full
+saved path. Filenames start as `deism_setup.py` and `deism_lastrun.py`; repeat
+exports receive numbered suffixes so previous scripts are preserved.
+
+The script contains a configuration block followed by the explicit public
+`DEISM` pipeline, including room geometry, per-wall materials, directivities,
+frequency settings, optional fluctuations, and RTF/RIR generation. Convex wall
+centers preserve material assignments; exported vertices are already in world
+coordinates, so the room rotation is applied only to acoustic frames. Editing
+convex topology requires updating wall centers and material rows together.
+
+Install DEISM, edit the configuration if desired, then run
+`python playground/scripts/deism_setup.py` (or `deism_lastrun.py` in that folder).
+Execution computes results in memory and displays plots; it does not save NPZ
+files, plot images, or script copies. Set `PLOT_RESULTS = False` to skip plotting.
+Call `run_simulation()` to access the returned simulation, frequencies, RTF and RIR.
+Sampled directivities require the original MAT files. Set `DATA_DIR` in the
+script or `DEISM_DATA_DIR` in the environment; otherwise the script checks the
+checkout/package and local cache. Exported scripts do not download datasets.
+
+Unfixed fluctuations still receive a new random seed per full run; that seed is
+now captured before dispatch and retained in the completed export and native
+result archive. Exporting a current setup with unfixed fluctuations creates its
+own seed. The offline JavaScript solver uses a different random generator;
+its numerical results are not guaranteed to match Python.
+Native completed exports record the DEISM version and warn on version mismatch;
+Python settings outside the playground continue to use installed defaults.
+
+The export parity tests (`tests/test_playground_python_export.py`) include a
+32-case MIX matrix: shoebox/convex × RTF/RIR × fluctuations off/on ×
+monopole/directional source × monopole/directional receiver. These compare
+frequency grids exactly and complex RTF/RIR at `rtol=1e-6`, `atol=1e-9` against
+the native playground adapter. Cases use reflection order 3, MIX early order 1,
+SH order 2 for directional transducers, and the role-specific
+`speaker_cuboid_cyldriver_1.mat` datasets. Fluctuating cases use seed 42 and
+repeat both workflows to check reproducibility. Convex cases use a tilted
+ceiling, heterogeneous complex materials, reordered wall centers, and rotated
+orientation frames. This matrix covers these combinations at representative
+settings, not every dataset, geometry, or reflection order.
+
 ## Materials and geometry
 
 Both room types provide one row per wall. Absorption has one numeric input;
