@@ -25,6 +25,8 @@ import { Scene } from "./scene.js";
 import { plotDb, plotRir, plotBalloon, HorizontalViewport, BalloonOrbit } from "./plots.js";
 import { PRESETS, DATASET_INFO, DEFAULT_VERTICES, defaultState, presetState, presetById, stateToParams } from "./presets.js";
 
+import { exportSnapshot, generatePythonScript } from "./python-export.js";
+
 import { reconcileWalls, parameterSignature, validatePageState, pendingWallCount } from "./state.js";
 
 // ---------------------------------------------------------------------------
@@ -438,34 +440,58 @@ function ensureWorker() {
   return worker;
 }
 
-async function runAccurate() {
-  if (running) return;
+function currentExportParams() {
   const geom = roomGeometry();
-  const t0 = performance.now();
-  resetPipeline();
-  if (!geom.ok) return failAt("update_room", geom.error);
+  if (!geom.ok) throw new Error(geom.error);
   if (geom.orphan && geom.orphan.length) {
-    return failAt("update_room", `Vertex ${geom.orphan.map((i) => "V" + (i + 1)).join(", ")} lies inside the convex hull of the other vertices; the room is not the convex polyhedron of the given vertices.`);
+    throw new Error(`Vertex ${geom.orphan.map((i) => "V" + (i + 1)).join(", ")} lies inside the convex hull of the other vertices.`);
   }
   let room = null;
   if (state.roomType === "convex") {
-    try {
-      room = new ConvexRoom(state.vertices);
-    } catch (e) {
-      return failAt("update_room", e.message);
-    }
+    room = new ConvexRoom(state.vertices);
   }
   for (const [k, lbl] of [["src", "Source"], ["rec", "Receiver"]]) {
-    if (!insideRoom(state[k], geom, room)) return failAt("update_source_receiver", `${lbl} is on the boundary or outside of the room.`);
+    if (!insideRoom(state[k], geom, room)) throw new Error(`${lbl} is on the boundary or outside of the room.`);
   }
   if (state.materialType === "reverberationTime" && state.roomType === "convex") {
-    return failAt("update_wall_materials", "T60 input is not supported for convex rooms; use impedance or absorption coefficients instead.");
+    throw new Error("T60 input is not supported for convex rooms; use impedance or absorption coefficients instead.");
   }
-  let params;
+  validatePageState(state);
+  if (!$("#controls").checkValidity()) throw new Error("Complete the highlighted numeric inputs.");
+  return { params: buildParams("accurate", geom, room), geom };
+}
+
+let completedExport = null;
+
+async function downloadPython(completed = false) {
   try {
-    validatePageState(state);
-    if (!$("#controls").checkValidity()) throw new Error("Complete the highlighted numeric inputs.");
-    params = buildParams("accurate", geom, room);
+    const selected = completed ? completedExport : exportSnapshot(currentExportParams().params, {
+      preset: activePreset?.name || "Custom", origin: window.DEISM_NATIVE ? "Python setup" : "offline JavaScript setup",
+    });
+    if (!selected) throw new Error("Complete a simulation before exporting its run.");
+    if (!window.DEISM_NATIVE) throw new Error("Start deism-playground and use its local page to save scripts into playground/scripts/.");
+    const response = await fetch("/export-script", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-DEISM-Token": window.DEISM_NATIVE.token },
+      body: JSON.stringify({ filename: completed ? "deism_lastrun.py" : "deism_setup.py", code: generatePythonScript(selected) }),
+    });
+    if (!response.ok) throw new Error(`Could not save Python script (HTTP ${response.status}).`);
+    const result = await response.json();
+    $("#export-note").textContent = `Saved Python script to ${result.savedPath}`;
+    console.info(`Saved Python script to ${result.savedPath}`);
+  } catch (error) {
+    $("#export-note").textContent = `Export failed: ${error.message}`;
+  }
+}
+
+async function runAccurate() {
+  if (running) return;
+  const t0 = performance.now();
+  resetPipeline();
+  let params, geom;
+  try {
+    ({ params, geom } = currentExportParams());
+    params = exportSnapshot(params).params;
   } catch (e) { return failAt("parameters", e.message); }
   const request = { id: ++runId, t0, params, geom, order: stageOrder(), signature: currentSignature(), preset: activePreset?.name || null };
   currentRun = request;
@@ -581,6 +607,11 @@ function onWorkerMessage(ev) {
         when: new Date().toISOString(),
       },
     };
+    completedExport = exportSnapshot(p, {
+      preset: currentRun.preset || "Custom", origin: m.backend ? "Python" : "offline JavaScript",
+      version: m.backend?.version || null, completedAt: accurate.provenance.when,
+    });
+    $("#export-completed-btn").disabled = false;
     const completedRun = accurate;
     const dispatchedAt = currentRun.t0;
     snapshot = currentRun.signature;
@@ -1009,6 +1040,8 @@ function bindControls() {
   $("#add-vert").addEventListener("click", addVertex);
   $("#remove-vert").addEventListener("click", () => removeVertex(state.selVert));
   $("#run-btn").addEventListener("click", runAccurate);
+  $("#export-python-btn").addEventListener("click", () => downloadPython());
+  $("#export-completed-btn").addEventListener("click", () => downloadPython(true));
   $("#apply-walls").addEventListener("click", () => {
     const i = selectedWall >= 0 ? selectedWall : 0;
     if (state.materialType === "impedance") state.impedances = state.impedances.map(() => ({ ...state.impedances[i] }));

@@ -112,6 +112,13 @@ input[type=range] { width: 100%; min-width: 0; accent-color: var(--blue); cursor
 .balloon { width: 100%; height: 150px; background: #10141a; border-radius: 8px; display: block; margin-bottom: 6px; }
 .run-card { display: flex; flex-direction: column; gap: 6px; position: sticky; bottom: 0; background: var(--card); box-shadow: 0 -10px 16px rgba(14, 17, 22, 0.8); }
 .run { border: none; background: var(--blue); color: #fff; padding: 11px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--sans); }
+.run-actions { display: flex; align-items: stretch; gap: 6px; }
+.run-actions > .run { flex: 1; min-width: 0; }
+.run-exports { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.export-btn { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; font-size: 11px; text-align: left; white-space: nowrap; }
+.download-icon { width: 13px; height: 13px; flex-shrink: 0; }
+.run-actions button:focus-visible { outline: 2px solid #9db4ff; outline-offset: 2px; }
+#export-note:empty, #run-save-note:empty { display: none; }
 .run:disabled { opacity: 0.55; cursor: progress; }
 .run.cancel { background: #3a2226; color: #ff9d90; }
 
@@ -213,8 +220,7 @@ input:invalid { border-color: var(--red); }
 .balloon { cursor: grab; touch-action: none; }
 .balloon-tools { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 6px; }
 .run-card .card-heading { margin-bottom: 2px; }
-#run-save-note { margin-top: 2px; overflow-wrap: anywhere; }
-#run-save-note { overflow-wrap: anywhere; margin-top: 0; }
+#run-save-note, #export-note { margin-top: 0; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
 .provenance details { margin-top: 6px; overflow-wrap: anywhere; }
 .provenance summary, .foot summary { cursor: pointer; color: var(--muted); }
 #dataset-warning, #wall-review { color: var(--amber); }
@@ -437,10 +443,17 @@ input:invalid { border-color: var(--red); }
     </section>
 
     <section class="card run-card">
-      <div class="card-heading"><h2>07 · Run</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>The preview updates live with reduced settings (LC method, reflection order ≤ 3, SH order ≤ 2, at most 256 frequency bins). Run computes the full settings: with <code>deism-playground</code> in the local Python DEISM package, in the standalone file with the JavaScript port (native performance and high-order parity are not validated there).</div><div>With the local launcher, each completed run is written as JSON to the folder shown below the button; the exact file path appears with the result. The standalone file cannot save results.</div></div></details></div>
-      <button type="button" class="run" id="run-btn">▸ Run accurate DEISM</button>
+      <div class="card-heading"><h2>07 · Run</h2><details class="help"><summary aria-label="Help">?</summary><div class="help-text"><div>The preview updates live with reduced settings (LC method, reflection order ≤ 3, SH order ≤ 2, at most 256 frequency bins). Run computes the full settings: with <code>deism-playground</code> in the local Python DEISM package, in the standalone file with the JavaScript port (native performance and high-order parity are not validated there).</div><div>With the local launcher, each completed run is written as JSON to the folder shown below the button; the exact file path appears with the result. The standalone file cannot save results.</div><div><b>deism_setup.py</b> exports the current controls before or after running. <b>deism_lastrun.py</b> exports the last successful run’s captured settings, even after controls change. With the local launcher, both save editable Python scripts into playground/scripts; the page and console show the saved path. Running these scripts computes results and displays plots without saving result files. They require DEISM and any selected original MAT datasets.</div></div></details></div>
+      <div class="run-actions">
+        <button type="button" class="run" id="run-btn">▸ Run accurate DEISM</button>
+        <div class="run-exports" role="group" aria-label="Export Python scripts">
+          <button type="button" class="btn export-btn" id="export-python-btn" aria-label="Export current setup · Python" title="Save Python script to playground/scripts using the current controls; requires the local launcher."><svg class="download-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/></svg><span>Set up</span></button>
+          <button type="button" class="btn export-btn" id="export-completed-btn" aria-label="Export completed run · Python" title="Save Python script to playground/scripts using the last successful run's settings." disabled><svg class="download-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/></svg><span>Last run</span></button>
+        </div>
+      </div>
       <button type="button" class="run cancel" id="cancel-btn" hidden>■ Cancel</button>
       <div class="stat" id="run-save-note"></div>
+      <div class="stat" id="export-note" role="status" aria-live="polite"></div>
     </section>
   </form>
 </main>
@@ -7828,6 +7841,193 @@ function validatePageState(state) {
   }
 }
 
+// ---- src/python-export.js ----
+/** Generate editable public-API Python workflows; no server or adapter required. */
+
+function pythonLiteral(value, depth = 0) {
+  if (value === null) return "None";
+  if (typeof value === "boolean") return value ? "True" : "False";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("Cannot export non-finite parameters.");
+    return String(value);
+  }
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) return "[" + value.map(v => pythonLiteral(v, depth)).join(", ") + "]";
+  if (value && typeof value === "object") {
+    const indent = "    ".repeat(depth + 1);
+    return "{\n" + Object.entries(value).map(([k, v]) => `${indent}${pythonLiteral(k)}: ${pythonLiteral(v, depth + 1)},`).join("\n") + "\n" + "    ".repeat(depth) + "}";
+  }
+  throw new Error("Unsupported export parameter.");
+}
+
+function exportSnapshot(params, metadata = {}, randomSeed = () => crypto.getRandomValues(new Uint32Array(1))[0]) {
+  const snapshot = structuredClone(params);
+  // A new random draw for every unfixed run, recorded before dispatch.
+  if (snapshot.volatility && snapshot.fluctuationSeed == null) snapshot.fluctuationSeed = randomSeed();
+  return { params: snapshot, metadata: structuredClone(metadata) };
+}
+
+function generatePythonScript(snapshot) {
+  const q = structuredClone(snapshot.params);
+  const parameters = { ...q };
+  for (const key of ["mode", "roomType", "roomSize", "vertices", "wallCenters", "roomRotation", "material", "directivityFreqPolicy"]) delete parameters[key];
+  for (const role of ["source", "receiver"]) {
+    const id = q[role + "Type"];
+    if (id === "monopole") continue;
+    const info = DATASET_CATALOG[id];
+    if (!info?.supported || info.kind !== role) throw new Error(`Unsupported ${role} dataset: ${id}`);
+    parameters[role + "Type"] = info.filename.replace(/\.mat$/, "");
+  }
+  const material = q.material;
+  function materialValue(value) {
+    if (Array.isArray(value)) return "[" + value.map(materialValue).join(", ") + "]";
+    if (value && typeof value === "object") return `complex(${pythonLiteral(value.re)}, ${pythonLiteral(value.im)})`;
+    return pythonLiteral(value);
+  }
+  return `"""DEISM simulation exported from the playground.
+
+Install DEISM, edit the configuration below, then run this downloaded file:
+python deism_setup.py (or python deism_lastrun.py for a completed-run export).
+Sampled directivities require the original MAT files, not preview JSON files.
+Offline JavaScript runs use a different solver/random generator: this script
+reproduces their settings, not necessarily their numerical results.
+"""
+import sys
+import warnings
+from pathlib import Path
+
+import numpy as np
+from deism.core_deism import DEISM
+from deism.version import __version__
+
+# Editable configuration. All playground-controlled solver settings are explicit.
+MODE = ${pythonLiteral(q.mode)}
+ROOM_TYPE = ${pythonLiteral(q.roomType)}
+PARAMETERS = ${pythonLiteral(parameters)}
+${q.roomType === "shoebox" ? `ROOM_SIZE = ${pythonLiteral(q.roomSize)}` : `# World coordinates already include the playground room rotation.
+VERTICES = ${pythonLiteral(q.vertices)}
+# Each center identifies the face for the corresponding material row.
+# After editing topology, update centers and materials together.
+WALL_CENTERS = ${pythonLiteral(q.wallCenters)}
+# Rotation affects acoustic orientation frames only; do not rotate vertices again.
+ROOM_ROTATION = ${pythonLiteral(q.roomRotation ?? null)}`}
+MATERIAL_TYPE = ${pythonLiteral(material.type)}
+# Shoebox order: x-, x+, y-, y+, z-, z+. Convex order: WALL_CENTERS.
+WALL_MATERIALS = ${materialValue(material.value)}
+DIRECTIVITY_FREQUENCY_POLICY = ${pythonLiteral(q.directivityFreqPolicy ?? "interpolate")}
+# None searches DEISM_DATA_DIR, the checkout/package, and the local cache.
+# Or set DATA_DIR = Path("/path/to/sampled_directivity") (source/ and receiver/).
+DATA_DIR = None
+PLOT_RESULTS = True
+EXPORT_METADATA = ${pythonLiteral(snapshot.metadata)}
+
+
+def run_simulation():
+    # The constructor reads command-line arguments; keep this script's settings authoritative.
+    argv = sys.argv
+    try:
+        sys.argv = [argv[0]]
+        simulation = DEISM(MODE, ROOM_TYPE, silent=True)
+    finally:
+        sys.argv = argv
+    p = simulation.params
+    p.update(PARAMETERS)
+    p["silentMode"] = 1
+    for key in ("posSource", "posReceiver", "orientSource", "orientReceiver"):
+        p[key] = np.asarray(p[key], dtype=float)
+    expected_version = EXPORT_METADATA.get("version")
+    if expected_version and expected_version != __version__:
+        warnings.warn(f"Export used DEISM {expected_version}; running {__version__}.")
+
+    # Geometry and per-wall material association.
+${q.roomType === "shoebox" ? `    simulation.update_room(roomDimensions=np.asarray(ROOM_SIZE, dtype=float))
+    wall_count = 6` : `    from deism.core_deism_arg import find_wall_centers, convex_room_volume_and_areas
+    vertices = np.asarray(VERTICES, dtype=float)
+    centers = np.asarray(WALL_CENTERS, dtype=float)
+    actual = find_wall_centers(vertices)
+    distances = np.linalg.norm(centers[:, None, :] - actual[None, :, :], axis=2)
+    mapping = distances.argmin(axis=1)
+    if (len(centers) != len(actual) or len(set(mapping)) != len(actual)
+            or np.max(distances.min(axis=1)) > 1e-5):
+        raise ValueError("WALL_CENTERS must identify every convex face exactly once")
+    volume, areas = convex_room_volume_and_areas(vertices)
+    p["convexRoom"] = 1
+    p["ifRotateRoom"] = int(ROOM_ROTATION is not None)
+    p["roomRotation"] = np.asarray(ROOM_ROTATION if ROOM_ROTATION is not None else [0, 0, 0], dtype=float)
+    simulation.update_room(roomDimensions=vertices, wallCenters=centers,
+                           roomVolume=volume, roomAreas=np.asarray(areas)[mapping])
+    wall_count = len(centers)`}
+    if MATERIAL_TYPE == "reverberationTime":
+        if ROOM_TYPE != "shoebox":
+            raise ValueError("T60 input is shoebox-only")
+        wall_materials = float(WALL_MATERIALS)
+    else:
+        wall_materials = np.asarray(WALL_MATERIALS)
+        if wall_materials.ndim == 0:
+            wall_materials = np.full((wall_count, 1), wall_materials.item())
+        else:
+            wall_materials = wall_materials.reshape(wall_count, 1)
+    simulation.update_wall_materials(datain=wall_materials, datatype=MATERIAL_TYPE)
+    simulation.update_freqs()
+
+    # Resolve original MAT data without downloading anything.
+    sampled_roles = [role for role in ("source", "receiver") if p[role + "Type"] != "monopole"]
+    if sampled_roles:
+        from deism.playground_datasets import resolve, is_usable
+        from deism.data_loader import load_directive_pressure
+        directory = Path(DATA_DIR).expanduser() if DATA_DIR is not None else resolve().directory
+        p["directivityDataPath"] = str(directory)
+        for role in sampled_roles:
+            filename = directory / role / (p[role + "Type"] + ".mat")
+            if not is_usable(filename):
+                raise FileNotFoundError(f"Missing original MAT dataset: {filename}. Set DATA_DIR or DEISM_DATA_DIR.")
+            data = load_directive_pressure(1, role, p[role + "Type"], str(directory))
+            if not np.isclose(float(np.asarray(data[3]).item()), p["radius" + role.title()], rtol=0, atol=1e-8):
+                raise ValueError(f"{role} radius must match the original MAT dataset")
+            if DIRECTIVITY_FREQUENCY_POLICY == "exact":
+                grid = np.asarray(data[0]).ravel()
+                if grid.shape != p["freqs"].shape or not np.allclose(grid, p["freqs"], rtol=1e-10, atol=1e-10):
+                    raise ValueError(f"{role} requires its complete original MAT frequency grid")
+    if DIRECTIVITY_FREQUENCY_POLICY not in ("interpolate", "exact"):
+        raise ValueError("Unknown directivity frequency policy")
+    # DEISM interpolates sampled pressure using PCHIP and holds band-edge values.
+${q.roomType === "shoebox" ? `    simulation.update_directivities()
+    simulation.update_source_receiver()` : `    # Convex paths must exist before the source-directivity refit.
+    simulation.update_source_receiver()
+    simulation.update_directivities()`}
+    if p.get("drift", 0) or p.get("volatility", 0):
+        simulation.update_fluctuations()
+    simulation.run_DEISM()
+    rtf = np.asarray(p["RTF"]).copy()
+    rir = simulation.get_results() if MODE == "RIR" else None
+    freqs = np.asarray(p["freqs"]).copy()
+    for value in (freqs, rtf, rir):
+        if value is not None and not np.isfinite(value).all():
+            raise ValueError("DEISM returned non-finite results")
+    return simulation, freqs, rtf, rir
+
+
+def main():
+    simulation, freqs, rtf, rir = run_simulation()
+    print("Simulation complete. Results are in memory; no result files saved.")
+    if PLOT_RESULTS:
+        import matplotlib.pyplot as plt
+        fig, axes = plt.subplots(2 if rir is not None else 1, 1, squeeze=False)
+        axes[0, 0].semilogx(freqs, 20 * np.log10(np.maximum(np.abs(rtf), 1e-30)))
+        axes[0, 0].set(xlabel="Frequency (Hz)", ylabel="RTF magnitude (dB)")
+        if rir is not None:
+            axes[1, 0].plot(np.arange(len(rir)) / simulation.params["sampleRate"], rir)
+            axes[1, 0].set(xlabel="Time (s)", ylabel="RIR amplitude")
+        fig.tight_layout()
+        plt.show()
+    return simulation, freqs, rtf, rir
+
+
+if __name__ == "__main__":
+    main()
+`;
+}
+
 // ---- src/app.js ----
 /*
  * Copyright (c) 2022-2026 Fraunhofer-Gesellschaft zur Foerderung der angewandten Forschung e.V.
@@ -7852,6 +8052,7 @@ function validatePageState(state) {
 const { Deism, ENGINE_VERSION, assertFiniteResult } = DeismEngine;
 const { ConvexRoom, convexHullFaces, convexRoomVolumeAndAreas, Wall, directivityRotation } = DeismEngine;
 const { decodeDataset } = DeismEngine;
+
 
 
 
@@ -8267,34 +8468,58 @@ function ensureWorker() {
   return worker;
 }
 
-async function runAccurate() {
-  if (running) return;
+function currentExportParams() {
   const geom = roomGeometry();
-  const t0 = performance.now();
-  resetPipeline();
-  if (!geom.ok) return failAt("update_room", geom.error);
+  if (!geom.ok) throw new Error(geom.error);
   if (geom.orphan && geom.orphan.length) {
-    return failAt("update_room", `Vertex ${geom.orphan.map((i) => "V" + (i + 1)).join(", ")} lies inside the convex hull of the other vertices; the room is not the convex polyhedron of the given vertices.`);
+    throw new Error(`Vertex ${geom.orphan.map((i) => "V" + (i + 1)).join(", ")} lies inside the convex hull of the other vertices.`);
   }
   let room = null;
   if (state.roomType === "convex") {
-    try {
-      room = new ConvexRoom(state.vertices);
-    } catch (e) {
-      return failAt("update_room", e.message);
-    }
+    room = new ConvexRoom(state.vertices);
   }
   for (const [k, lbl] of [["src", "Source"], ["rec", "Receiver"]]) {
-    if (!insideRoom(state[k], geom, room)) return failAt("update_source_receiver", `${lbl} is on the boundary or outside of the room.`);
+    if (!insideRoom(state[k], geom, room)) throw new Error(`${lbl} is on the boundary or outside of the room.`);
   }
   if (state.materialType === "reverberationTime" && state.roomType === "convex") {
-    return failAt("update_wall_materials", "T60 input is not supported for convex rooms; use impedance or absorption coefficients instead.");
+    throw new Error("T60 input is not supported for convex rooms; use impedance or absorption coefficients instead.");
   }
-  let params;
+  validatePageState(state);
+  if (!$("#controls").checkValidity()) throw new Error("Complete the highlighted numeric inputs.");
+  return { params: buildParams("accurate", geom, room), geom };
+}
+
+let completedExport = null;
+
+async function downloadPython(completed = false) {
   try {
-    validatePageState(state);
-    if (!$("#controls").checkValidity()) throw new Error("Complete the highlighted numeric inputs.");
-    params = buildParams("accurate", geom, room);
+    const selected = completed ? completedExport : exportSnapshot(currentExportParams().params, {
+      preset: activePreset?.name || "Custom", origin: window.DEISM_NATIVE ? "Python setup" : "offline JavaScript setup",
+    });
+    if (!selected) throw new Error("Complete a simulation before exporting its run.");
+    if (!window.DEISM_NATIVE) throw new Error("Start deism-playground and use its local page to save scripts into playground/scripts/.");
+    const response = await fetch("/export-script", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-DEISM-Token": window.DEISM_NATIVE.token },
+      body: JSON.stringify({ filename: completed ? "deism_lastrun.py" : "deism_setup.py", code: generatePythonScript(selected) }),
+    });
+    if (!response.ok) throw new Error(`Could not save Python script (HTTP ${response.status}).`);
+    const result = await response.json();
+    $("#export-note").textContent = `Saved Python script to ${result.savedPath}`;
+    console.info(`Saved Python script to ${result.savedPath}`);
+  } catch (error) {
+    $("#export-note").textContent = `Export failed: ${error.message}`;
+  }
+}
+
+async function runAccurate() {
+  if (running) return;
+  const t0 = performance.now();
+  resetPipeline();
+  let params, geom;
+  try {
+    ({ params, geom } = currentExportParams());
+    params = exportSnapshot(params).params;
   } catch (e) { return failAt("parameters", e.message); }
   const request = { id: ++runId, t0, params, geom, order: stageOrder(), signature: currentSignature(), preset: activePreset?.name || null };
   currentRun = request;
@@ -8410,6 +8635,11 @@ function onWorkerMessage(ev) {
         when: new Date().toISOString(),
       },
     };
+    completedExport = exportSnapshot(p, {
+      preset: currentRun.preset || "Custom", origin: m.backend ? "Python" : "offline JavaScript",
+      version: m.backend?.version || null, completedAt: accurate.provenance.when,
+    });
+    $("#export-completed-btn").disabled = false;
     const completedRun = accurate;
     const dispatchedAt = currentRun.t0;
     snapshot = currentRun.signature;
@@ -8838,6 +9068,8 @@ function bindControls() {
   $("#add-vert").addEventListener("click", addVertex);
   $("#remove-vert").addEventListener("click", () => removeVertex(state.selVert));
   $("#run-btn").addEventListener("click", runAccurate);
+  $("#export-python-btn").addEventListener("click", () => downloadPython());
+  $("#export-completed-btn").addEventListener("click", () => downloadPython(true));
   $("#apply-walls").addEventListener("click", () => {
     const i = selectedWall >= 0 ? selectedWall : 0;
     if (state.materialType === "impedance") state.impedances = state.impedances.map(() => ({ ...state.impedances[i] }));

@@ -64,3 +64,6 @@ playground/results/*
 
 # Disposable browser copies regenerated from MAT files at launch
 playground/data/
+
+# Python scripts exported by the local playground
+playground/scripts/

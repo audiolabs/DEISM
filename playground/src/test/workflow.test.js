@@ -5,6 +5,7 @@
  * Requires a separate license from Fraunhofer beyond internal, non-commercial
  * use for evaluation, testing, and academic research.
  */
+import { exportSnapshot } from "../python-export.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -102,12 +103,16 @@ test("result handler retains dispatch identity after controls change", () => {
   state.src[0] = 1.7;
   const source = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const handler = source.slice(source.indexOf("function onWorkerMessage("), source.indexOf("function finishRun("));
-  const ctx = { state, currentRun: { id: 1, params, signature, preset: "Original preset", order: [] }, accurate: null, snapshot: null, activePreset: { name: "New preset" }, assertFiniteResult, markStage() {}, finishRun() {}, render() {}, lastGoodGeom: {}, roomGeometry() {}, currentBadges: [] };
+  const ctx = { exportSnapshot, completedExport: null, $: () => ({}), state, currentRun: { id: 1, params, signature, preset: "Original preset", order: [] }, accurate: null, snapshot: null, activePreset: { name: "New preset" }, assertFiniteResult, markStage() {}, finishRun() {}, render() {}, lastGoodGeom: {}, roomGeometry() {}, currentBadges: [] };
   vm.createContext(ctx); vm.runInContext(handler, ctx);
   ctx.onWorkerMessage({ data: { type: "result", id: 1, rtf: { re: [1], im: [0] }, freqs: [100], sourceOrder: 0, receiverOrder: 0, warnings: [] } });
   assert.equal(ctx.snapshot, signature);
   assert.notEqual(ctx.snapshot, parameterSignature(stateToParams(state), state.pendingWalls));
   assert.equal(ctx.accurate.provenance.preset, "Original preset");
+  assert.equal(ctx.completedExport.metadata.preset, "Original preset");
+  assert.deepEqual(ctx.completedExport.params, params);
+  params.posSource[0] = 999;
+  assert.notEqual(ctx.completedExport.params.posSource[0], 999);
 });
 
 test("RTF/RIR controls and result visibility use one mode selector", () => {
