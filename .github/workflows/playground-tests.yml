@@ -25,16 +25,16 @@ jobs:
       # the GitHub release assets below, cached between runs, so CI does not
       # spend Git LFS bandwidth. The checkout leaves LFS pointer files, which
       # the downloader treats as missing and replaces.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
 
@@ -50,7 +50,7 @@ jobs:
           python -m pip install --editable . pytest
 
       - name: Restore cached directivity datasets
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: examples/data/sampled_directivity
           key: directivity-${{ hashFiles('playground/catalog.json') }}

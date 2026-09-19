@@ -29,13 +29,13 @@ jobs:
             artifact: macos-arm64
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build and test wheels
-        uses: pypa/cibuildwheel@v3.4.1
+        uses: pypa/cibuildwheel@v4.2.1
 
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deism-wheels-${{ matrix.artifact }}
           path: wheelhouse/*.whl
@@ -46,10 +46,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -69,7 +69,7 @@ jobs:
           /tmp/deism-sdist-smoke/bin/python -c "from deism import DEISM, libroom_deism; from deism.count_reflections_wrapper import CPP_COUNTING_AVAILABLE, count_reflections_cpp; assert libroom_deism is not None; assert CPP_COUNTING_AVAILABLE; assert count_reflections_cpp(0, (3, 4, 5), 343, 1) == 1; assert DEISM('RIR', 'convex', silent=True) is not None"
 
       - name: Upload source distribution
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deism-sdist
           path: dist/*.tar.gz
@@ -82,14 +82,14 @@ jobs:
 
     steps:
       - name: Download all distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: deism-*
           path: dist
           merge-multiple: true
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
